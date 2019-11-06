@@ -24,7 +24,7 @@ For now, please install BayesFast from source with:
 ```
 git clone https://github.com/HerculesJack/bayesfast
 cd bayesfast
-pip install .
+pip install -e .
 ```
 
 ## Dependencies

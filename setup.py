@@ -32,6 +32,6 @@ ext_modules = [
 
 setup(
     name='bayesfast',
-    version='0.1.0dev0'
+    version='0.1.0dev1',
     ext_modules=cythonize(ext_modules, language_level = "3"),
 )

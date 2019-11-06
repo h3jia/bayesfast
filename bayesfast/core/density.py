@@ -3,7 +3,7 @@ from collections import namedtuple, OrderedDict
 from copy import deepcopy
 import warnings
 from .module import *
-#from ..transforms._constraint import * ########################################
+from ..transforms._constraint import *
 
 __all__ = ['VariableDict', 'Pipeline', 'Density', 'DensityLite']
 
@@ -604,9 +604,30 @@ class Pipeline:
         return self.n_surrogate > 0
     
     def _constraint(self, x, out, f, f2):
+        _return = False
+        x = np.ascontiguousarray(x)
+        if out is None:
+            out = x
+        elif out is False:
+            out = np.empty_like(x)
+            _return = True
+        else:
+            if not (isinstance(out, np.ndarray) and x.shape == out.shape):
+                raise ValueError('invalid value for out.')
+            out = np.ascontiguousarray(out)
+        if x.ndim == 1:
+            f(x, self._var_scales, out, self._hard_bounds, x.shape[0])
+        elif x.ndim == 2:
+            f2(x, self._var_scales, out, self._hard_bounds, x.shape[1],
+               x.shape[0])
+        else:
+            raise NotImplementedError('x should be 1-d or 2-d for now.')
+        if _return:
+            return out
+        
+    def from_original(self, x, out=False):
         if self._var_scales is None:
             if out is None:
-                out = x
                 return
             elif out is False:
                 return x.copy()
@@ -616,38 +637,51 @@ class Pipeline:
                 out = x.copy()
                 return
         else:
-            _return = False
-            x = np.ascontiguousarray(x)
+            return self._constraint(x, out, _from_original_f, _from_original_f2)
+    
+    def to_original(self, x, out=False):
+        if self._var_scales is None:
             if out is None:
-                out = x
+                return
             elif out is False:
-                out = np.empty_like(x)
-                _return = True
+                return x.copy()
             else:
                 if not (isinstance(out, np.ndarray) and x.shape == out.shape):
                     raise ValueError('invalid value for out.')
-                out = np.ascontiguousarray(out)
-            if x.ndim == 1:
-                f(x, self._var_scales, out, self._hard_bounds, x.shape[0])
-            elif x.ndim == 2:
-                f2(x, self._var_scales, out, self._hard_bounds, x.shape[1],
-                   x.shape[0])
-            else:
-                raise NotImplementedError('x should be 1-d or 2-d for now.')
-            if _return:
-                return out
-        
-    def from_original(self, x, out=False):
-        return self._constraint(x, out, _from_original_f, _from_original_f2)
-    
-    def to_original(self, x, out=False):
-        return self._constraint(x, out, _to_original_f, _to_original_f2)
+                out = x.copy()
+                return
+        else:
+            return self._constraint(x, out, _to_original_f, _to_original_f2)
     
     def to_original_grad(self, x, out=False):
-        return self._constraint(x, out, _to_original_j, _to_original_j2)
+        if self._var_scales is None:
+            if out is None:
+                x = np.ones_like(x)
+                return
+            elif out is False:
+                return np.ones_like(x)
+            else:
+                if not (isinstance(out, np.ndarray) and x.shape == out.shape):
+                    raise ValueError('invalid value for out.')
+                out = np.ones_like(x)
+                return
+        else:
+            return self._constraint(x, out, _to_original_j, _to_original_j2)
     
     def to_original_grad2(self, x, out=False):
-        return self._constraint(x, out, _to_original_jj, _to_original_jj2)
+        if self._var_scales is None:
+            if out is None:
+                x = np.zeros_like(x)
+                return
+            elif out is False:
+                return np.zeros_like(x)
+            else:
+                if not (isinstance(out, np.ndarray) and x.shape == out.shape):
+                    raise ValueError('invalid value for out.')
+                out = np.zeros_like(x)
+                return
+        else:
+            return self._constraint(x, out, _to_original_jj, _to_original_jj2)
     
     def print_summary(self):
         raise NotImplementedError
