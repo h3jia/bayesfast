@@ -76,9 +76,8 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
     if not 'original_space' in density_options:
         density_options['original_space'] = False
     
-    print(density_options)
-    
     try:
+        _new_client = False
         if client is None:
             try:
                 client = get_client()
@@ -103,7 +102,6 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
                     x_0=x_0[i], **sampler_options)
                 t = nuts.run(n_iter, n_warmup, verbose)
                 return t if full_return else t.get()
-            print(density.logp_and_grad(x_0[0], **density_options))###################
             foo = client.map(nuts_worker, range(n_chain), pure=False)
             for msg in sub:
                 if not hasattr(msg, '__iter__'):

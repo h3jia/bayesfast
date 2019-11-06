@@ -41,8 +41,6 @@ class BaseHMC:
                 logp_0, _ = logp_and_grad(x_0)
                 assert np.isfinite(logp_0)
             except:
-                pub = Pub(dask_key)##################################33
-                pub.put(x_0, logp_and_grad(x_0))###################################
                 raise ValueError('failed to get finite logp at x0.')
             if isinstance(step_size, DualAverageAdaptation):
                 pass
@@ -178,7 +176,8 @@ class BaseHMC:
                         if self._dask_key is None:
                             print(msg_0 + msg_1 + msg_2)
                         else:
-                            pub.put('SamplingProceeding', msg_0 + msg_1 + msg_2)
+                            pub.put(
+                                ['SamplingProceeding', msg_0 + msg_1 + msg_2])
                 self.warmup = bool(i < n_warmup)
                 self.astep()
             if verbose:
@@ -189,7 +188,7 @@ class BaseHMC:
                 if self._dask_key is None:
                     print(msg)
                 else:
-                    pub.put('SamplingFinished', msg)
+                    pub.put(['SamplingFinished', msg])
             return self.trace if return_copy else self._trace
         finally:
             warnings.showwarning = warnings._showwarning_orig

@@ -9,14 +9,13 @@ __all__ = ['NUTS']
 
 class NUTS(BaseHMC):
 
-    def __init__(self, logp_and_grad, trace=None, dask_key=None, chain_id=None,
-                 x_0=None, max_treedepth=10, step_size=0.25, 
+    def __init__(self, logp_and_grad, trace=None, dask_key=None, chain_id=None, 
+                 random_state=None, x_0=None, max_treedepth=10, step_size=0.25, 
                  adapt_step_size=True, metric=None, adapt_metric=True, 
-                 random_state=None, Emax=1000, target_accept=0.8, gamma=0.05, 
-                 k=0.75, t0=10):
-        super().__init__(logp_and_grad, trace, dask_key, chain_id, x_0, 
-                         step_size, adapt_step_size, metric, adapt_metric, 
-                         random_state, Emax, target_accept, gamma, k, t0)
+                 Emax=1000, target_accept=0.8, gamma=0.05, k=0.75, t0=10):
+        super().__init__(logp_and_grad, trace, dask_key, chain_id,
+                         random_state, x_0, step_size, adapt_step_size, metric,
+                         adapt_metric, Emax, target_accept, gamma, k, t0)
         try:
             max_treedepth = int(max_treedepth)
             assert max_treedepth > 0

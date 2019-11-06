@@ -7,7 +7,7 @@ which can be orders of magnitude faster than traditional methods,
 on both posterior sampling and evidence estimation.
 
 For cosmologists, we have an add-on package
-[CosmoFast](https://github.com/HerculesJack/bayesfast),
+[CosmoFast](https://github.com/HerculesJack/cosmofast),
 which provides several frequently-used cosmological modules.
 
 Both packages are in live development, so the API may be changed at any time.
@@ -41,8 +41,8 @@ BayesFast is distributed under the Apache License, Version 2.0.
 If you find BayesFast useful for your research,
 please consider citing our papers accordingly:
 
-* He Jia and Uros Seljak, BayesFast: Boosting Posterior Analysis
-with Polynomial Surrogate Models, in prep (for posterior sampling)
-* He Jia and Uros Seljak, Normalizing Constant Estimation
-with Optimal Bridge Sampling and Normalizing Flows,
+* He Jia and Uros Seljak, *BayesFast: Boosting Posterior Analysis
+with Polynomial Surrogate Models*, in prep (for posterior sampling)
+* He Jia and Uros Seljak, *Normalizing Constant Estimation
+with Optimal Bridge Sampling and Normalizing Flows*,
 in prep (for evidence estimation)
