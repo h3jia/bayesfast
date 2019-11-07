@@ -10,12 +10,12 @@ __all__ = ['PolyConfig', 'PolyModel']
 class PolyConfig:
     
     def __init__(self, order, input_mask, output_mask, coef=None):
-        if order in ('linear', 'quad', 'cubic_2', 'cubic_3'):
+        if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
             self._order = order
         else:
             raise ValueError(
-                'order should be one of ("linear", "quad", "cubic_2", '
-                '"cubic_3"), instead of "{}".'.format(order))
+                'order should be one of ("linear", "quadratic", "cubic-2", '
+                '"cubic-3"), instead of "{}".'.format(order))
         self._input_mask = np.sort(np.unique(np.asarray(input_mask, 
                                                         dtype=np.int)))
         self._output_mask = np.sort(np.unique(np.asarray(output_mask, 
@@ -46,11 +46,11 @@ class PolyConfig:
     def _A_shape(self):
         if self._order == 'linear':
             return (self.output_size, self.input_size + 1)
-        elif self._order == 'quad':
+        elif self._order == 'quadratic':
             return (self.output_size, self.input_size, self.input_size)
-        elif self._order == 'cubic_2':
+        elif self._order == 'cubic-2':
             return (self.output_size, self.input_size, self.input_size)
-        elif self._order == 'cubic_3':
+        elif self._order == 'cubic-3':
             return (self.output_size, self.input_size, self.input_size, 
                     self.input_size)
         else:
@@ -61,11 +61,11 @@ class PolyConfig:
     def _a_shape(self):
         if self._order == 'linear':
             return (self.input_size + 1,)
-        elif self._order == 'quad':
+        elif self._order == 'quadratic':
             return (self.input_size * (self.input_size + 1) // 2,)
-        elif self._order == 'cubic_2':
+        elif self._order == 'cubic-2':
             return (self.input_size * self.input_size,)
-        elif self._order == 'cubic_3':
+        elif self._order == 'cubic-3':
             return (self.input_size * (self.input_size - 1) * 
                     (self.input_size - 2) // 6,)
         else:
@@ -99,11 +99,11 @@ class PolyConfig:
             coefii = a
         else:
             coefii = np.empty(self._A_shape[1:])
-            if self._order == 'quad':
-                _set_quad(a, coefii, self.input_size)
-            elif self._order == 'cubic_2':
+            if self._order == 'quadratic':
+                _set_quadratic(a, coefii, self.input_size)
+            elif self._order == 'cubic-2':
                 _set_cubic_2(a, coefii, self.input_size)
-            elif self._order == 'cubic_3':
+            elif self._order == 'cubic-3':
                 _set_cubic_3(a, coefii, self.input_size)
             else:
                 raise RuntimeError(
@@ -239,21 +239,21 @@ class PolyModel(Surrogate):
                         'common output variable. Please check your PolyConfig '
                         '#{}.'.format(ii))
                 rr[conf._output_mask, 0] = ii
-            elif conf.order == 'quad':
+            elif conf.order == 'quadratic':
                 if np.any(rr[conf._output_mask, 1] >= 0):
                     raise ValueError(
-                        'multiple quad PolyConfig(s) share at least one common '
-                        'output variable. Please check your PolyConfig '
+                        'multiple quadratic PolyConfig(s) share at least one '
+                        'common output variable. Please check your PolyConfig '
                         '#{}.'.format(ii))
                 rr[conf._output_mask, 1] = ii
-            elif conf.order == 'cubic_2':
+            elif conf.order == 'cubic-2':
                 if np.any(rr[conf._output_mask, 2] >= 0):
                     raise ValueError(
                         'multiple cubic_2 PolyConfig(s) share at least one '
                         'common output variable. Please check your PolyConfig '
                         '#{}.'.format(ii))
                 rr[conf._output_mask, 2] = ii
-            elif conf.order == 'cubic_3':
+            elif conf.order == 'cubic-3':
                 if np.any(rr[conf._output_mask, 3] >= 0):
                     raise ValueError(
                         'multiple cubic_3 PolyConfig(s) share at least one '
@@ -285,24 +285,24 @@ class PolyModel(Surrogate):
                 'instead of "{}".'.format(target))
     
     @classmethod
-    def _quad(cls, config, x_in, target):
+    def _quadratic(cls, config, x_in, target):
         if target == 'fun':
             out_f = np.empty(config.output_size)
-            _quad_f(x_in, config._coef, out_f, config.output_size, 
-                    config.input_size)
+            _quadratic_f(x_in, config._coef, out_f, config.output_size, 
+                         config.input_size)
             return out_f
         elif target == 'jac':
             out_j = np.empty((config.output_size, config.input_size))
-            _quad_j(x_in, config._coef, out_j, config.output_size, 
-                    config.input_size)
+            _quadratic_j(x_in, config._coef, out_j, config.output_size, 
+                         config.input_size)
             return out_j
         elif target == 'fun_and_jac':
             out_f = np.empty(config.output_size)
-            _quad_f(x_in, config._coef, out_f, config.output_size, 
-                    config.input_size)
+            _quadratic_f(x_in, config._coef, out_f, config.output_size, 
+                         config.input_size)
             out_j = np.empty((config.output_size, config.input_size))
-            _quad_j(x_in, config._coef, out_j, config.output_size, 
-                    config.input_size)
+            _quadratic_j(x_in, config._coef, out_j, config.output_size, 
+                         config.input_size)
             return out_f, out_j
         else:
             raise ValueError(
@@ -364,11 +364,11 @@ class PolyModel(Surrogate):
         x_in = np.ascontiguousarray(x[config.input_mask])
         if config.order == 'linear':
             return cls._linear(config, x_in, target)
-        elif config.order == 'quad':
-            return cls._quad(config, x_in, target)
-        elif config.order == 'cubic_2':
+        elif config.order == 'quadratic':
+            return cls._quadratic(config, x_in, target)
+        elif config.order == 'cubic-2':
             return cls._cubic_2(config, x_in, target)
-        elif config.order == 'cubic_3':
+        elif config.order == 'cubic-3':
             return cls._cubic_3(config, x_in, target)
         else:
             raise RuntimeError('unexpected value of config.order.')
@@ -494,7 +494,8 @@ class PolyModel(Surrogate):
                 _A = np.empty((x.shape[0], self._configs[jj_q]._a_shape[0]))
                 _x = np.ascontiguousarray(x[..., 
                                               self._configs[jj_q]._input_mask])
-                _lsq_quad(_x, _A, x.shape[0], self._configs[jj_q].input_size)
+                _lsq_quadratic(_x, _A, x.shape[0], 
+                               self._configs[jj_q].input_size)
                 kk.append(kk[-1] + self._configs[jj_q]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
             if jj_c2 >= 0:

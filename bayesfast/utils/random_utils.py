@@ -96,3 +96,36 @@ def random_multivariate_normal(mean, cov, size, method='auto', seed=None):
         return check_state(seed).multivariate_normal(mean, cov, size)
     else:
         raise ValueError('invalid value for method.')
+
+
+def stratified_resample_1(logq, n, a=1, b=100):
+    logq = np.asarray(logq).flatten()
+    m = logq.size
+    i_finite = np.arange(m)[np.isfinite(logq)]
+    logq = logq[np.isfinite(logq)].copy()
+    mf = logq.size
+    
+    _a = int(mf * a / 100 - 1)
+    _b = int(mf * b / 100 - 1)
+    
+    i = np.linspace(_a, _b, n).astype(np.int)
+    return i_finite[np.argsort(logq)[i]]
+
+
+def stratified_resample_2(logq, n, a=1, b=20, c=100, f=0.8):
+    logq = np.asarray(logq).flatten()
+    m = logq.size
+    i_finite = np.arange(m)[np.isfinite(logq)]
+    logq = logq[np.isfinite(logq)].copy()
+    mf = logq.size
+    
+    _a = int(mf * a / 100 - 1)
+    _b = int(mf * b / 100 - 1)
+    _c = int(mf * c / 100 - 1)
+    
+    n_1 = int(f * n)
+    n_2 = n - n_1
+    i = np.concatenate((np.linspace(_a, _b, n_1), 
+                        np.linspace(_b, _c, n_2 + 1)[1:])).astype(np.int)
+    return i_finite[np.argsort(logq)[i]]
+        

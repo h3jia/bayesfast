@@ -3,20 +3,20 @@ from libc.stdlib cimport malloc, free
 from cython.parallel import prange, parallel
 
 
-__all__ = ['_quad_f', '_quad_j', '_cubic_2_f', '_cubic_2_j', '_cubic_3_f', 
-           '_cubic_3_j', '_lsq_quad', '_lsq_cubic_2', '_lsq_cubic_3',
-           '_set_quad', '_set_cubic_2', '_set_cubic_3']
+__all__ = ['_quadratic_f', '_quadratic_j', '_cubic_2_f', '_cubic_2_j', 
+           '_cubic_3_f', '_cubic_3_j', '_lsq_quadratic', '_lsq_cubic_2', 
+           '_lsq_cubic_3', '_set_quadratic', '_set_cubic_2', '_set_cubic_3']
 
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _quad_f(const double[::1] x, const double[:, :, ::1] a, double[::1] out, 
-            int m, int n):
+def _quadratic_f(const double[::1] x, const double[:, :, ::1] a,
+                 double[::1] out, int m, int n):
     cdef size_t i, j, k
     cdef double *t = <double *> malloc(m * sizeof(double))
     if not t:
-        raise MemoryError('cannot malloc required array in _quad_f.')
+        raise MemoryError('cannot malloc required array in _quadratic_f.')
     try:
         for i in prange(m, nogil=True, schedule='static'):
             out[i] = 0.
@@ -32,8 +32,8 @@ def _quad_f(const double[::1] x, const double[:, :, ::1] a, double[::1] out,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _quad_j(const double[::1] x, const double[:, :, ::1] a, double[:, ::1] out, 
-            int m, int n):
+def _quadratic_j(const double[::1] x, const double[:, :, ::1] a,
+                 double[:, ::1] out, int m, int n):
     cdef size_t i, j, k
     for i in prange(m, nogil=True, schedule='static'):
         for j in range(n):
@@ -141,7 +141,7 @@ def _cubic_3_j(const double[::1] x, const double[:, :, :, ::1] a,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _lsq_quad(const double[:, ::1] x, double[:, ::1] out, int m, int n):
+def _lsq_quadratic(const double[:, ::1] x, double[:, ::1] out, int m, int n):
     cdef size_t i, j, k, l
     for i in range(m):
         j = 0
@@ -181,7 +181,7 @@ def _lsq_cubic_3(const double[:, ::1] x, double[:, ::1] out, int m, int n):
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _set_quad(const double[::1] a, double[:, ::1] coef, int n):
+def _set_quadratic(const double[::1] a, double[:, ::1] coef, int n):
     cdef size_t i, j, k
     i = 0
     for j in range(n):
