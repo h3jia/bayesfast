@@ -2,11 +2,12 @@ import numpy as np
 import numbers
 import random
 import string
+import warnings
 from .sobol_seq import sobol_uniform, sobol_multivariate_normal
 
 
 __all__ = ['random_str', 'check_state', 'split_state', 'random_uniform',
-           'random_multivariate_normal']
+           'random_multivariate_normal', 'stratified_resample']
 
 
 def random_str(length=20, prefix='BayesFast:'):
@@ -97,35 +98,55 @@ def random_multivariate_normal(mean, cov, size, method='auto', seed=None):
     else:
         raise ValueError('invalid value for method.')
 
-
-def stratified_resample_1(logq, n, a=1, b=100):
-    logq = np.asarray(logq).flatten()
-    m = logq.size
-    i_finite = np.arange(m)[np.isfinite(logq)]
-    logq = logq[np.isfinite(logq)].copy()
-    mf = logq.size
-    
-    _a = int(mf * a / 100 - 1)
-    _b = int(mf * b / 100 - 1)
-    
-    i = np.linspace(_a, _b, n).astype(np.int)
-    return i_finite[np.argsort(logq)[i]]
-
-
-def stratified_resample_2(logq, n, a=1, b=20, c=100, f=0.8):
-    logq = np.asarray(logq).flatten()
-    m = logq.size
-    i_finite = np.arange(m)[np.isfinite(logq)]
-    logq = logq[np.isfinite(logq)].copy()
-    mf = logq.size
-    
-    _a = int(mf * a / 100 - 1)
-    _b = int(mf * b / 100 - 1)
-    _c = int(mf * c / 100 - 1)
-    
-    n_1 = int(f * n)
-    n_2 = n - n_1
-    i = np.concatenate((np.linspace(_a, _b, n_1), 
-                        np.linspace(_b, _c, n_2 + 1)[1:])).astype(np.int)
-    return i_finite[np.argsort(logq)[i]]
         
+def stratified_resample(logq, n, nodes=None, weights=None):
+    try:
+        logq = np.asarray(logq)
+        assert logq.ndim == 1
+    except:
+        raise ValueError('logq should be a 1-d array.')
+    try:
+        n = int(n)
+        assert n > 0
+    except:
+        raise ValueError('n should be a positive int.')
+    if nodes is None and weights is None:
+        nodes = np.array([0, 100])
+        weights = np.array([1])
+    elif nodes is not None and weights is None:
+        try:
+            nodes = np.asarray(nodes)
+            assert nodes.shape == (2,)
+            assert nodes[0] >= 0 and nodes[1] <= 100
+        except:
+            raise ValueError('invalid value for nodes and/or weights.')
+        weights = np.array([1])
+    else:
+        try:
+            nodes = np.asarray(nodes)
+            weights = np.asarray(weights)
+            assert nodes.ndim == 1 and weights.ndim == 1
+            assert nodes.shape[0] == weights.shape[0] + 1
+            assert np.all(weights > 0)
+            assert np.all(np.diff(nodes) > 0)
+            assert nodes[0] >= 0 and nodes[1] <= 100
+        except:
+            raise ValueError('invalid value for nodes and/or weights.')
+        weights /= np.sum(weights)
+    n_w = (n * weights).astype(np.int)
+    n_w[-1] += n - np.sum(n_w)
+    n_c = np.cumsum(np.insert(n_w, 0, 0))
+    result = np.empty(n, dtype=np.int)
+    m = len(n_w)
+    q = len(logq)
+    for i in range(m):
+        ep = (i == (m - 1))
+        foo = np.linspace(nodes[i] * (q - 1) / 100, nodes[i + 1] * (q - 1) / 
+                          100, n_w[i], ep)
+        result[n_c[i]:n_c[i + 1]] = foo.astype(np.int)
+    if np.unique(result).size < result.size:
+        warnings.warn(
+            '{:.1f}% of the resampled points are not unique. Please consider '
+            'giving me more points.'.format(100 - np.unique(result).size / 
+            result.size * 100), RuntimeWarning)
+    return np.argsort(logq)[result]
