@@ -1,8 +1,8 @@
 from .density import *
 from distributed import Sub, Client, get_client, LocalCluster
 from ..utils.random_utils import *
-from ..samplers.trace import Trace
-from ..samplers.pymc3.nuts import NUTS
+from ..samplers import NUTS
+from ..samplers.hmc_utils import Trace
 import numpy as np
 import warnings
 

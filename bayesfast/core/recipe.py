@@ -3,11 +3,12 @@ from ..modules.poly import PolyConfig, PolyModel
 from ..utils.random_utils import resample
 
 
-class RecipeStep():
+class RecipeStep:
     def __init__(self, surrogate_list, fit_options={}, resample_options={}):
+        pass
 
 
-class SurrogateRecipe():
+class SurrogateRecipe:
     def __init__(self, density, step_list):
         self._set_density(density)
         self._set_step_list(step_list)

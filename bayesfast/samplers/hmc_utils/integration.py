@@ -8,6 +8,11 @@ __all__ = ['CpuLeapfrogIntegrator']
 State = namedtuple("State", 'q, p, v, q_grad, energy, logp')
 
 
+class IntegrationError(RuntimeError):
+
+    pass
+
+
 class CpuLeapfrogIntegrator:
     
     def __init__(self, kinetic, logp_and_grad):
@@ -45,13 +50,13 @@ class CpuLeapfrogIntegrator:
             return self._step(epsilon, state)
         except linalg.LinAlgError as err:
             msg = "LinAlgError during leapfrog step."
-            raise RuntimeError(msg)
+            raise IntegrationError(msg)
         except ValueError as err:
             # Raised by many scipy.linalg functions
             scipy_msg = "array must not contain infs or nans"
             if len(err.args) > 0 and scipy_msg in err.args[0].lower():
                 msg = "Infs or nans in scipy.linalg during leapfrog step."
-                raise RuntimeError(msg)
+                raise IntegrationError(msg)
             else:
                 raise
 

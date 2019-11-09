@@ -1,4 +1,4 @@
-The scripts in this directory are based on pymc-devs/pymc3.
+The HMC samplers in this directory are based on pymc-devs/pymc3.
 
 We did not change the underlying algorithm,
 but modified the interface to fit the BayesFast framework.

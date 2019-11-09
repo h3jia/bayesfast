@@ -1,5 +1,5 @@
 import numpy as np
-from .base_hmc import BaseHMC
+from .hmc_utils.base_hmc import BaseHMC
 
 __all__ = ['HMC']
 

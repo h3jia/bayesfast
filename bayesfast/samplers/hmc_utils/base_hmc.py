@@ -1,13 +1,11 @@
 import numpy as np
 from collections import namedtuple
 from .trace import Trace
-from .step_size import DualAverageAdaptation
-from .metrics import *
-from ...utils.random_utils import random_str, check_state
-import warnings
 from .integration import CpuLeapfrogIntegrator
-from copy import deepcopy
 from .stats import StepStats
+from ...utils.random_utils import random_str
+import warnings
+from copy import deepcopy
 import time
 from distributed import Pub
 
@@ -34,51 +32,17 @@ class BaseHMC:
         if isinstance(trace, Trace):
             self._trace = trace
         else:
-            x_0 = np.asarray(x_0).reshape(-1)
+            x_0 = np.atleast_1d(x_0)
+            if x_0.ndim != 1:
+                raise ValueError('x_0 should be a 1-d array.')
             try:
                 logp_0, _ = logp_and_grad(x_0)
                 assert np.isfinite(logp_0)
             except:
                 raise ValueError('failed to get finite logp at x0.')
-            if isinstance(step_size, DualAverageAdaptation):
-                pass
-            else:
-                if step_size is None:
-                    step_size = 1.
-                step_size = DualAverageAdaptation(
-                    step_size / x_0.shape[0]**0.25, target_accept, gamma, k, t0, 
-                    bool(adapt_step_size))
-            if isinstance(metric, QuadMetric):
-                pass
-            else:
-                if metric is None:
-                    metric = np.ones_like(x_0)
-                metric = np.atleast_1d(metric)
-                if metric.shape[-1] != x_0.shape[0]:
-                    raise ValueError('dim of metric is incompatible with x_0.')
-                if metric.ndim == 1:
-                    if adapt_metric:
-                        metric = QuadMetricDiagAdapt(x_0.shape[0], x_0, metric, 
-                                                     10)
-                    else:
-                        metric = QuadMetricDiag(metric)
-                elif metric.ndim == 2:
-                    if adapt_metric:
-                        warnings.warn(
-                            'You give a full rank metric array and set '
-                            'adapt_metric as True, but we haven\'t implemented '
-                            'adaptive full rank metric yet, so an adaptive '
-                            'diagonal metric will be used.', RuntimeWarning)
-                        metric = QuadMetricDiagAdapt(x_0.shape[0], x_0, 
-                                                     np.diag(metric), 10)
-                    else:
-                        metric = QuadMetricFull(metric)
-                else:
-                    raise ValueError('metric should be a QuadMetric, or a 1-d '
-                                     'or 2-d array.')
-            random_state = check_state(random_state)
-            self._trace = Trace(step_size, metric, random_state, Emax, -1, x_0,
-                                logp_0)
+            self._trace = Trace(x_0, logp_0, random_state, step_size, 
+                                adapt_step_size, metric, adapt_metric, Emax, 
+                                target_accept, gamma, k, t0)
         self.integrator = CpuLeapfrogIntegrator(self._trace.metric, 
                                                 logp_and_grad)
 

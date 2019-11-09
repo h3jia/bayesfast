@@ -1,7 +1,7 @@
 import numpy as np
 from collections import namedtuple
-from .base_hmc import BaseHMC, HMCStepData, DivergenceInfo
-from .integration import IntegrationError
+from .hmc_utils.base_hmc import BaseHMC, HMCStepData, DivergenceInfo
+from .hmc_utils.integration import IntegrationError
 
 __all__ = ['NUTS']
 
@@ -9,16 +9,15 @@ __all__ = ['NUTS']
 class NUTS(BaseHMC):
 
     def __init__(self, logp_and_grad, trace=None, dask_key=None, chain_id=None, 
-                 random_state=None, x_0=None, max_treedepth=10, step_size=0.25, 
+                 random_state=None, x_0=None, step_size=0.25, 
                  adapt_step_size=True, metric=None, adapt_metric=True, 
-                 Emax=1000, target_accept=0.8, gamma=0.05, k=0.75, t0=10):
+                 Emax=1000, target_accept=0.8, gamma=0.05, k=0.75, t0=10, 
+                 max_treedepth=10):
         super().__init__(logp_and_grad, trace, dask_key, chain_id,
                          random_state, x_0, step_size, adapt_step_size, metric,
                          adapt_metric, Emax, target_accept, gamma, k, t0)
-        try:
-            max_treedepth = int(max_treedepth)
-            assert max_treedepth > 0
-        except:
+        max_treedepth = int(max_treedepth)
+        if max_treedepth <= 0:
             raise ValueError('max_treedepth should be a positive int, instead '
                              'of {}.'.format(max_treedepth))
         self._trace._max_treedepth = max_treedepth
