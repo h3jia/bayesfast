@@ -2,7 +2,7 @@ import numpy as np
 from collections import namedtuple
 import warnings
 
-__all__ = ['Module', 'SurrogateScope', 'Surrogate']
+__all__ = ['Module', 'Surrogate']
 
 # TODO: use customized PropertyList to simplify property checks
 # https://stackoverflow.com/a/39190103/12292488

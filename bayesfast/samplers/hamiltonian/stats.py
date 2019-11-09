@@ -1,6 +1,5 @@
 from collections import namedtuple, OrderedDict
 
-
 __all__ = ['StepStats', 'SamplerStats']
 
 

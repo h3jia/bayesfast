@@ -3,7 +3,6 @@ from collections import namedtuple
 from .base_hmc import BaseHMC, HMCStepData, DivergenceInfo
 from .integration import IntegrationError
 
-
 __all__ = ['NUTS']
 
 
@@ -49,9 +48,8 @@ Proposal = namedtuple("Proposal", "q, q_grad, energy, p_accept, logp")
 
 
 # A subtree of the binary tree built by nuts.
-Subtree = namedtuple(
-    "Subtree",
-    "left, right, p_sum, proposal, log_size, accept_sum, n_proposals")
+Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
+                     "accept_sum, n_proposals")
 
 
 class _Tree:
@@ -118,7 +116,8 @@ class _Tree:
         self.log_size = np.logaddexp(self.log_size, tree.log_size)
         self.p_sum[:] += tree.p_sum
 
-        # Additional turning check only when tree depth > 0 to avoid redundant work
+        # Additional turning check only when tree depth > 0
+        # to avoid redundant work
         if self.depth > 0:
             left, right = self.left, self.right
             p_sum = self.p_sum

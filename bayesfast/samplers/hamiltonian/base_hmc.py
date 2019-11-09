@@ -1,19 +1,17 @@
 import numpy as np
 from collections import namedtuple
-from ..trace import Trace
+from .trace import Trace
 from .step_size import DualAverageAdaptation
 from .metrics import *
 from ...utils.random_utils import random_str, check_state
 import warnings
 from .integration import CpuLeapfrogIntegrator
 from copy import deepcopy
-from ..stats import StepStats
+from .stats import StepStats
 import time
 from distributed import Pub
 
-
-class SamplingError(RuntimeError):
-    pass
+__all__ = ['BaseHMC']
 
 
 HMCStepData = namedtuple("HMCStepData", 
@@ -99,7 +97,7 @@ class BaseHMC:
 
         if not np.isfinite(start.energy):
             self._trace.metric.raise_ok()
-            raise SamplingError(
+            raise RuntimeError(
                 "Bad initial energy, please check the Hamiltonian at p = {}, "
                 "q = {}.".format(p0, q0))
             

@@ -2,13 +2,7 @@ import numpy as np
 from scipy import stats
 import warnings
 
-
 __all__ = ['DualAverageAdaptation']
-
-
-class AdaptStepWarning(RuntimeWarning):
-    
-    pass
 
 
 class DualAverageAdaptation:
@@ -69,4 +63,4 @@ class DualAverageAdaptation:
                 'the acceptance probability does not match the target. It is '
                 '{}, but should be close to {}. Try to increase the number of '
                 'tuning steps.'.format(mean_accept, target_accept))
-            warnings.warn(msg_0 + msg_1, AdaptStepWarning)
+            warnings.warn(msg_0 + msg_1, RuntimeWarning)

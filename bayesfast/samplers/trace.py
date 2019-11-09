@@ -4,7 +4,6 @@ from .pymc3.metrics import QuadMetric
 from .stats import SamplerStats
 from copy import deepcopy
 
-
 __all__ = ['Trace']
 
 
@@ -55,10 +54,6 @@ class Trace:
     @property
     def n_warmup(self):
         return self._n_warmup
-    
-    '''@property
-    def n_total(self):
-        return self._n_iter + self._n_warmup'''
     
     @property
     def n_call(self):

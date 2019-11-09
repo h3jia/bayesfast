@@ -2,13 +2,10 @@ import numpy as np
 from scipy import linalg
 from collections import namedtuple
 
+__all__ = ['CpuLeapfrogIntegrator']
+
 
 State = namedtuple("State", 'q, p, v, q_grad, energy, logp')
-
-
-class IntegrationError(RuntimeError):
-    
-    pass
 
 
 class CpuLeapfrogIntegrator:
@@ -48,20 +45,17 @@ class CpuLeapfrogIntegrator:
             return self._step(epsilon, state)
         except linalg.LinAlgError as err:
             msg = "LinAlgError during leapfrog step."
-            raise IntegrationError(msg)
+            raise RuntimeError(msg)
         except ValueError as err:
             # Raised by many scipy.linalg functions
             scipy_msg = "array must not contain infs or nans"
             if len(err.args) > 0 and scipy_msg in err.args[0].lower():
                 msg = "Infs or nans in scipy.linalg during leapfrog step."
-                raise IntegrationError(msg)
+                raise RuntimeError(msg)
             else:
                 raise
 
     def _step(self, epsilon, state):
-        ########################################################################
-        #epsilon = epsilon * np.exp(state.q[0] / 2)
-        ########################################################################
         axpy = linalg.blas.get_blas_funcs('axpy')
         pot = self._kinetic
 

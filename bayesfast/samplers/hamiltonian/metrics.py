@@ -2,7 +2,6 @@ import numpy as np
 import scipy.linalg
 from ...utils.random_utils import check_state
 
-
 __all__ = ['QuadMetric', 'QuadMetricDiag', 'QuadMetricFull', 
            'QuadMetricDiagAdapt']
 
