@@ -1,6 +1,7 @@
 from .density import Density
 from ..modules.poly import PolyConfig, PolyModel
-from ..utils.random_utils import resample
+from ..utils import Laplace
+from ..utils.random import resample
 
 
 class RecipeStep:

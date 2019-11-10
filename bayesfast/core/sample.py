@@ -1,6 +1,6 @@
 from .density import *
 from distributed import Sub, Client, get_client, LocalCluster
-from ..utils.random_utils import *
+from ..utils.random import *
 from ..samplers import NUTS
 from ..samplers.hmc_utils import Trace
 import numpy as np

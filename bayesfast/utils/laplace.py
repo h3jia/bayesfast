@@ -4,7 +4,7 @@ from collections import namedtuple
 from numdifftools import Gradient, Hessian
 from scipy.optimize import minimize
 from scipy.linalg import sqrtm
-from ..utils.random_utils import random_multivariate_normal
+from .random import random_multivariate_normal
 
 __all__ = ['Laplace']
 

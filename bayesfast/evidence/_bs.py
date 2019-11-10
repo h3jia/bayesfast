@@ -4,7 +4,7 @@ from scipy.special import logsumexp
 from scipy.optimize import root_scalar
 from scipy.stats import multivariate_normal
 from ..utils.acor import integrated_time
-from ..utils.random_utils import check_state
+from ..utils.random import check_state
 import warnings
 
 __all__ = ['BS', 'WarpBS']

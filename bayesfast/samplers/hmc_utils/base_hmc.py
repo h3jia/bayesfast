@@ -3,7 +3,7 @@ from collections import namedtuple
 from .trace import Trace
 from .integration import CpuLeapfrogIntegrator
 from .stats import StepStats
-from ...utils.random_utils import random_str
+from ...utils.random import random_str
 import warnings
 from copy import deepcopy
 import time

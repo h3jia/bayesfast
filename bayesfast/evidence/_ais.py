@@ -6,7 +6,7 @@ import time
 
 from ..samplers.pymc3.nuts import NUTS
 from ..utils.warnings import SamplingProgess
-from ..utils.random_utils import check_state, split_state
+from ..utils.random import check_state, split_state
 
 __all__ = ['get_sig_beta', 'TemperedDensity', 'AIS']
 

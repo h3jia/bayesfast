@@ -2,7 +2,7 @@ import numpy as np
 from .step_size import DualAverageAdaptation
 from .metrics import *
 from .stats import SamplerStats
-from ...utils.random_utils import check_state
+from ...utils.random import check_state
 from copy import deepcopy
 
 __all__ = ['Trace']

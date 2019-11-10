@@ -7,7 +7,7 @@ from ..utils import sobol_seq
 from ..utils.cubic import cubic_spline
 from getdist import plots, MCSamples
 from sklearn.decomposition import FastICA
-from ..utils.random_utils import check_state
+from ..utils.random import check_state
 from itertools import starmap
 import copy
 import warnings
