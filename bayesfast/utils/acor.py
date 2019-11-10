@@ -36,7 +36,7 @@ import logging
 
 import numpy as np
 
-__all__ = ["function_1d", "integrated_time", "AutocorrError"]
+__all__ = ["integrated_time", "AutocorrError"]
 
 
 def next_pow_two(n):
@@ -107,13 +107,13 @@ def integrated_time(x, c=5, tol=50, quiet=False):
     """
     x = np.atleast_1d(x)
     if len(x.shape) == 1:
-        x = x[:, np.newaxis, np.newaxis]
+        x = x[np.newaxis, :, np.newaxis]
     if len(x.shape) == 2:
-        x = x[:, :, np.newaxis]
+        x = x[np.newaxis, :, :]
     if len(x.shape) != 3:
-        raise ValueError("invalid dimensions")
-
-    n_t, n_w, n_d = x.shape
+        raise ValueError("invalid dimensions.")
+    
+    n_w, n_t, n_d = x.shape
     tau_est = np.empty(n_d)
     windows = np.empty(n_d, dtype=int)
 
@@ -121,7 +121,7 @@ def integrated_time(x, c=5, tol=50, quiet=False):
     for d in range(n_d):
         f = np.zeros(n_t)
         for k in range(n_w):
-            f += function_1d(x[:, k, d])
+            f += function_1d(x[k, :, d])
         f /= n_w
         taus = 2.0 * np.cumsum(f) - 1.0
         windows[d] = auto_window(taus, c)

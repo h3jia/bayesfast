@@ -28,7 +28,6 @@ from scipy._lib.six import callable, string_types
 from scipy.special import logsumexp, ndtr
 import numpy as np
 
-
 __all__ = ['kde']
 
 

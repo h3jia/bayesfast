@@ -13,6 +13,8 @@ from scipy.stats import linregress
 from scipy.linalg import solve_banded
 import warnings
 
+__all__ = ['cubic_spline']
+
 
 class cubic_spline:
     """Cubic spline data interpolator.
