@@ -6,11 +6,11 @@ import warnings
 from .sobol_seq import sobol_uniform, sobol_multivariate_normal
 
 
-__all__ = ['random_str', 'check_state', 'split_state', 'random_uniform',
-           'random_multivariate_normal', 'resample']
+__all__ = ['string', 'check_state', 'split_state', 'uniform',
+           'multivariate_normal', 'resample']
 
 
-def random_str(length=20, prefix='BayesFast:'):
+def string(length=20, prefix='BayesFast-'):
     return (str(prefix) + ''.join(random.SystemRandom().choice(
         string.ascii_letters + string.digits) for _ in range(length)))
 
@@ -43,7 +43,7 @@ def split_state(state, n):
     return [np.random.RandomState(a) for a in foo]
 
 
-def random_uniform(low, high, size, method='auto', seed=None):
+def uniform(low, high, size, method='auto', seed=None):
     if size is None:
         method = 'pseudo'
     if method == 'auto':
@@ -70,9 +70,11 @@ def random_uniform(low, high, size, method='auto', seed=None):
         raise ValueError('invalid value for method.')
 
 
-def random_multivariate_normal(mean, cov, size, method='auto', seed=None):
+def multivariate_normal(mean, cov, size, method='auto', seed=None):
     if size is None:
         method = 'pseudo'
+    mean = np.asarray(mean)
+    cov = np.asarray(cov)
     if method == 'auto':
         try:
             size = np.atleast_1d(size).astype(np.int)

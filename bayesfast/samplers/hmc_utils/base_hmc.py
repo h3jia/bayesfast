@@ -3,7 +3,7 @@ from collections import namedtuple
 from .trace import Trace
 from .integration import CpuLeapfrogIntegrator
 from .stats import StepStats
-from ...utils.random import random_str
+from ...utils import random as bfrandom
 import warnings
 from copy import deepcopy
 import time
@@ -79,12 +79,12 @@ class BaseHMC:
             return_copy=True):
         n_iter = int(n_iter)
         n_warmup = int(n_warmup)
+        if self._dask_key is not None:
+            pub = Pub(self._dask_key)
+            def sw(message, category, *args, **kwargs):
+                pub.put([category, message])
+            warnings.showwarning = sw
         try:
-            if self._dask_key is not None:
-                pub = Pub(self._dask_key)
-                def sw(message, category, *args, **kwargs):
-                    pub.put([category, message])
-                warnings.showwarning = sw
             if not n_iter >= 0:
                 raise ValueError(self._prefix + 'n_iter cannot be negative.')
             if n_warmup > n_iter:
@@ -152,6 +152,10 @@ class BaseHMC:
                 else:
                     pub.put(['SamplingFinished', msg])
             return self.trace if return_copy else self._trace
+        except:
+            if self._dask_key is not None:
+                pub.put(['Error', self._chain_id])
+            raise
         finally:
             warnings.showwarning = warnings._showwarning_orig
     
@@ -181,11 +185,11 @@ class BaseHMC:
     @chain_id.setter
     def chain_id(self, i):
         if i is None:
-            i = random_str(6, '')
+            i = bfrandom.string(6, '')
         else:
             try:
                 i = str(i)
             except:
                 raise ValueError('invalid value for chain_id.')
         self._chain_id = i
-        self._prefix = ' CHAIN ' + self._chain_id + ' : '
+        self._prefix = ' CHAIN #' + self._chain_id + ' : '

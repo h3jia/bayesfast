@@ -4,13 +4,24 @@ from collections import namedtuple
 from numdifftools import Gradient, Hessian
 from scipy.optimize import minimize
 from scipy.linalg import sqrtm
-from .random import random_multivariate_normal
+from ..utils.random import multivariate_normal
 
 __all__ = ['Laplace']
 
 
 # TODO: random_state
-LaplaceResult = namedtuple("LaplaceResult", "x_max, logp_max, samples")
+LaplaceResult = namedtuple("LaplaceResult",
+                           "x_max, logp_max, samples, opt_result")
+
+
+def _make_positive(A, max_cond=10000.):
+    a, w = np.linalg.eigh(A)
+    if a[-1] <= 0:
+        raise ValueError('all the eigenvalues are non-positive.')
+    i = np.argmax((a - a[-1] / max_cond) > 0)
+    a[:i] = a[i]
+    return w @ np.diag(a) @ w.T
+
 
 class Laplace:
     
@@ -35,8 +46,18 @@ class Laplace:
         self._hess = hess if callable(hess) else Hessian(logp)
         self._logp_args = logp_args
         
-    def run(self, n_sample, beta=1, optimize_method='Newton-CG', 
-            optimize_options={}):
+    def run(self, n_sample=2000, beta=1, optimize_method='Newton-CG', 
+            optimize_options={}, max_cond=10000.):
+        n_sample = int(n_sample)
+        if n_sample <= 0:
+            raise ValueError('n_sample should be a positive int.')
+        beta = float(beta)
+        if beta <= 0:
+            raise ValueError('beta should be a positive float.')
+        max_cond = float(max_cond)
+        if max_cond <= 0:
+            raise ValueError('max_cond should be a positive float.')
+        
         if self._x_max is None:
             opt = minimize(lambda x: -self._logp(x), self._x_0, self._logp_args, 
                            optimize_method, lambda x: -self._grad(x), 
@@ -47,19 +68,10 @@ class Laplace:
                     'converged yet.'.format(opt.x), RuntimeWarning)
             self._x_max = opt.x
             self._logp_max = -opt.fun
+        else:
+            opt = None
         if self._logp_max is None:
             self._logp_max = self._logp(self._x_max)
-        cov = -np.linalg.inv(self._hess(self._x_max))
-        if not np.all(np.linalg.eigvalsh(cov) > 0):
-            warnings.warn(
-                'not all the eigenvalues of the Hessian at MAP are positive. '
-                'I will square it and then take the square root for now.')
-            cov = sqrtm(cov @ cov)
-        n_sample = int(n_sample)
-        if n_sample <= 0:
-            raise ValueError('n_sample should be a positive int.')
-        beta = float(beta)
-        if beta <= 0:
-            raise ValueError('beta should be a positive float.')
-        samples = random_multivariate_normal(self._x_max, beta * cov, n_sample)
-        return LaplaceResult(self._x_max, self._logp_max, samples)
+        cov = np.linalg.inv(_make_positive(-self._hess(self._x_max), max_cond))
+        samples = multivariate_normal(self._x_max, beta * cov, n_sample)
+        return LaplaceResult(self._x_max, self._logp_max, samples, opt)

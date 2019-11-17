@@ -472,7 +472,7 @@ class Surrogate(Module):
     
     fixed_sizes = True
     
-    def __init__(self, scope, input_size=None, output_size=None,
+    def __init__(self, input_size=None, output_size=None, scope=(0, 1),
                  input_vars=['__var__'], output_vars=['__var__'],
                  copy_vars=None, paste_vars=None, delete_vars=None,
                  recombine_input=True, *args, **kwargs):
@@ -575,7 +575,15 @@ class Surrogate(Module):
             except:
                 raise ValueError('Invalid value for var_scales.')
         self._var_scales = scales
-        self._var_scales_diff = scales[:, 1] - scales[:, 0]
+        if scales is not None:
+            self._var_scales_diff = scales[:, 1] - scales[:, 0]
+        else:
+            self._var_scales_diff = 1
     
     def fit(self, *args, **kwargs):
         raise NotImplementedError('Abstract Method.')
+    
+    @property
+    def n_param(self):
+        raise NotImplementedError('Abstract Property.')
+    

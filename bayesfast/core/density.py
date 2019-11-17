@@ -297,7 +297,7 @@ class Pipeline:
                         _module = self._surrogate_list[
                             self._surrogate_recipe[si, 0]]
                         di = self._surrogate_recipe[si, 2]
-                        if si == self.n_surrogate:
+                        if si == self.n_surrogate - 1:
                             use_surrogate = False
                         else:
                             si += 1
@@ -464,7 +464,7 @@ class Pipeline:
                         _module = self._surrogate_list[
                             self._surrogate_recipe[si, 0]]
                         di = self._surrogate_recipe[si, 2]
-                        if si == self.n_surrogate:
+                        if si == self.n_surrogate - 1:
                             use_surrogate = False
                         else:
                             si += 1
@@ -506,6 +506,18 @@ class Pipeline:
     def fun_and_jac_lite(self, x):
         return self.fun_and_jac(x, **self._lite_options)
     """
+    
+    @property
+    def has_true_fun(self):
+        return all(m.has_fun or m.has_fun_and_jac for m in self._module_list)
+    
+    @property
+    def has_true_jac(self):
+        return all(m.has_jac or m.has_fun_and_jac for m in self._module_list)
+    
+    @property
+    def has_true_fun_and_jac(self):
+        return self.has_true_fun and self.has_true_jac
     
     @property
     def input_vars(self):
@@ -639,6 +651,12 @@ class Pipeline:
         else:
             return self._constraint(x, out, _from_original_f, _from_original_f2)
     
+    def from_original_grad(self, x, out=False):
+        raise NotImplementedError
+    
+    def from_original_grad2(self, x, out=False):
+        raise NotImplementedError
+    
     def to_original(self, x, out=False):
         if self._var_scales is None:
             if out is None:
@@ -714,8 +732,7 @@ class Density(Pipeline):
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
-            if beta2 > self._alpha2:
-                _logp += -self._gamma * (beta2 - self._alpha2)
+            _logp += -self._gamma * np.clip(beta2 - self._alpha2, 0, np.inf)
         if not original_space:
             _logp += np.sum(np.log(np.abs(self.to_original_grad(x, False))))
         return _logp
@@ -737,8 +754,8 @@ class Density(Pipeline):
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
-            if beta2 > self._alpha2:
-                _grad += -2 * self._gamma * np.dot(x_o - self._mu, self._hess)
+            _grad += (-2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
+                      (beta2 > self._alpha2)[..., np.newaxis])
         if not original_space:
             _grad += (self.to_original_grad2(x, False) / 
                       self.to_original_grad(x, False))
@@ -762,9 +779,9 @@ class Density(Pipeline):
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
-            if beta2 > self._alpha2:
-                _logp += -self._gamma * (beta2 - self._alpha2)
-                _grad += -2 * self._gamma * np.dot(x_o - self._mu, self._hess)
+            _logp += -self._gamma * np.clip(beta2 - self._alpha2, 0, np.inf)
+            _grad += (-2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
+                      (beta2 > self._alpha2)[..., np.newaxis])
         if not original_space:
             _logp += np.sum(np.log(np.abs(self.to_original_grad(x, False))))
             _grad += (self.to_original_grad2(x, False) / 
@@ -841,7 +858,7 @@ class Density(Pipeline):
         except:
             raise ValueError('invalid value for x.')
         x = x.reshape((-1, self._input_size))
-        x_o = x if original else self.to_original(x)
+        x_o = x if original_space else self.to_original(x)
         self._mu = np.mean(x_o, axis=0)
         self._hess = np.linalg.inv(np.cov(x_o, rowvar=False))
         if alpha is None:
@@ -870,10 +887,43 @@ class Density(Pipeline):
             self.gamma = gamma
         self._use_decay = True
     
-    def fit(self, *args, **kwargs):
-        raise NotImplementedError
-
+    def fit(self, var_dicts, use_decay=True, decay_options={}, fit_options={}):
+        if not (hasattr(var_dicts, '__iter__') and
+                all(isinstance(vd, VariableDict) for vd in var_dicts)):
+            raise ValueError('var_dicts should consist of VariableDict(s).')
         
+        if not isinstance(decay_options, dict):
+            raise ValueError('decay_options should be a dict.')
+        
+        if isinstance(fit_options, dict):
+            fit_options = [fit_options for i in range(self.n_surrogate)]
+        elif (hasattr(fit_options, '__iter__') and 
+              all(isinstance(fi, dict) for fi in fit_options)):
+            fit_options = list(fit_options)
+            if len(fit_options) < self.n_surrogate:
+                fit_options.extend([{} for i in range(self.n_surrogate - 
+                                                      len(fit_options))])
+        else:
+            raise ValueError(
+                'fit_options should be a dict or consist of dict(s).')
+        
+        if use_decay:
+            x = self._fit_var(var_dicts, self._input_vars)
+            self.set_decay(x, **decay_options)
+        else:
+            self._use_decay = False
+        
+        for i, su in enumerate(self._surrogate_list):
+            x = self._fit_var(var_dicts, su._input_vars)
+            y = self._fit_var(var_dicts, su._output_vars)
+            su.fit(x, y, **fit_options[i])
+
+    @classmethod
+    def _fit_var(cls, var_dicts, var_names):
+        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
+                         for vd in var_dicts])
+
+
 class DensityLite:
     '''NOT FINISHED YET'''
     def __init__(self, logp, grad, logp_and_grad, input_size, var_scales=None,
@@ -951,8 +1001,18 @@ class DensityLite:
     def has_logp_and_grad(self):
         return (self._logp_and_grad is not None)
     
+    @property
+    def has_true_fun(self):
+        return self.has_logp or self.has_logp_and_grad
     
-        
+    @property
+    def has_true_jac(self):
+        return self.has_grad or self.has_logp_and_grad
+    
+    @property
+    def has_true_fun_and_jac(self):
+        return self.has_true_fun and self.has_true_jac
+    
 """
 def DensityLite(logp=None, grad=None, logp_and_grad=None, dim=None, 
                 logp_args=(), logp_kwargs={}, grad_args=(), 

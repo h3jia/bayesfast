@@ -2,6 +2,7 @@ import copy
 from ..core.module import *
 from ..core.density import *
 from ._poly import *
+import numpy as np
 from scipy.linalg import lstsq
 
 __all__ = ['PolyConfig', 'PolyModel']
@@ -9,17 +10,17 @@ __all__ = ['PolyConfig', 'PolyModel']
 
 class PolyConfig:
     
-    def __init__(self, order, input_mask, output_mask, coef=None):
+    def __init__(self, order, input_mask=None, output_mask=None, coef=None):
         if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
             self._order = order
         else:
             raise ValueError(
                 'order should be one of ("linear", "quadratic", "cubic-2", '
                 '"cubic-3"), instead of "{}".'.format(order))
-        self._input_mask = np.sort(np.unique(np.asarray(input_mask, 
-                                                        dtype=np.int)))
-        self._output_mask = np.sort(np.unique(np.asarray(output_mask, 
-                                                         dtype=np.int)))
+        self._input_mask = None if (input_mask is None) else np.sort(
+            np.unique(np.asarray(input_mask, dtype=np.int)))
+        self._output_mask = None if (output_mask is None) else np.sort(
+            np.unique(np.asarray(output_mask, dtype=np.int)))
         self.coef = coef
     
     @property
@@ -28,22 +29,25 @@ class PolyConfig:
     
     @property
     def input_mask(self):
-        return self._input_mask.copy()
+        return copy.copy(self._input_mask)
     
     @property
     def output_mask(self):
-        return self._output_mask.copy()
+        return copy.copy(self._output_mask)
     
     @property
     def input_size(self):
-        return self._input_mask.size
+        return self._input_mask.size if self._input_mask is not None else None
     
     @property
     def output_size(self):
-        return self._output_mask.size
+        return self._output_mask.size if self._output_mask is not None else None
     
     @property
     def _A_shape(self):
+        if self._input_mask is None or self._output_mask is None:
+            raise RuntimeError('you have not defined self.input_mask and/or '
+                               'self.output_mask yet.')
         if self._order == 'linear':
             return (self.output_size, self.input_size + 1)
         elif self._order == 'quadratic':
@@ -59,6 +63,9 @@ class PolyConfig:
     
     @property
     def _a_shape(self):
+        if self._input_mask is None or self._output_mask is None:
+            raise RuntimeError('you have not defined self.input_mask and/or '
+                               'self.output_mask yet.')
         if self._order == 'linear':
             return (self.input_size + 1,)
         elif self._order == 'quadratic':
@@ -88,6 +95,9 @@ class PolyConfig:
             self._coef = None
             
     def _set(self, a, ii):
+        if self._input_mask is None or self._output_mask is None:
+            raise RuntimeError('you have not defined self.input_mask and/or '
+                               'self.output_mask yet.')
         ii = int(ii)
         if a.shape != self._a_shape:
             raise ValueError('shape of a {} does not match the expected shape '
@@ -117,12 +127,34 @@ class PolyModel(Surrogate):
     
     def __init__(self, configs, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if isinstance(configs, str):
+            if configs == 'linear':
+                configs = ['linear']
+            elif configs == 'quadratic':
+                configs = ['linear', 'quadratic']
+            elif configs == 'cubic-2':
+                configs = ['linear', 'quadratic', 'cubic-2']
+            elif configs == 'cubic-3':
+                configs = ['linear', 'quadratic', 'cubic-2', 'cubic-3']
+            else:
+                raise ValueError('if configs is a str, it should be "linear" '
+                                 '"quadratic", "cubic-2" or "cubic-3".')
         if isinstance(configs, PolyConfig):
+            if configs._input_mask is None:
+                configs._input_mask = np.arange(self._input_size)
+            if configs._output_mask is None:
+                configs._output_mask = np.arange(self._output_size)
             self._configs = [configs]
         elif hasattr(configs, '__iter__'):
             self._configs = []
             for conf in configs:
+                if isinstance(conf, str):
+                    conf = PolyConfig(conf)
                 if isinstance(conf, PolyConfig):
+                    if conf._input_mask is None:
+                        conf._input_mask = np.arange(self._input_size)
+                    if conf._output_mask is None:
+                        conf._output_mask = np.arange(self._output_size)
                     self._configs.append(conf)
                 else:
                     raise ValueError(
@@ -133,10 +165,10 @@ class PolyModel(Surrogate):
         self._build_recipe()
         self._use_bound = False
         
-    # TODO: is it really bad to allow users to reach configs?
+    # TODO: use PropertyList to handle None masks
     @property
     def configs(self):
-        return copy.deepcopy(self._configs)
+        return self._configs
     
     @property
     def n_config(self):
@@ -441,7 +473,7 @@ class PolyModel(Surrogate):
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
     
-    def fit(self, x, y, w=None, use_bound=True, bound_kwargs={}):
+    def fit(self, x, y, w=None, use_bound=True, bound_options={}):
         # w_min=None, w_max=None
         x = np.asarray(x)
         y = np.asarray(y)
@@ -455,6 +487,9 @@ class PolyModel(Surrogate):
                 'output_size), instead of {}.'.format(y.shape))
         if not x.shape[0] == y.shape[0]:
             raise ValueError('x and y have different # of points.')
+        if x.shape[0] < self.n_param:
+            raise ValueError('I need at least {} points, but you only gave me '
+                             '{}.'.format(self.n_param, x.shape[0]))
         if w is not None:
             w = np.asarray(w).flatten()
             if not w.shape[0] == x.shape[0]:
@@ -537,5 +572,9 @@ class PolyModel(Surrogate):
                 self._configs[jj_c3]._set(lsq[kk[pp]:kk[pp + 1]], qq)
                 pp += 1
         if use_bound:
-            self.set_bound(x, **bound_kwargs)
+            self.set_bound(x, **bound_options)
+    
+    @property
+    def n_param(self):
+        return np.sum([conf._a_shape[0] for conf in self._configs])
     

@@ -1,51 +1,654 @@
-from .density import Density
+from .module import Surrogate
+from .density import Density, DensityLite
+from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
 from ..utils import Laplace
-from ..utils.random import resample
+from ..utils.random import check_state, resample, multivariate_normal
+from ..utils import threadpool_limits
+import numpy as np
+from distributed import Client
+from collections import namedtuple, OrderedDict
+import warnings
+from copy import deepcopy
+
+__all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 
-class RecipeStep:
-    def __init__(self, surrogate_list, fit_options={}, resample_options={}):
-        pass
+#TODO: early stop in pipeline evaluation
+#TODO: use tqdm to add progress bar for _map_fun
+#TODO: better control when we don't have enough points before resampling
+
+class BaseStep:
+    
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
+                 sample_options={}, prefit=False):
+        if isinstance(surrogate_list, Surrogate):
+            self._surrogate_list = [surrogate_list]
+        elif (hasattr(surrogate_list, '__iter__') and 
+              all(isinstance(su, Surrogate) for su in surrogate_list)):
+            self._surrogate_list = list(surrogate_list)
+        else:
+            raise ValueError('surrogate_list should be a Surrogate or consist '
+                             'of Surrogate(s).')
+        
+        if isinstance(fit_options, dict):
+            self._fit_options = [
+                fit_options for i in range(max(1, self.n_surrogate))]
+        elif (hasattr(fit_options, '__iter__') and 
+              all(isinstance(fi, dict) for fi in fit_options)):
+            self._fit_options = list(fit_options)
+            if len(self._fit_options) < self.n_surrogate:
+                self._fit_options.extend([{} for i in range(
+                    self.n_surrogate - len(self._fit_options))])
+        else:
+            raise ValueError(
+                'fit_options should be a dict or consist of dict(s).')
+        
+        alpha_n = float(alpha_n)
+        if alpha_n <= 0:
+            raise ValueError('alpha_n should be positive.')
+        self._alpha_n = alpha_n
+        
+        if not isinstance(sample_options, dict):
+            raise ValueError('sample_options should be a dict.')
+        self._sample_options = sample_options
+        
+        self._prefit = bool(prefit)
+        
+    @property
+    def surrogate_list(self):
+        return self._surrogate_list
+    
+    @property
+    def n_surrogate(self):
+        return len(self._surrogate_list)
+    
+    @property
+    def has_surrogate(self):
+        return self.n_surrogate > 0
+    
+    @property
+    def fit_options(self):
+        return tuple(self._fit_options)
+    
+    @property
+    def alpha_n(self):
+        return self._alpha_n
+    
+    @property
+    def n_eval(self):
+        return int(self._alpha_n * 
+                   max(su.n_param for su in self._surrogate_list))
+    
+    @property
+    def sample_options(self):
+        return self._sample_options
+    
+    @property
+    def prefit(self):
+        return self._prefit
 
 
-class SurrogateRecipe:
-    def __init__(self, density, step_list):
-        self._set_density(density)
-        self._set_step_list(step_list)
+class OptimizeStep(BaseStep):
+    
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
+                 sample_options={'beta': 0.2}, prefit=False, eps_pp=0.1, 
+                 eps_pq=0.1, max_iter=10, run_hmc=False, hmc_options={}):
+        super().__init__(surrogate_list, fit_options, alpha_n, sample_options, 
+                         prefit)
+        
+        eps_pp = float(eps_pp)
+        if eps_pp <= 0:
+            raise ValueError('eps_pp should be a positive float.')
+        self._eps_pp = eps_pp
+        
+        eps_pq = float(eps_pq)
+        if eps_pq <= 0:
+            raise ValueError('eps_pq should be a positive float.')
+        self._eps_pq = eps_pq
+        
+        max_iter = int(max_iter)
+        if max_iter < 2:
+            raise ValueError('max_iter should be larger than 1.')
+        self._max_iter = max_iter
+        
+        self._run_hmc = bool(run_hmc)
+        if not isinstance(hmc_options, dict):
+            raise ValueError('hmc_options should be a dict.')
+        self._hmc_options = hmc_options
+        
+    @property
+    def eps_pp(self):
+        return self._eps_pp
+    
+    @property
+    def eps_pq(self):
+        return self._eps_pq
+    
+    @property
+    def max_iter(self):
+        return self._max_iter
+    
+    @property
+    def run_hmc(self):
+        return self._run_hmc
+    
+    @property
+    def hmc_options(self):
+        return self._hmc_options
+
+
+class SampleStep(BaseStep):
+    
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
+                 sample_options={}, prefit=False, resample_options={}, 
+                 reuse_steps=2, logp_cutoff=True, alpha_min=1.5, 
+                 alpha_supp=0.1):
+        super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
+                         prefit)
+        
+        if not isinstance(resample_options, dict):
+            raise ValueError('resample_options should be a dict.')
+        self._resample_options = resample_options
+        
+        self._reuse_steps = int(reuse_steps)
+        self._logp_cutoff = bool(logp_cutoff)
+        
+        alpha_min = float(alpha_min)
+        if alpha_min <= 0:
+            raise ValueError('alpha_min should be a positive float.')
+        self._alpha_min = alpha_min
+        
+        alpha_supp = float(alpha_supp)
+        if alpha_supp <= 0:
+            raise ValueError('alpha_supp should be a positive float.')
+        self._alpha_supp = alpha_supp
+        
+    @property
+    def resample_options(self):
+        return self._resample_options
+    
+    @property
+    def reuse_steps(self):
+        return self._reuse_steps
+    
+    @property
+    def logp_cutoff(self):
+        return self._logp_cutoff
+    
+    @property
+    def alpha_min(self):
+        return self._alpha_min
+    
+    @property
+    def alpha_supp(self):
+        return self._alpha_supp
+    
+    @property
+    def n_eval_min(self):
+        return int(self._alpha_min * 
+                   max(su.n_param for su in self._surrogate_list))
+    
+    @property
+    def n_eval_supp(self):
+        return int(self._alpha_supp * 
+                   max(su.n_param for su in self._surrogate_list))
+
+
+class PostStep(BaseStep):
+    
+    def __init__(*args, **kwargs):
+        raise NotImplementedError
+
+
+RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
+
+
+class RecipeResult:
+        
+    def __init__(self, optimize=None, sample=[], post=None, x_0=None, 
+                 random_state=None, input_size=None):
+        if isinstance(optimize, OptimizeStep) or optimize is None:
+            self._s_optimize = optimize
+        else:
+            raise ValueError('optimize should be a OptimizeStep or None.')
+        
+        if isinstance(sample, SampleStep):
+            self._s_sample = [sample]
+        elif (hasattr(sample, '__iter__') and 
+              all(isinstance(sam, SampleStep) for sam in sample)):
+            self._s_sample = list(sample)
+        else:
+            raise ValueError('sample should be a SampleStep, or consists of '
+                             'SampleStep(s).')
+        
+        if isinstance(post, PostStep) or post is None:
+            self._s_post = post
+        else:
+            raise ValueError('post should be a PostStep or None.')
+        
+        self._d_optimize = []
+        self._d_sample = []
+        self._d_post = OrderedDict()
+        
+        self._n_optimize = 0 if self._s_optimize is None else 1
+        self._n_sample = len(self._s_sample)
+        self._n_post = 0 if self._s_post is None else 1
+        
+        self._i_optimize = 0
+        self._i_sample = 0
+        self._i_post = 0
+        
+        self._random_state = check_state(random_state)
+        self._random_state_init = deepcopy(self._random_state)
+        
+        input_size = int(input_size)
+        if input_size < 1:
+            raise ValueError('input_size should be larger than 1.')
+        self._input_size = input_size
+        
+        if x_0 is None:
+            warnings.warn('you did not give me x_0, so I will use standard '
+                          'Gaussian when needed. If this fails, you should '
+                          'consider give me some better x_0.', RuntimeWarning)
+            self._x_0 = x_0
+        else:
+            x_0 = np.atleast_2d(x_0)
+            if x_0.shape[-1] != self._input_size:
+                raise ValueError(
+                    'the shape of x_0 is not consistent with the density.')
+            self._x_0 = x_0.reshape((-1, self._input_size))
+    
+    @property
+    def data(self):
+        return RecipePhases(self._d_optimize, self._d_sample, self._d_post)
+    
+    @property
+    def steps(self):
+        return RecipePhases(self._s_optimize, self._s_sample, self._s_post)
+    
+    @property
+    def i(self):
+        return RecipePhases(self._i_optimize, self._i_sample, self._i_post)
+    
+    @property
+    def n(self):
+        return RecipePhases(self._n_optimize, self._n_sample, self._n_post)
+    
+    @property
+    def x_0(self):
+        return self._x_0
+    
+    @property
+    def random_state(self):
+        return self._random_state
+    
+    @property
+    def random_state_init(self):
+        return deepcopy(self._random_state_init)
+    
+    @property
+    def input_size(self):
+        return self._input_size
+    
+    @property
+    def finished(self):
+        return RecipePhases(self._i_optimize == self._n_optimize, 
+                            self._i_sample == self._n_sample,
+                            self._i_post == self._n_post)
+
+
+DensityQuartet = namedtuple('DensityQuartet', 
+                            'true, surro, trans_true, trans_surro')
+    
+
+OptimizeResult = namedtuple('OptimizeResult', 'x_max, logp_max, samples, '
+                            'surrogate_list, hmc_samples, var_dicts_, '
+                            'Laplace_, trace_', rename=True)
+
+
+SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
+                          'var_dicts_, trace_', rename=True)
+
+
+class Recipe:
+    
+    def __init__(self, density, client=None, result=None, optimize=None, 
+                 sample=[], post=None, x_0=None, random_state=None):
+        if isinstance(density, (Density, DensityLite)):
+            self._density = density
+        else:
+            raise ValueError('density should be a Density or DensityLite.')
+        
+        if isinstance(client, Client) or client is None:
+            self._client = client
+        else:
+            raise ValueError('client should be a Client or None.')
+        
+        if result is None:
+            self._result = RecipeResult(optimize, sample, post, x_0, 
+                                        random_state, self._density.input_size)
+        elif isinstance(result, RecipeResult):
+            if result.input_size == self._density.input_size:
+                self._result = result
+            else:
+                raise ValueError('the input_size of the result is inconsistent '
+                                 'with the Recipe.')
+        else:
+            raise ValueError('result should be a RecipeResult or None.')
     
     @property
     def density(self):
         return self._density
     
-    def _set_density(self, density):
-        if isinstance(density, Density):
-            self._density = density
-        else:
-            raise ValueError('density should be a Density.')
+    @property
+    def client(self):
+        return self._client
     
     @property
-    def step_list(self):
-        return tuple(self._step_list)
+    def input_size(self):
+        return self._density.input_size
     
-    def _set_step_list(self, step_list):
-        if isinstance(step_list, RecipeStep):
-            sl = [step_list]
+    @property
+    def result(self):
+        return self._result
+    
+    @classmethod
+    def _map_fun(cls, client, density, x):
+        foo = client.map(density.fun, x)
+        return client.gather(foo)
+    
+    def _opt_surro(self, x_0, var_dicts):
+        steps = self.result.steps.optimize
+        data = self.result.data.optimize
+        
+        logp = lambda x: self._density.logp(x, use_surrogate=True, 
+                                            original_space=False)
+        grad = lambda x: self._density.grad(x, use_surrogate=True, 
+                                            original_space=False)
+        laplace = Laplace(logp, x_0[0], grad=grad)
+        lap_res = laplace.run(**steps._sample_options)
+        
+        x_max = self._density.to_original(lap_res.x_max)
+        diff = np.sum(np.log(np.abs(
+            self._density.to_original_grad(lap_res.x_max, False))))
+        logp_true = self._density.logp(x_max, use_surrogate=False, 
+                                       original_space=True)
+        logp_max = DensityQuartet(
+            float(logp_true), float(lap_res.logp_max - diff), 
+            float(logp_true + diff), float(lap_res.logp_max))
+        samples = self._density.to_original(lap_res.samples)
+        
+        surrogate_list = deepcopy(self._density._surrogate_list)
+        data.append(
+            OptimizeResult(x_max=x_max, logp_max=logp_max, samples=samples, 
+            surrogate_list=surrogate_list, hmc_samples=None, 
+            var_dicts_=var_dicts, Laplace_=lap_res, trace_=None))
+    
+    def _opt_step(self):
+        # DEVELOPMENT NOTES
+        # if has surrogate, iterate until convergence
+        # if no surrogate, just run on true model
+        # in the end, optionally run hmc
+        result = self.result
+        steps = self.result.steps.optimize
+        data = self.result.data.optimize
+        data.clear()
+        
+        if steps.has_surrogate:
+            if isinstance(self._density, DensityLite):
+                raise RuntimeError('self.density should be a Density, instead '
+                                   'of DensityLite, for surrogate modeling.')
+            self._density.surrogate_list = steps._surrogate_list
+            
+            if steps._prefit:
+                x_0 = None
+                var_dicts = None
+            else:
+                if result._x_0 is None:
+                    x_0 = multivariate_normal(np.zeros(self.input_size), 
+                                              np.eye(self.input_size), 
+                                              steps.n_eval)
+                else:
+                    if result._x_0.shape[0] < steps.n_eval:
+                        raise RuntimeError(
+                            'I need {} points to fit the surrogate model, but '
+                            'you only gave me enough {} points in x_0.'.format(
+                            steps.n_eval, result._x_0.shape[0]))
+                    x_0 = result._x_0[:steps.n_eval].copy()
+                var_dicts = self._map_fun(self._client, self._density, x_0)
+                self._density.fit(var_dicts, **steps._fit_options[0])
+            self._opt_surro(x_0, var_dicts)
+            print(' OptimizeStep proceeding: iter #0 finished.')
+            
+            for i in range(1, steps._max_iter):
+                x_0 = data[-1].samples
+                if x_0.shape[0] < steps.n_eval:
+                    raise RuntimeError(
+                        'I need {} points to fit the surrogate model, but I '
+                        'can only get {} points from the previous '
+                        'iteration.'.format(steps.n_eval, x_0.shape[0]))
+                x_0 = x_0[:steps.n_eval].copy()
+                var_dicts = self._map_fun(self._client, self._density, x_0)
+                self._density.fit(var_dicts, **steps._fit_options[0])
+                self._opt_surro(x_0, var_dicts)
+                _a = data[-1].logp_max
+                _b = data[-2].logp_max
+                _pp = _a[2] - _b[2]
+                _pq = _a[2] - _a[3]
+                print(' OptimizeStep proceeding: iter #{} finished, while '
+                      'delta_pp = {:.3f}, delta_pq = {:.3f}.'.format(i, _pp, 
+                      _pq))
+                if (abs(_pp) < steps._eps_pp) and (abs(_pq) < steps._eps_pq):
+                    break
+            if i == steps._max_iter - 1:
+                warnings.warn('Optimization did not converge within the max '
+                              'number of iterations.', RuntimeWarning)
+
         else:
-            sl = []
-            try:
-                for step in step_list:
-                    assert isinstance(step, RecipeStep)
-                    sl.append(step)
-            except:
-                raise ValueError('step_list should be a RecipeStep, or a list '
-                                 'of RecipeStep(s).')
-        self._step_list = sl
-
-
-class OptimizeRecipe(SurrogateRecipe):
-    pass
-
-
-class SampleRecipe(SurrogateRecipe):
-    pass
+            if self._x_0 is None:
+                x_0 = np.zeros(self.input_size)
+            else:
+                x_0 = self._density.from_original(self._x_0[0])
+            logp = lambda x: self._density.logp(x, original_space=False)
+            if self._density.has_true_jac:
+                grad = lambda x: self._density.grad(x, original_space=False)
+            else:
+                grad = None
+            laplace = Laplace(logp, x_0, grad=grad)
+            lap_res = laplace.run(**steps._sample_options)
+            
+            x_max = self._density.to_original(lap_res.x_max)
+            diff = np.sum(np.log(np.abs(
+                self._density.to_original_grad(lap_res.x_max, False))))
+            logp_max = DensityQuartet(float(lap_res.logp_max - diff), None,
+                                      float(lap_res.logp_max), None)
+            samples = self._density.to_original(lap_res.samples)
+            
+            data.append(
+                OptimizeResult(x_max=x_max, logp_max=logp_max, samples=samples,
+                surrogate_list=[], hmc_samples=None, var_dicts_=None, 
+                Laplace_=lap_res, trace_=None))
+        
+        if steps._run_hmc:
+            self._opt_hmc()
+        result._i_optimize = 1
+        print('\n ***** OptimizeStep finished. ***** \n')
+    
+    def _opt_hmc(self):
+        result = self.result
+        steps = self.result.steps.optimize
+        data = self.result.data.optimize
+        
+        self._density.surrogate_list = data[-1].surrogate_list
+        x, t = sample(
+            self._density, self._client, random_state=result._random_state, 
+            return_trace=True, **steps.hmc_options)
+        data[-1] = data[-1]._replace(hmc_samples=x, trace_=t)
+    
+    def _sam_step(self):
+        result = self.result
+        steps = self.result.steps.sample
+        data = self.result.data.sample
+        
+        for i in range(result.i.sample, result.n.sample):
+            if steps[i].has_surrogate:
+                self._density.surrogate_list = steps[i]._surrogate_list
+                if i == 0 and steps[i]._prefit:
+                    var_dicts = None
+                else:
+                    if i == 0 and not result.n.optimize:
+                        warnings.warn(
+                            'we find neither prefit surrogate models nor '
+                            'optimize steps, so we have to fit the surrogate '
+                            'model directly from x_0, which is however '
+                            'depreciated.', RuntimeWarning)
+                        if result._x_0 is None:
+                            x_0 = multivariate_normal(
+                                np.zeros(self.input_size), 
+                                np.eye(self.input_size), steps.n_eval)
+                        else:
+                            if result._x_0.shape[0] < steps.n_eval:
+                                raise RuntimeError(
+                                    'I need {} points to fit the surrogate '
+                                    'model, but you only gave me enough {} '
+                                    'points in x_0.'.format(steps.n_eval, 
+                                    result._x_0.shape[0]))
+                            x_0 = result._x_0[:steps.n_eval].copy()
+                        var_dicts = self._map_fun(
+                            self._client, self._density, x_0)
+                        self._density.fit(var_dicts, **steps[i]._fit_options[0])
+                        
+                    else:
+                        if i == 0 and result.n.optimize:
+                            if result.data.optimize[-1].hmc_samples is None:
+                                self._opt_hmc()
+                            _x_0 = result.data.optimize[-1].hmc_samples
+                            _logq = np.array(
+                                [_t.logp[(-_x_0.shape[-2]):] for _t in 
+                                result.data.optimize[-1].trace_])
+                        else:
+                            _x_0 = data[-1].samples
+                            _logq = np.array(
+                                [_t.logp[(-_x_0.shape[-2]):] for _t in 
+                                data[-1].trace_])
+                        _x_0 = _x_0.reshape((-1, _x_0.shape[-1]))
+                        _logq = _logq.reshape(-1)
+                        
+                        resample_options = steps[i].resample_options
+                        """if resample_options == {}:
+                            if i > 0:
+                                resample_options = {'nodes': [1, 20, 80], 
+                                                    'weights': [0.8, 0.2]}"""
+                        i_r = resample(_logq, n=steps[i].n_eval, 
+                                       **resample_options)
+                        x_0 = _x_0[i_r]
+                        np.delete(_x_0, i_r)
+                        np.delete(_logq, i_r)
+                        
+                        var_dicts = self._map_fun(
+                            self._client, self._density, x_0)
+                        var_dicts_all = var_dicts.copy()
+                        _logp = np.concatenate(
+                            [vd._fun[self._density._density_name] for vd in 
+                            var_dicts])
+                        _logp_all = _logp.copy()
+                        _logp_min = np.min(_logp)
+                        if steps[i].reuse_steps:
+                            for j in range(i):
+                                if (j + steps[i].reuse_steps >= i or 
+                                    steps[i].reuse_steps < 0):
+                                    var_dicts_all.extend(data[j].var_dicts_)
+                                    _logp_s = np.concatenate(
+                                        [vd._fun[self._density._density_name] 
+                                        for vd in data[j].var_dicts_])
+                                    _logp_all = np.concatenate(
+                                        (_logp_all, _logp_s))
+                        if steps[i].logp_cutoff:
+                            i_p = (_logp_all > _logp_min)
+                            while np.sum(i_p) < steps[i].n_eval_min:
+                                i_r = resample(_logq, n=steps[i].n_eval_supp,
+                                               **resample_options)
+                                x_0 = _x_0[i_r]
+                                np.delete(_x_0, i_r)
+                                np.delete(_logq, i_r)
+                                var_dicts_s = self._map_fun(
+                                    self._client, self._density, x_0)
+                                var_dicts.extend(var_dicts_s)
+                                var_dicts_all.extend(var_dicts_s)
+                                _logp_s = np.concatenate(
+                                    [vd._fun[self._density._density_name] for vd 
+                                    in var_dicts_s])
+                                _logp_all = np.concatenate(
+                                    (_logp_all, _logp_s))
+                                i_p = (_logp_all > _logp_min)
+                        self._density.fit(np.asarray(var_dicts_all)[i_p], 
+                                          **steps[i]._fit_options[0])
+                
+                x, t = sample(self._density, self._client, 
+                              random_state=result._random_state, 
+                              return_trace=True, **steps[i].sample_options)
+                surrogate_list = deepcopy(self._density._surrogate_list)
+                data.append(SampleResult(
+                    samples=x, surrogate_list=surrogate_list, 
+                    var_dicts_=var_dicts, trace_=t))
+            
+            else:
+                if i == 0:
+                    if result.n.optimize:
+                        if result.data.optimize[-1].hmc_samples is not None:
+                            x_0 = result.data.optimize[-1].hmc_samples
+                        else:
+                            x_0 = result.data.optimize[-1].samples
+                    else:
+                        x_0 = result.x_0
+                else:
+                    x_0 = data[-1].samples
+                self._density.surrogate_list = []
+                x, t = sample(self._density, self._client, 
+                              random_state=result._random_state, 
+                              return_trace=True, **steps[i].sample_options)
+                data.append(SampleResult(samples=x, surrogate_list=[], 
+                                         var_dicts_=None, trace_=t))
+            
+            result._i_sample += 1
+            print('\n ***** SampleStep proceeding: iter #{} finished. ***** '
+                  '\n'.format(i))
+        print(' ***** SampleStep finished. ***** \n')
+    
+    def _pos_step(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def run(self, client=None, steps=-1):
+        try:
+            _new_client = False
+            if isinstance(client, Client):
+                self._client = client
+            elif client is None:
+                if isinstance(self._client, Client):
+                    pass
+                elif self._client is None:
+                    try:
+                        self._client = get_client()
+                    except:
+                        cluster = LocalCluster(threads_per_worker=1)
+                        self._client = Client(cluster)
+                        _new_client = True
+                else:
+                    raise RuntimeError('unexpected value for self._client.')
+            else:
+                raise ValueError('client should be a Client or None.')
+            
+            f_opt, f_sam, f_pos = self._result.finished
+            if not f_opt:
+                self._opt_step()
+            if not f_sam:
+                self._sam_step()
+            if not f_pos:
+                self._pos_step()
+            
+        finally:
+            if _new_client:
+                client.close()
+                cluster.close()
+                self._client = None

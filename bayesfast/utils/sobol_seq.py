@@ -8,6 +8,8 @@
 #
 #-------------------------------------------------------------------------------
 
+# TODO: extend the algorithm for dim up to 1111
+
 """
   Licensing:
     This code is distributed under the MIT license.
@@ -29,6 +31,7 @@ from __future__ import division
 import numpy as np
 from scipy.stats import norm
 from scipy.linalg import sqrtm
+import warnings
 
 __all__ = ['sobol_uniform', 'sobol_multivariate_normal']
 
@@ -185,6 +188,11 @@ def sobol_multivariate_normal(mean, cov, size, skip):
             raise ValueError(
                 'the shape of cov does not match the shape of mean.')
         s = sqrtm(cov)
+        if not np.all(np.isreal(s)):
+            warnings.warn(
+                'complex numbers encountered in sqrtm of the covariance. Using '
+                'the real part for now.', RuntimeWarning)
+        s = np.real(s)
         result = i4_sobol_generate_std_normal(d, size[0], skip)
         return mean + np.dot(result, s)
     else:
