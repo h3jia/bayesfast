@@ -33,5 +33,15 @@ ext_modules = [
 setup(
     name='bayesfast',
     version='0.1.0dev1',
-    ext_modules=cythonize(ext_modules, language_level = "3"),
+    author='He Jia and Uros Seljak',
+    maintainer='He Jia',
+    maintainer_email='he.jia.phy@gmail.com',
+    description=('Next generation Bayesian analysis tools for efficient '
+                 'posterior sampling and evidence estimation.'),
+    url='https://github.com/HerculesJack/bayesfast',
+    license='Apache License, Version 2.0',
+    python_requires=">=3",
+    install_requires=['cython', 'dask', 'numdifftools', 'numpy', 'scikit-learn',
+                      'scipy'],
+    ext_modules=cythonize(ext_modules, language_level="3"),
 )
