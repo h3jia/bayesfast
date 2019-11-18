@@ -701,6 +701,32 @@ class Pipeline:
         else:
             return self._constraint(x, out, _to_original_jj, _to_original_jj2)
     
+    def _get_diff(self, density, x_trans, x):
+        if x_trans is None:
+            if x is None:
+                raise ValueError('x_trans and x cannot both be None.')
+            else:
+                x_trans = self.from_original(x, False)
+        diff = np.sum(
+            np.log(np.abs(self.to_original_grad(x_trans, False))), axis=-1)
+        return diff
+    
+    def to_original_density(self, density, x_trans=None, x=None):
+        diff = self._get_diff(density, x_trans, x)
+        density = np.asarray(density)
+        if density.size != diff.size:
+            raise ValueError('the shape of density is inconsistent with the '
+                             'shape of x_trans or x.')
+        return density - diff
+    
+    def from_original_density(self, density, x=None, x_trans=None):
+        diff = self._get_diff(density, x_trans, x)
+        density = np.asarray(density)
+        if density.size != diff.size:
+            raise ValueError('the shape of density is inconsistent with the '
+                             'shape of x or x_trans.')
+        return density + diff
+    
     def print_summary(self):
         raise NotImplementedError
         

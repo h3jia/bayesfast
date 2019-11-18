@@ -3,6 +3,7 @@ from distutils.extension import Extension
 from Cython.Build import cythonize
 import numpy as np
 
+
 ext_modules = [
     Extension(
         "bayesfast.transforms._constraint",

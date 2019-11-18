@@ -10,8 +10,7 @@ __all__ = ['Laplace']
 
 
 # TODO: random_state
-LaplaceResult = namedtuple("LaplaceResult",
-                           "x_max, logp_max, samples, opt_result")
+LaplaceResult = namedtuple("LaplaceResult", "x_max, f_max, samples, opt_result")
 
 
 def _make_positive(A, max_cond=10000.):
@@ -25,7 +24,7 @@ def _make_positive(A, max_cond=10000.):
 
 class Laplace:
     
-    def __init__(self, logp, x_0=None, x_max=None, logp_max=None, grad=None, 
+    def __init__(self, logp, x_0=None, x_max=None, f_max=None, grad=None, 
                  hess=None, logp_args=()):
         if not callable(logp):
             raise ValueError('logp should be callable.')
@@ -34,13 +33,13 @@ class Laplace:
             if self._x_0.ndim != 1:
                 raise ValueError('x_0 should be a 1-d array.')
             self._x_max = None
-            self._logp_max = None
+            self._f_max = None
         else:
             self._x_0 = None
             self._x_max = np.atleast_1d(x_max)
             if self._x_max.ndim != 1:
                 raise ValueError('x_max should be a 1-d array.')
-            self._logp_max = float(logp_max) if (logp_max is not None) else None
+            self._f_max = float(f_max) if (f_max is not None) else None
         self._logp = logp
         self._grad = grad if callable(grad) else Gradient(logp)
         self._hess = hess if callable(hess) else Hessian(logp)
@@ -67,11 +66,11 @@ class Laplace:
                     'the optimization stopped at {}, but probably it has not '
                     'converged yet.'.format(opt.x), RuntimeWarning)
             self._x_max = opt.x
-            self._logp_max = -opt.fun
+            self._f_max = -opt.fun
         else:
             opt = None
-        if self._logp_max is None:
-            self._logp_max = self._logp(self._x_max)
+        if self._f_max is None:
+            self._f_max = self._logp(self._x_max)
         cov = np.linalg.inv(_make_positive(-self._hess(self._x_max), max_cond))
         samples = multivariate_normal(self._x_max, beta * cov, n_sample)
-        return LaplaceResult(self._x_max, self._logp_max, samples, opt)
+        return LaplaceResult(self._x_max, self._f_max, samples, opt)

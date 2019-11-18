@@ -17,6 +17,8 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #TODO: early stop in pipeline evaluation
 #TODO: use tqdm to add progress bar for _map_fun
 #TODO: better control when we don't have enough points before resampling
+#TODO: allow IS over hmc_samples in OptimizeStep
+#TODO: update logp/logq transform when from_original_grad is ready
 
 class BaseStep:
     
@@ -195,10 +197,17 @@ class SampleStep(BaseStep):
                    max(su.n_param for su in self._surrogate_list))
 
 
-class PostStep(BaseStep):
+class PostStep:
     
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
+    def __init__(self, n_is=None):
+        if n_is is None:
+            self._n_is = 0
+        else:
+            self._n_is = int(n_is)
+    
+    @property
+    def n_is(self):
+        return self._n_is
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
@@ -299,16 +308,19 @@ class RecipeResult:
 
 
 DensityQuartet = namedtuple('DensityQuartet', 
-                            'true, surro, trans_true, trans_surro')
+                            'logp, logq, logp_trans, logq_trans')
     
 
-OptimizeResult = namedtuple('OptimizeResult', 'x_max, logp_max, samples, '
-                            'surrogate_list, hmc_samples, var_dicts_, '
-                            'Laplace_, trace_', rename=True)
+OptimizeResult = namedtuple('OptimizeResult', 'x_max, f_max, samples, '
+                            'surrogate_list, hmc_samples, var_dicts, '
+                            'Laplace, trace')
 
 
 SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
-                          'var_dicts_, trace_', rename=True)
+                          'var_dicts, trace')
+
+
+PostResult = namedtuple('PostResult', 'samples, weights, logp, logq')
 
 
 class Recipe:
@@ -358,32 +370,73 @@ class Recipe:
         foo = client.map(density.fun, x)
         return client.gather(foo)
     
+    @property
+    def logp(self):
+        return self._density.logp
+    
+    @property
+    def grad(self):
+        return self._density.grad
+    
+    @property
+    def logp_and_grad(self):
+        return self._density.logp_and_grad
+    
+    @property
+    def to_original(self):
+        return self._density.to_original
+    
+    @property
+    def to_original_grad(self):
+        return self._density.to_original_grad
+    
+    @property
+    def to_original_grad2(self):
+        return self._density.to_original_grad2
+    
+    @property
+    def to_original_density(self):
+        return self._density.to_original_density
+    
+    @property
+    def from_original(self):
+        return self._density.from_original
+    
+    @property
+    def from_original_grad(self):
+        return self._density.from_original_grad
+    
+    @property
+    def from_original_grad2(self):
+        return self._density.from_original_grad2
+        
+    @property
+    def from_original_density(self):
+        return self._density.from_original_density
+    
     def _opt_surro(self, x_0, var_dicts):
         steps = self.result.steps.optimize
         data = self.result.data.optimize
         
-        logp = lambda x: self._density.logp(x, use_surrogate=True, 
-                                            original_space=False)
-        grad = lambda x: self._density.grad(x, use_surrogate=True, 
-                                            original_space=False)
+        logp = lambda x: self.logp(x, use_surrogate=True, original_space=False)
+        grad = lambda x: self.grad(x, use_surrogate=True, original_space=False)
         laplace = Laplace(logp, x_0[0], grad=grad)
         lap_res = laplace.run(**steps._sample_options)
         
-        x_max = self._density.to_original(lap_res.x_max)
-        diff = np.sum(np.log(np.abs(
-            self._density.to_original_grad(lap_res.x_max, False))))
-        logp_true = self._density.logp(x_max, use_surrogate=False, 
-                                       original_space=True)
-        logp_max = DensityQuartet(
-            float(logp_true), float(lap_res.logp_max - diff), 
-            float(logp_true + diff), float(lap_res.logp_max))
-        samples = self._density.to_original(lap_res.samples)
+        x_max = self.to_original(lap_res.x_max)
+        logp = self.logp(x_max, use_surrogate=False, original_space=True)
+        logq_trans = lap_res.f_max
+        logp_trans = self.from_original_density(density=logp, x_trans=x_max)
+        logq = self.to_original_density(density=logq_trans, x_trans=x_max)
+        f_max = DensityQuartet(float(logp), float(logq), float(logp_trans), 
+                               float(logq_trans))
+        samples = self.to_original(lap_res.samples)
         
         surrogate_list = deepcopy(self._density._surrogate_list)
         data.append(
-            OptimizeResult(x_max=x_max, logp_max=logp_max, samples=samples, 
+            OptimizeResult(x_max=x_max, f_max=f_max, samples=samples, 
             surrogate_list=surrogate_list, hmc_samples=None, 
-            var_dicts_=var_dicts, Laplace_=lap_res, trace_=None))
+            var_dicts=var_dicts, Laplace=lap_res, trace=None))
     
     def _opt_step(self):
         # DEVELOPMENT NOTES
@@ -432,8 +485,8 @@ class Recipe:
                 var_dicts = self._map_fun(self._client, self._density, x_0)
                 self._density.fit(var_dicts, **steps._fit_options[0])
                 self._opt_surro(x_0, var_dicts)
-                _a = data[-1].logp_max
-                _b = data[-2].logp_max
+                _a = data[-1].f_max
+                _b = data[-2].f_max
                 _pp = _a[2] - _b[2]
                 _pq = _a[2] - _a[3]
                 print(' OptimizeStep proceeding: iter #{} finished, while '
@@ -449,26 +502,25 @@ class Recipe:
             if self._x_0 is None:
                 x_0 = np.zeros(self.input_size)
             else:
-                x_0 = self._density.from_original(self._x_0[0])
-            logp = lambda x: self._density.logp(x, original_space=False)
+                x_0 = self.from_original(self._x_0[0])
+            logp = lambda x: self.logp(x, original_space=False)
             if self._density.has_true_jac:
-                grad = lambda x: self._density.grad(x, original_space=False)
+                grad = lambda x: self.grad(x, original_space=False)
             else:
                 grad = None
             laplace = Laplace(logp, x_0, grad=grad)
             lap_res = laplace.run(**steps._sample_options)
             
-            x_max = self._density.to_original(lap_res.x_max)
-            diff = np.sum(np.log(np.abs(
-                self._density.to_original_grad(lap_res.x_max, False))))
-            logp_max = DensityQuartet(float(lap_res.logp_max - diff), None,
-                                      float(lap_res.logp_max), None)
-            samples = self._density.to_original(lap_res.samples)
+            x_max = self.to_original(lap_res.x_max)
+            logp_trans = lap_res.f_max
+            logp = self.to_original_density(density=logp_trans, x_trans=x_max)
+            f_max = DensityQuartet(float(logp), None, float(logp_trans), None)
+            samples = self.to_original(lap_res.samples)
             
             data.append(
-                OptimizeResult(x_max=x_max, logp_max=logp_max, samples=samples,
-                surrogate_list=[], hmc_samples=None, var_dicts_=None, 
-                Laplace_=lap_res, trace_=None))
+                OptimizeResult(x_max=x_max, f_max=f_max, samples=samples,
+                surrogate_list=[], hmc_samples=None, var_dicts=None, 
+                Laplace=lap_res, trace=None))
         
         if steps._run_hmc:
             self._opt_hmc()
@@ -484,7 +536,9 @@ class Recipe:
         x, t = sample(
             self._density, self._client, random_state=result._random_state, 
             return_trace=True, **steps.hmc_options)
-        data[-1] = data[-1]._replace(hmc_samples=x, trace_=t)
+        data[-1] = data[-1]._replace(hmc_samples=x, trace=t)
+        print('\n *** Finished sampling the density defined by the last '
+              'OptimizeStep. *** \n')
     
     def _sam_step(self):
         result = self.result
@@ -526,12 +580,12 @@ class Recipe:
                             _x_0 = result.data.optimize[-1].hmc_samples
                             _logq = np.array(
                                 [_t.logp[(-_x_0.shape[-2]):] for _t in 
-                                result.data.optimize[-1].trace_])
+                                result.data.optimize[-1].trace])
                         else:
                             _x_0 = data[-1].samples
                             _logq = np.array(
                                 [_t.logp[(-_x_0.shape[-2]):] for _t in 
-                                data[-1].trace_])
+                                data[-1].trace])
                         _x_0 = _x_0.reshape((-1, _x_0.shape[-1]))
                         _logq = _logq.reshape(-1)
                         
@@ -548,7 +602,7 @@ class Recipe:
                         
                         var_dicts = self._map_fun(
                             self._client, self._density, x_0)
-                        var_dicts_all = var_dicts.copy()
+                        var_dictsall = var_dicts.copy()
                         _logp = np.concatenate(
                             [vd._fun[self._density._density_name] for vd in 
                             var_dicts])
@@ -558,10 +612,10 @@ class Recipe:
                             for j in range(i):
                                 if (j + steps[i].reuse_steps >= i or 
                                     steps[i].reuse_steps < 0):
-                                    var_dicts_all.extend(data[j].var_dicts_)
+                                    var_dictsall.extend(data[j].var_dicts)
                                     _logp_s = np.concatenate(
                                         [vd._fun[self._density._density_name] 
-                                        for vd in data[j].var_dicts_])
+                                        for vd in data[j].var_dicts])
                                     _logp_all = np.concatenate(
                                         (_logp_all, _logp_s))
                         if steps[i].logp_cutoff:
@@ -572,17 +626,17 @@ class Recipe:
                                 x_0 = _x_0[i_r]
                                 np.delete(_x_0, i_r)
                                 np.delete(_logq, i_r)
-                                var_dicts_s = self._map_fun(
+                                var_dictss = self._map_fun(
                                     self._client, self._density, x_0)
-                                var_dicts.extend(var_dicts_s)
-                                var_dicts_all.extend(var_dicts_s)
+                                var_dicts.extend(var_dictss)
+                                var_dictsall.extend(var_dictss)
                                 _logp_s = np.concatenate(
                                     [vd._fun[self._density._density_name] for vd 
-                                    in var_dicts_s])
+                                    in var_dictss])
                                 _logp_all = np.concatenate(
                                     (_logp_all, _logp_s))
                                 i_p = (_logp_all > _logp_min)
-                        self._density.fit(np.asarray(var_dicts_all)[i_p], 
+                        self._density.fit(np.asarray(var_dictsall)[i_p], 
                                           **steps[i]._fit_options[0])
                 
                 x, t = sample(self._density, self._client, 
@@ -591,7 +645,7 @@ class Recipe:
                 surrogate_list = deepcopy(self._density._surrogate_list)
                 data.append(SampleResult(
                     samples=x, surrogate_list=surrogate_list, 
-                    var_dicts_=var_dicts, trace_=t))
+                    var_dicts=var_dicts, trace=t))
             
             else:
                 if i == 0:
@@ -609,15 +663,15 @@ class Recipe:
                               random_state=result._random_state, 
                               return_trace=True, **steps[i].sample_options)
                 data.append(SampleResult(samples=x, surrogate_list=[], 
-                                         var_dicts_=None, trace_=t))
+                                         var_dicts=None, trace=t))
             
             result._i_sample += 1
-            print('\n ***** SampleStep proceeding: iter #{} finished. ***** '
+            print('\n *** SampleStep proceeding: iter #{} finished. *** '
                   '\n'.format(i))
         print(' ***** SampleStep finished. ***** \n')
     
-    def _pos_step(self, *args, **kwargs):
-        raise NotImplementedError
+    def _pos_step(self):
+        raise NotImplementedError ##############################################
     
     def run(self, client=None, steps=-1):
         try:

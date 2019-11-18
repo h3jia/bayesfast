@@ -10,6 +10,9 @@ __pycache__/
 # dask
 dask-worker-space/
 
+# data for the examples
+example-data/
+
 # Distribution / packaging
 .Python
 build/

@@ -105,14 +105,14 @@ class BaseHMC:
             if verbose:
                 n_run = n_iter - i_iter
                 if n_update is None:
-                    n_update = n_run // 10
+                    n_update = n_run // 5
                 else:
                     n_update = int(n_update)
                     if n_update <= 0:
                         warnings.warn(
                             self._prefix + 'invalid n_update value. Using '
-                            'n_run // 10 for now.', RuntimeWarning)
-                        n_update = n_run // 10
+                            'n_run // 5 for now.', RuntimeWarning)
+                        n_update = n_run // 5
                 t_s = time.time()
                 t_i = time.time()
             for i in range(i_iter, n_iter):
