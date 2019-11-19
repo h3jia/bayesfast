@@ -12,6 +12,8 @@ dask-worker-space/
 
 # data for the examples
 example-data/
+des-y1-w-chain-trimmed.txt
+tmp-examples/
 
 # Distribution / packaging
 .Python

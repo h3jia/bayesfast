@@ -6,6 +6,7 @@ from ..samplers.hmc_utils import Trace
 from ..utils import threadpool_limits
 import numpy as np
 import warnings
+from inspect import isclass
 
 __all__ = ['sample']
 
@@ -15,6 +16,7 @@ __all__ = ['sample']
 # TODO: add wrapper for emcee
 # TODO: fix overwriting options
 # TODO: fix pub/sub key
+# TODO: use previous samples to determine initial mass
 
 def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
            trace=None, random_state=None, x_0=None, verbose=True,
@@ -126,7 +128,7 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
                                   RuntimeWarning)
                 elif msg[0] == 'Error':
                     break
-                elif isinstance(msg[0], Warning):
+                elif isclass(msg[0]) and issubclass(msg[0], Warning):
                     warnings.warn(msg[1], msg[0])
                 elif msg[0] == 'SamplingProceeding':
                     print(msg[1])

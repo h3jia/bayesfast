@@ -82,7 +82,7 @@ class BaseHMC:
         if self._dask_key is not None:
             pub = Pub(self._dask_key)
             def sw(message, category, *args, **kwargs):
-                pub.put([category, message])
+                pub.put([category, self._prefix + str(message)])
             warnings.showwarning = sw
         try:
             if not n_iter >= 0:

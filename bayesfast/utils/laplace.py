@@ -1,7 +1,7 @@
 import numpy as np
 import warnings
 from collections import namedtuple
-from numdifftools import Gradient, Hessian
+from numdifftools import Gradient, Hessian, Jacobian
 from scipy.optimize import minimize
 from scipy.linalg import sqrtm
 from ..utils.random import multivariate_normal
@@ -42,11 +42,19 @@ class Laplace:
             self._f_max = float(f_max) if (f_max is not None) else None
         self._logp = logp
         self._grad = grad if callable(grad) else Gradient(logp)
-        self._hess = hess if callable(hess) else Hessian(logp)
+        if callable(hess):
+            self._hess = hess
+        elif callable(grad):
+            def _hess(*args, **kwargs):
+                foo = Jacobian(grad)(*args, **kwargs)
+                return (foo + foo.T) / 2
+            self._hess = _hess
+        else:
+            self._hess = Hessian(logp)
         self._logp_args = logp_args
         
     def run(self, n_sample=2000, beta=1, optimize_method='Newton-CG', 
-            optimize_options={}, max_cond=10000.):
+            optimize_options={}, max_cond=1e5):
         n_sample = int(n_sample)
         if n_sample <= 0:
             raise ValueError('n_sample should be a positive int.')

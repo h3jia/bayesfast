@@ -219,7 +219,7 @@ class PolyModel(Surrogate):
     def use_bound(self, ub):
         self._use_bound = bool(ub)
     
-    def set_bound(self, x, alpha=None, alpha_p=99, mu_f=None):
+    def set_bound(self, x, alpha=None, alpha_p=95, mu_f=None):
         try:
             x = np.ascontiguousarray(x)
             assert x.shape[-1] == self._input_size
@@ -473,7 +473,8 @@ class PolyModel(Surrogate):
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
     
-    def fit(self, x, y, w=None, use_bound=True, bound_options={}):
+    def fit(self, x, y, w=None, use_bound=True, use_mu_f=False, 
+            bound_options={}, logp=None):
         # w_min=None, w_max=None
         x = np.asarray(x)
         y = np.asarray(y)
@@ -572,7 +573,16 @@ class PolyModel(Surrogate):
                 self._configs[jj_c3]._set(lsq[kk[pp]:kk[pp + 1]], qq)
                 pp += 1
         if use_bound:
-            self.set_bound(x, **bound_options)
+            bo = bound_options.copy()
+            ##### ##### ##### ##### #####
+            if use_mu_f:
+                logp = np.asarray(logp)
+                if not (x.shape[0] == logp.shape[0] and logp.ndim == 1):
+                    raise ValueError('the shape of x is inconsistent with the '
+                                     'shape of logp.')
+                bo['mu_f'] = x[np.argmax(logp)]
+            ##### ##### ##### ##### #####
+            self.set_bound(x, **bo)
     
     @property
     def n_param(self):

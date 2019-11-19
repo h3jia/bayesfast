@@ -7,12 +7,16 @@ from ..transforms._constraint import *
 
 __all__ = ['VariableDict', 'Pipeline', 'Density', 'DensityLite']
 
+
 # TODO: finish DensityLite
 # TODO: add call counter
 # TODO: add checks in DensityLite
 # TODO: use customized PropertyList to simplify property checks
 # https://stackoverflow.com/a/39190103/12292488
-
+# TODO: update logp/logq transform when from_original_grad is ready
+# TODO: consider use_decay in Density.logp
+# TODO: consider input for Density.fit
+# TODO: use_bound vs use_decay
 
 class VariableDict:
     
@@ -580,7 +584,7 @@ class Pipeline:
     @hard_bounds.setter
     def hard_bounds(self, bounds):
         if isinstance(bounds, bool):
-            self._lower_bounds = np.full((self.input_size, 2), bounds, np.uint8)
+            self._hard_bounds = np.full((self.input_size, 2), bounds, np.uint8)
         else:
             try:
                 bounds = np.ascontiguousarray(bounds).astype(bool).astype(
@@ -594,7 +598,7 @@ class Pipeline:
                                      'of hard_bounds.')
             except:
                 raise ValueError('Invalid value for hard_bounds')
-            self._lower_bounds = bounds
+            self._hard_bounds = bounds
     
     def _input_check(self):
         self.input_vars = self._input_vars
@@ -754,7 +758,7 @@ class Density(Pipeline):
              stop=None, copy_x=False):
         _logp = self.fun(x, use_surrogate, original_space, start, stop,
                          self._density_name, copy_x)[..., 0]
-        if self._use_decay:
+        if self._use_decay and use_surrogate:
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
@@ -776,7 +780,7 @@ class Density(Pipeline):
              stop=None, copy_x=False):
         _grad = self.jac(x, use_surrogate, original_space, start, stop,
                          self._density_name, copy_x)[..., 0, :]
-        if self._use_decay:
+        if self._use_decay and use_surrogate:
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
@@ -801,7 +805,7 @@ class Density(Pipeline):
             copy_x)
         _logp = _logp_and_grad[0][..., 0]
         _grad = _logp_and_grad[1][..., 0, :]
-        if self._use_decay:
+        if self._use_decay and use_surrogate:
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess, 
                               x_o - self._mu)
@@ -913,7 +917,8 @@ class Density(Pipeline):
             self.gamma = gamma
         self._use_decay = True
     
-    def fit(self, var_dicts, use_decay=True, decay_options={}, fit_options={}):
+    def fit(self, var_dicts, use_decay=False, use_bound=None, use_mu_f=None, 
+            decay_options={}, fit_options={}):
         if not (hasattr(var_dicts, '__iter__') and
                 all(isinstance(vd, VariableDict) for vd in var_dicts)):
             raise ValueError('var_dicts should consist of VariableDict(s).')
@@ -941,8 +946,18 @@ class Density(Pipeline):
         
         for i, su in enumerate(self._surrogate_list):
             x = self._fit_var(var_dicts, su._input_vars)
+            if su._var_scales is not None:
+                x = (x - su._var_scales[:, 0]) / su._var_scales_diff
             y = self._fit_var(var_dicts, su._output_vars)
-            su.fit(x, y, **fit_options[i])
+            _logp = self._fit_var(var_dicts, [self._density_name]).reshape(-1)
+            ##### ##### ##### ##### #####
+            fo = fit_options[i].copy()
+            if use_bound is not None:
+                fo['use_bound'] = use_bound
+            if use_mu_f is not None:
+                fo['use_mu_f'] = use_mu_f
+            ##### ##### ##### ##### #####
+            su.fit(x, y, logp=_logp, **fo)
 
     @classmethod
     def _fit_var(cls, var_dicts, var_names):
