@@ -10,7 +10,8 @@ __all__ = ['Laplace']
 
 
 # TODO: random_state
-LaplaceResult = namedtuple("LaplaceResult", "x_max, f_max, samples, opt_result")
+LaplaceResult = namedtuple("LaplaceResult", 
+                           "x_max, f_max, samples, cov, opt_result")
 
 
 def _make_positive(A, max_cond=10000.):
@@ -81,4 +82,4 @@ class Laplace:
             self._f_max = self._logp(self._x_max)
         cov = np.linalg.inv(_make_positive(-self._hess(self._x_max), max_cond))
         samples = multivariate_normal(self._x_max, beta * cov, n_sample)
-        return LaplaceResult(self._x_max, self._f_max, samples, opt)
+        return LaplaceResult(self._x_max, self._f_max, samples, cov, opt)

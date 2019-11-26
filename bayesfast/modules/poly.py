@@ -572,7 +572,8 @@ class PolyModel(Surrogate):
                 qq = int(np.argwhere(self._configs[jj_c3]._output_mask == ii))
                 self._configs[jj_c3]._set(lsq[kk[pp]:kk[pp + 1]], qq)
                 pp += 1
-        if use_bound:
+        if (use_bound and not all(conf.order == 'linear' for conf in 
+            self._configs)):
             bo = bound_options.copy()
             ##### ##### ##### ##### #####
             if use_mu_f:

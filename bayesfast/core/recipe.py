@@ -145,8 +145,8 @@ class SampleStep(BaseStep):
     
     def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
                  sample_options={}, prefit=False, resample_options={}, 
-                 reuse_steps=2, logp_cutoff=True, alpha_min=1.5, 
-                 alpha_supp=0.1):
+                 reuse_steps=0, logp_cutoff=True, alpha_min=1.5, 
+                 alpha_supp=0.1, adapt_metric=False):
         super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
                          prefit)
         
@@ -167,6 +167,8 @@ class SampleStep(BaseStep):
             raise ValueError('alpha_supp should be a positive float.')
         self._alpha_supp = alpha_supp
         
+        self._adapt_metric = bool(adapt_metric)
+        
     @property
     def resample_options(self):
         return self._resample_options
@@ -186,6 +188,10 @@ class SampleStep(BaseStep):
     @property
     def alpha_supp(self):
         return self._alpha_supp
+    
+    @property
+    def adapt_metric(self):
+        return self._adapt_metric
     
     @property
     def n_eval_min(self):
@@ -298,6 +304,27 @@ class RecipeResult:
         return RecipePhases(self._n_optimize, self._n_sample, self._n_post)
     
     @property
+    def n_call(self):
+        _n_call = 0
+        for _opt in self.data.optimize:
+            if len(_opt.surrogate_list) > 0:
+                _n_call += len(_opt.var_dicts)
+            else:
+                raise NotImplementedError
+        for _sam in self.data.sample:
+            if len(_sam.surrogate_list) > 0:
+                _n_call += len(_sam.var_dicts)
+            else:
+                raise NotImplementedError
+        for _pos in self.data.post:
+            if _pos.weights is None:
+                pass
+            else:
+                _n_call += len(_pos.weights)
+        return _n_call
+        
+    
+    @property
     def x_0(self):
         return self._x_0
     
@@ -378,6 +405,10 @@ class Recipe:
     @property
     def result(self):
         return self._result
+    
+    @property
+    def n_call(self):
+        return self._result.n_call
     
     @classmethod
     def _map_fun(cls, client, density, x):
@@ -547,11 +578,15 @@ class Recipe:
         steps = self.result.steps.optimize
         data = self.result.data.optimize
         
+        old_list = self._density.surrogate_list
         self._density.surrogate_list = data[-1].surrogate_list
+        ho = {'sampler_options': {'metric': np.diag(data[-1].Laplace.cov)}}
+        ho.update(steps.hmc_options)
         x, t = sample(
             self._density, self._client, random_state=result._random_state, 
-            x_0=data[-1].samples, return_trace=True, **steps.hmc_options)
+            x_0=data[-1].samples, return_trace=True, **ho)
         data[-1] = data[-1]._replace(hmc_samples=x, trace=t)
+        self._density.surrogate_list = old_list
         print('\n *** Finished sampling the density defined by the last '
               'OptimizeStep. *** \n')
     
@@ -561,6 +596,7 @@ class Recipe:
         data = self.result.data.sample
         
         for i in range(result.i.sample, result.n.sample):
+            soi = {}
             if steps[i].has_surrogate:
                 self._density.surrogate_list = steps[i]._surrogate_list
                 if i == 0 and steps[i]._prefit:
@@ -594,27 +630,41 @@ class Recipe:
                             if result.data.optimize[-1].hmc_samples is None:
                                 self._opt_hmc()
                             _x_0 = result.data.optimize[-1].hmc_samples
-                            _logq = np.array(
-                                [_t.logp[(-_x_0.shape[-2]):] for _t in 
+                            _logq = np.array([self.to_original_density(
+                                *t.get(return_logp=True)[::-1]) for t in 
                                 result.data.optimize[-1].trace])
                         else:
                             _x_0 = data[-1].samples
-                            _logq = np.array(
-                                [_t.logp[(-_x_0.shape[-2]):] for _t in 
-                                data[-1].trace])
+                            _logq = np.array([self.to_original_density(
+                                *t.get(return_logp=True)[::-1]) for t in 
+                                result.data.sample[-1].trace])
                         _x_0 = _x_0.reshape((-1, _x_0.shape[-1]))
                         _logq = _logq.reshape(-1)
+                        _logq_min = np.min(_logq)
+                        
+                        if not steps[i].adapt_metric:
+                            cov = np.cov(self.from_original(_x_0), rowvar=False)
+                            soi.update({'sampler_options': 
+                                        {'metric': cov, 'adapt_metric': False}})
+                            #soi['sampler_options'] = {'metric': np.diag(cov)}
+                        
+                        if i != len(steps) - 1 and not steps[i].adapt_metric:
+                            soi.update({'n_iter': 2500, 'n_warmup': 500})
+                        elif i == len(steps) - 1 and not steps[i].adapt_metric:
+                            soi.update({'n_iter': 4500, 'n_warmup': 500})
+                        elif i == len(steps) - 1 and steps[i].adapt_metric:
+                            soi.update({'n_iter': 5000, 'n_warmup': 1000})
                         
                         resample_options = steps[i].resample_options
-                        if resample_options == {}:
+                        """if resample_options == {}:
                             if i > 0:
                                 resample_options = {'nodes': [1, 25, 100], 
-                                                    'weights': [0.75, 0.25]}
+                                                    'weights': [0.5, 0.5]}"""
                         i_r = resample(_logq, n=steps[i].n_eval, 
                                        **resample_options)
                         x_0 = _x_0[i_r]
-                        np.delete(_x_0, i_r)
-                        np.delete(_logq, i_r)
+                        np.delete(_x_0, i_r, axis=0)
+                        np.delete(_logq, i_r, axis=0)
                         
                         var_dicts = self._map_fun(
                             self._client, self._density, x_0)
@@ -623,7 +673,6 @@ class Recipe:
                             [vd._fun[self._density._density_name] for vd in 
                             var_dicts])
                         _logp_all = _logp.copy()
-                        _logp_min = np.min(_logp)
                         if steps[i].reuse_steps:
                             for j in range(i):
                                 if (j + steps[i].reuse_steps >= i or 
@@ -635,13 +684,17 @@ class Recipe:
                                     _logp_all = np.concatenate(
                                         (_logp_all, _logp_s))
                         if steps[i].logp_cutoff:
-                            i_p = (_logp_all > _logp_min)
+                            i_p = (_logp_all > _logq_min)
                             while np.sum(i_p) < steps[i].n_eval_min:
+                                if steps[i].n_eval_supp > _logq.size:
+                                    raise ValueError(
+                                        'we do not have enough samples that '
+                                        'meet the logp_cutoff condition.')
                                 i_r = resample(_logq, n=steps[i].n_eval_supp,
                                                **resample_options)
                                 x_0 = _x_0[i_r]
-                                np.delete(_x_0, i_r)
-                                np.delete(_logq, i_r)
+                                np.delete(_x_0, i_r, axis=0)
+                                np.delete(_logq, i_r, axis=0)
                                 var_dictss = self._map_fun(
                                     self._client, self._density, x_0)
                                 var_dicts.extend(var_dictss)
@@ -651,14 +704,16 @@ class Recipe:
                                     in var_dictss])
                                 _logp_all = np.concatenate(
                                     (_logp_all, _logp_s))
-                                i_p = (_logp_all > _logp_min)
+                                i_p = (_logp_all > _logq_min)
+                        else:
+                            i_p = np.arange(len(var_dictsall))
                         self._density.fit(np.asarray(var_dictsall)[i_p], 
                                           **steps[i]._fit_options[0])
                 
+                soi.update(steps[i].sample_options)
                 x, t = sample(self._density, self._client, 
                               random_state=result._random_state, 
-                              x_0=x_0, return_trace=True, 
-                              **steps[i].sample_options)
+                              x_0=x_0, return_trace=True, **soi)
                 surrogate_list = deepcopy(self._density._surrogate_list)
                 data.append(SampleResult(
                     samples=x, surrogate_list=surrogate_list, 
@@ -676,10 +731,10 @@ class Recipe:
                 else:
                     x_0 = data[-1].samples
                 self._density.surrogate_list = []
+                soi.update(steps[i].sample_options)
                 x, t = sample(self._density, self._client, 
                               random_state=result._random_state, 
-                              x_0=x_0, return_trace=True, 
-                              **steps[i].sample_options)
+                              x_0=x_0, return_trace=True, **soi)
                 data.append(SampleResult(samples=x, surrogate_list=[], 
                                          var_dicts=None, trace=t))
             
