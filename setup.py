@@ -42,7 +42,7 @@ setup(
     url='https://github.com/HerculesJack/bayesfast',
     license='Apache License, Version 2.0',
     python_requires=">=3",
-    install_requires=['cython', 'dask', 'numdifftools', 'numpy', 'scikit-learn',
-                      'scipy'],
+    install_requires=['cython', 'dask', 'distributed', 'numdifftools', 'numpy', 
+                      'scikit-learn', 'scipy'],
     ext_modules=cythonize(ext_modules, language_level="3"),
 )

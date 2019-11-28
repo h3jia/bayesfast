@@ -3,7 +3,7 @@ from distributed import Sub, Client, get_client, LocalCluster
 from ..utils import random as bfrandom
 from ..samplers import NUTS
 from ..samplers.hmc_utils import Trace
-from ..utils import threadpool_limits
+from ..utils import threadpool_limits, check_client
 import numpy as np
 import warnings
 from inspect import isclass
@@ -94,17 +94,7 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
         x_0 = [None for i in range(n_chain)]
     
     try:
-        _new_client = False
-        if client is None:
-            try:
-                client = get_client()
-            except:
-                cluster = LocalCluster(threads_per_worker=1)
-                client = Client(cluster)
-                _new_client = True
-        else:
-            if not isinstance(client, Client):
-                raise ValueError('invalid value for client.')
+        client, _new_client = check_client(client)
         # dask_key = bfrandom.string()
         dask_key = 'BayesFast-' + client.id
         sub = Sub(dask_key)
@@ -157,8 +147,6 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
             raise ValueError(
                 'Sorry I do not know how to do {}.'.format(sampler))
     finally:
-        # del sub
-        # client.restart()
         if _new_client:
+            client.cluster.close()
             client.close()
-            cluster.close()

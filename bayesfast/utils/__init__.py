@@ -6,3 +6,4 @@ from .laplace import Laplace
 from . import random
 from . import sobol_seq
 from .threadpoolctl import threadpool_limits, threadpool_info
+from .client import check_client

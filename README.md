@@ -29,7 +29,8 @@ pip install -e .
 
 ## Dependencies
 
-BayesFast depends on cython, dask, numdifftools, numpy, scikit-learn and scipy.
+BayesFast depends on cython, dask, distributed, numdifftools, numpy, 
+scikit-learn and scipy.
 Currently, it is only tested on Linux with Python 3.6.
 
 ## License

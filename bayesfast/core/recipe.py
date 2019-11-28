@@ -2,9 +2,8 @@ from .module import Surrogate
 from .density import Density, DensityLite
 from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
-from ..utils import Laplace
+from ..utils import Laplace, threadpool_limits, check_client
 from ..utils.random import check_state, resample, multivariate_normal
-from ..utils import threadpool_limits
 import numpy as np
 from distributed import Client
 from collections import namedtuple, OrderedDict
@@ -373,10 +372,7 @@ class Recipe:
         else:
             raise ValueError('density should be a Density or DensityLite.')
         
-        if isinstance(client, Client) or client is None:
-            self._client = client
-        else:
-            raise ValueError('client should be a Client or None.')
+        self.client = client
         
         if result is None:
             self._result = RecipeResult(optimize, sample, post, x_0, 
@@ -397,6 +393,10 @@ class Recipe:
     @property
     def client(self):
         return self._client
+    
+    @client.setter
+    def client(self, clt):
+        self._client = clt
     
     @property
     def input_size(self):
@@ -801,24 +801,10 @@ class Recipe:
     
     def run(self, client=None, steps=-1):
         try:
-            _new_client = False
-            if isinstance(client, Client):
+            if client is not None:
                 self._client = client
-            elif client is None:
-                if isinstance(self._client, Client):
-                    pass
-                elif self._client is None:
-                    try:
-                        self._client = get_client()
-                    except:
-                        cluster = LocalCluster(threads_per_worker=1)
-                        self._client = Client(cluster)
-                        _new_client = True
-                else:
-                    raise RuntimeError('unexpected value for self._client.')
-            else:
-                raise ValueError('client should be a Client or None.')
-            
+            old_client = self._client
+            self._client, _new_client = check_client(client)
             f_opt, f_sam, f_pos = self._result.finished
             if not f_opt:
                 self._opt_step()
@@ -829,9 +815,9 @@ class Recipe:
             
         finally:
             if _new_client:
-                client.close()
-                cluster.close()
-                self._client = None
+                self._client.cluster.close()
+                self._client.close()
+                self._client = old_client
 
     def get(self):
         try:
