@@ -70,7 +70,8 @@ def uniform(low, high, size, method='auto', seed=None):
         raise ValueError('invalid value for method.')
 
 
-def multivariate_normal(mean, cov, size, method='auto', seed=None):
+def multivariate_normal(mean, cov, size, method='auto', skip=None, 
+                        random_state=None):
     if size is None:
         method = 'pseudo'
     mean = np.asarray(mean)
@@ -84,19 +85,19 @@ def multivariate_normal(mean, cov, size, method='auto', seed=None):
         if (mean.shape == (d,) and cov.shape == (d, d) and size.ndim == 1 and 
             1 <= d <= 40):
             method = 'sobol'
-            if seed is None:
-                seed = 1
+            if skip is None:
+                skip = 1
             try:
-                seed = int(seed)
-                assert seed > 0
+                skip = int(skip)
+                assert skip > 0
             except:
-                raise ValueError('invalid value for seed.')
+                raise ValueError('invalid value for skip.')
         else:
             method = 'pseudo'
     if method == 'sobol':
-        return sobol_multivariate_normal(mean, cov, size, seed)
+        return sobol_multivariate_normal(mean, cov, size, skip)
     elif method == 'pseudo':
-        return check_state(seed).multivariate_normal(mean, cov, size)
+        return check_state(random_state).multivariate_normal(mean, cov, size)
     else:
         raise ValueError('invalid value for method.')
 

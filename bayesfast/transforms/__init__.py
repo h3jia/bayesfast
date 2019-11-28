@@ -1,1 +1,1 @@
-from rbig import RBIG
+from .rbig import RBIG

@@ -58,9 +58,9 @@ class RBIG:
             self._weights = np.ones(_n) / _n
     
     def __getstate__(self):
-        """We need this to make self.client work correctly."""
+        """We need this to make self._client work correctly."""
         self_dict = self.__dict__.copy()
-        del self_dict['_client'], self_dict['client']
+        del self_dict['_client']
         return self_dict
     
     @property
@@ -202,7 +202,7 @@ class RBIG:
                           'plot=0.', RuntimeWarning)
         try:
             old_client = self._client
-            self._client, _new_client = check_client(client)
+            self._client, _new_client = check_client(self._client)
             for i in range(steps):
                 try:
                     y, A, B, m = self._ica(self._data)
@@ -251,8 +251,9 @@ class RBIG:
         n = int(n)
         if n <= 0:
             raise ValueError('n should be positive.')
-        y = multivariate_normal(np.zeros(self.dim), np.eye(self.dim), n, 
-                                self.random_method, self.random_state)
+        y = multivariate_normal(
+            np.zeros(self.dim), np.eye(self.dim), n, self.random_method, 
+            random_state=self.random_state)
         x, log_j = self.backward_transform(y, use_client)
         return x, log_j, y
     
@@ -279,7 +280,7 @@ class RBIG:
         try:
             if use_client:
                 old_client = self._client
-                self._client, _new_client = check_client(client)
+                self._client, _new_client = check_client(self._client)
             for i in range(self._n_iter):
                 y = (y - self._m[i]) @ self._A[i].T
                 if use_client:
@@ -322,7 +323,7 @@ class RBIG:
         try:
             if use_client:
                 old_client = self._client
-                self._client, _new_client = check_client(client)
+                self._client, _new_client = check_client(self._client)
             for i in reversed(range(self._n_iter)):
                 if use_client:
                     foo = self._client.map(self._do_solve, self._cubic[i], x.T)
