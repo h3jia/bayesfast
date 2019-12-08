@@ -11,6 +11,8 @@ For cosmologists, we have an add-on package
 which provides several frequently-used cosmological modules.
 
 Both packages are in live development, so the API may be changed at any time.
+**Note that some parts of the code are still experimental,
+as we haven't implemented public API for them.**
 If you find a bug or have useful suggestions, please feel free to 
 open an issue / pull request, or email [He Jia](mailto:he.jia.phy@gmail.com).
 We also have a roadmap for features to implement in the future.

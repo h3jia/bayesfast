@@ -1,3 +1,8 @@
+"""
+NOTE: below is some legacy code that is not compatible with current BayesFast
+      we will revise it later
+"""
+
 import numpy as np
 from ..utils.vectorize import vectorize
 from scipy.special import logsumexp

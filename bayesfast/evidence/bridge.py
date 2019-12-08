@@ -3,82 +3,119 @@ from ..utils.vectorize import vectorize
 from scipy.special import logsumexp
 from scipy.optimize import root_scalar
 from scipy.stats import multivariate_normal
-from ..utils.acor import integrated_time
+from ..utils import integrated_time
 from ..utils.random import check_state
 import warnings
 
-__all__ = ['BS', 'WarpBS']
+#__all__ = ['BS', 'WarpBS']
+__all__ = ['BS']
 
 
-#TODO: imporve shape checks
 #TODO: enable reusing logp_xp in WarpBS
 
 
 def BS(xp=None, xq=None, logp=None, logq=None, adapt_n_q=False, 
        logp_xp=None, logp_xq=None, logq_xp=None, logq_xq=None, 
-       logp_vectorized=True, logq_vectorized=True, logp_vectorize_level=1, 
-       logq_vectorize_level=1):
-    if not logp_vectorized:
-        logp = vectorize(logp, logp_vectorize_level)
-    if not logq_vectorized:
-        logq = vectorize(logq, logq_vectorize_level)
+       logp_vectorized=True, logq_vectorized=True):
+    _logp = (logp if logp_vectorized else 
+             lambda x: np.apply_along_axis(logp, -1, x))
+    _logq = (logq if logq_vectorized else 
+             lambda x: np.apply_along_axis(logq, -1, x))
     
     if logp_xp is not None:
-        _lpp = logp_xp
-    elif (xp is not None) and (logp is not None):
+        _lpp = np.asarray(logp_xp)
+    elif (xp is not None) and callable(logp):
+        xp = np.asarray(xp)
         try:
-            _lpp = logp(xp)
+            _lpp = np.asarray(_logp(xp))
         except:
             raise RuntimeError('failed to get logp_xp from logp and xp.')
+        if xp.shape[:-1] == _lpp.shape:
+            pass
+        elif (*xp.shape[:-1], 1) == _lpp.shape:
+            _lpp = _lpp[..., 0]
+        else:
+            raise ValueError(
+                'the shape of xp, {}, is not consistent with the shape of '
+                'logp_xp from logp and xp, {}.'.format(xp.shape, _lpp.shape))
     else:
         raise ValueError('cannot obtain logp_xp from what you gave me.')
-    _lpp = np.asarray(_lpp)
     if (_lpp.ndim != 1) and (_lpp.ndim != 2):
-        raise ValueError('invalid dim for logp_xp.')
+        raise ValueError(
+            'dim of logp_xp should be 1 or 2, instead of {}.'.format(_lpp.ndim))
     
     if logp_xq is not None:
-        _lpq = logp_xq
-    elif (xq is not None) and (logp is not None):
+        _lpq = np.asarray(logp_xq)
+    elif (xq is not None) and callable(logp):
+        xq = np.asarray(xq)
         try:
-            _lpq = logp(xq)
+            _lpq = np.asarray(_logp(xq))
         except:
             raise RuntimeError('failed to get logp_xq from logp and xq.')
+        if xq.shape[:-1] == _lpq.shape:
+            pass
+        elif (*xq.shape[:-1], 1) == _lpq.shape:
+            _lpq = _lpq[..., 0]
+        else:
+            raise ValueError(
+                'the shape of xq, {}, is not consistent with the shape of '
+                'logp_xq from logp and xq, {}.'.format(xq.shape, _lpq.shape))
     else:
         raise ValueError('cannot obtain logp_xq from what you gave me.')
-    _lpq = np.asarray(_lpq)
     if (_lpq.ndim != 1) and (_lpq.ndim != 2):
-        raise ValueError('invalid dim for logp_xq.')
+        raise ValueError(
+            'dim of logp_xq should be 1 or 2, instead of {}.'.format(_lpq.ndim))
     
     if logq_xp is not None:
-        _lqp = logq_xp
-    elif (xp is not None) and (logq is not None):
+        _lqp = np.asarray(logq_xp)
+    elif (xp is not None) and callable(logq):
+        xp = np.asarray(xp)
         try:
-            _lqp = logq(xp)
+            _lqp = np.asarray(_logq(xp))
         except:
             raise RuntimeError('failed to get logq_xp from logq and xp.')
+        if xp.shape[:-1] == _lqp.shape:
+            pass
+        elif (*xp.shape[:-1], 1) == _lqp.shape:
+            _lqp = _lqp[..., 0]
+        else:
+            raise ValueError(
+                'the shape of xp, {}, is not consistent with the shape of '
+                'logq_xp from logq and xp, {}.'.format(xp.shape, _lqp.shape))
     else:
         raise ValueError('cannot obtain logq_xp from what you gave me.')
-    _lqp = np.asarray(_lqp)
     if (_lqp.ndim != 1) and (_lqp.ndim != 2):
-        raise ValueError('invalid dim for logq_xp.')
+        raise ValueError(
+            'dim of logq_xp should be 1 or 2, instead of {}.'.format(_lqp.ndim))
     
     if logq_xq is not None:
-        _lqq = logq_xq
-    elif (xq is not None) and (logq is not None):
+        _lqq = np.asarray(logq_xq)
+    elif (xq is not None) and callable(logq):
+        xq = np.asarray(xq)
         try:
-            _lqq = logq(xq)
+            _lqq = np.asarray(_logq(xq))
         except:
             raise RuntimeError('failed to get logq_xq from logq and xq.')
+        if xq.shape[:-1] == _lqq.shape:
+            pass
+        elif (*xq.shape[:-1], 1) == _lqq.shape:
+            _lqq = _lqq[..., 0]
+        else:
+            raise ValueError(
+                'the shape of xq, {}, is not consistent with the shape of '
+                'logq_xq from logq and xq, {}.'.format(xq.shape, _lqq.shape))
     else:
         raise ValueError('cannot obtain logq_xq from what you gave me.')
-    _lqq = np.asarray(_lqq)
     if (_lqq.ndim != 1) and (_lqq.ndim != 2):
-        raise ValueError('invalid dim for logq_xq.')
+        raise ValueError(
+            'dim of logq_xq should be 1 or 2, instead of {}.'.format(_lqq.ndim))
     
     if _lpp.shape != _lqp.shape:
-        raise ValueError('shape of logp_xp is different from shape of logq_xp.')
+        raise ValueError('shape of logp_xp, {}, is different from shape of '
+                         'logq_xp, {}.'.format(_lpp.shape, _lqp.shape))
     if _lpq.shape != _lqq.shape:
-        raise ValueError('shape of logp_xq is different from shape of logq_xq.')
+        raise ValueError('shape of logp_xq, {}, is different from shape of '
+                         'logq_xq, {}.'.format(_lpq.shape, _lqq.shape))
     
     n_p = _lpp.size
     n_q = _lqq.size
@@ -135,7 +172,12 @@ def adapt_n_q(re2_p, re2_q, n_q0, n_call_p, target_q_error=0.1, max_q_call=0.1):
     from_error = n_q0 * (1 - target_q_error) * re2_q / target_q_error / re2_p
     from_call = n_call_p * max_q_call / (1 - max_q_call)
     return int(max(n_q0, min(from_error, from_call)))
-    
+
+
+"""
+NOTE: below is some legacy code that is not compatible with current BayesFast
+      we will revise it later
+"""
 
 def WarpBS(xp, logp, n_q=None, logp_xp=None, logp_vectorized=True, 
            logp_vectorize_level=1, random_state=None):
