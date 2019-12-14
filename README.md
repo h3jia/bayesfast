@@ -46,7 +46,7 @@ please consider citing our papers accordingly:
 
 * He Jia and Uros Seljak, *BayesFast: A Fast and Scalable Method for 
 Cosmological Bayesian Inference*, in prep (for posterior sampling)
-* He Jia and Uros Seljak, *Normalizing Constant Estimation
-with Optimal Bridge Sampling and Normalizing Flows*,
+* He Jia and Uros Seljak, *[Normalizing Constant Estimation
+with Gaussianized Bridge Sampling](https://arxiv.org/abs/1912.06073)*,
 accepted by [AABI 2019](http://www.approximateinference.org/) 
 (for evidence estimation)
