@@ -3,8 +3,11 @@ import numbers
 import random
 import string
 import warnings
-from .sobol_seq import sobol_uniform, sobol_multivariate_normal
+from . import sobol
+import os
 
+cd = os.path.dirname(__file__)
+df = os.path.join(cd, 'new-joe-kuo-6.21201')
 
 __all__ = ['string', 'check_state', 'split_state', 'uniform',
            'multivariate_normal', 'resample']
@@ -43,65 +46,57 @@ def split_state(state, n):
     return [np.random.RandomState(a) for a in foo]
 
 
-def uniform(low, high, size, method='auto', seed=None):
-    if size is None:
-        method = 'pseudo'
+def uniform(low, high, size, method='auto', skip=1, dir_file=df, 
+            random_state=None):
+    low = np.asarray(low)
+    high = np.asarray(high)
+    size = np.asarray(size)
     if method == 'auto':
         try:
-            size = np.atleast_1d(size).astype(np.int)
+            return uniform(low, high, size, 'sobol', skip, dir_file)
         except:
-            raise ValueError('invalid value for size.')
-        if size.ndim <= 2 and 1 <= size.shape[-1] <= 40:
-            method = 'sobol'
-            if seed is None:
-                seed = 1
-            try:
-                seed = int(seed)
-                assert seed > 0
-            except:
-                raise ValueError('invalid value for seed.')
-        else:
-            method = 'pseudo'
-    if method == 'sobol':
-        return sobol_uniform(low, high, size, seed)
+            warnings.warn('first try with method = "sobol" failed, so next I '
+                          'will try to use "pseudo".', RuntimeWarning)
+        try:
+            return uniform(low, high, size, 'pseudo', random_state=random_state)
+        except:
+            raise ValueError('you select the method as "auto", but I find '
+                             'neither "sobol" nor "pseudo" works here.')
+    elif method == 'sobol':
+        if (low.ndim == 1 and low.shape == high.shape and size.ndim == 2 and
+            low.shape[0] == size.shape[1]):
+            size = size[0]
+        return sobol.uniform(low, high, size, skip, dir_file)
     elif method == 'pseudo':
-        return check_state(seed).uniform(low, high, size)
+        if low.ndim == 1 and low.shape == high.shape and size.size == 1:
+            size = (int(size), low.shape[0])
+        return check_state(random_state).uniform(low, high, size)
     else:
         raise ValueError('invalid value for method.')
 
 
-def multivariate_normal(mean, cov, size, method='auto', skip=None, 
+def multivariate_normal(mean, cov, size, method='auto', skip=1, dir_file=df, 
                         random_state=None):
-    if size is None:
-        method = 'pseudo'
-    mean = np.asarray(mean)
-    cov = np.asarray(cov)
     if method == 'auto':
         try:
-            size = np.atleast_1d(size).astype(np.int)
+            return multivariate_normal(mean, cov, size, 'sobol', skip, dir_file)
         except:
-            raise ValueError('invalid value for size.')
-        d = mean.shape[-1]
-        if (mean.shape == (d,) and cov.shape == (d, d) and size.ndim == 1 and 
-            1 <= d <= 40):
-            method = 'sobol'
-            if skip is None:
-                skip = 1
-            try:
-                skip = int(skip)
-                assert skip > 0
-            except:
-                raise ValueError('invalid value for skip.')
-        else:
-            method = 'pseudo'
-    if method == 'sobol':
-        return sobol_multivariate_normal(mean, cov, size, skip)
+            warnings.warn('first try with method = "sobol" failed, so next I '
+                          'will try to use "pseudo".', RuntimeWarning)
+        try:
+            return multivariate_normal(mean, cov, size, 'pseudo', 
+                                       random_state=random_state)
+        except:
+            raise ValueError('you select the method as "auto", but I find '
+                             'neither "sobol" nor "pseudo" works here.')
+    elif method == 'sobol':
+        return sobol.multivariate_normal(mean, cov, size, skip, dir_file)
     elif method == 'pseudo':
         return check_state(random_state).multivariate_normal(mean, cov, size)
     else:
         raise ValueError('invalid value for method.')
 
-        
+
 def resample(logq=None, m=None, n=None, method='systematic', nodes=[1, 100], 
              weights=None, random_state=None):
     if method == 'random':

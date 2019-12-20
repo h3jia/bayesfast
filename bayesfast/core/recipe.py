@@ -19,6 +19,8 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: allow IS over hmc_samples in OptimizeStep
 # TODO: review the choice of x_0 for SampleStep
 # TODO: monitor the progress of IS
+# TODO: improve optimization with trust region? 
+#       https://arxiv.org/pdf/1804.00154.pdf
 
 class BaseStep:
     
@@ -94,7 +96,7 @@ class BaseStep:
 class OptimizeStep(BaseStep):
     
     def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
-                 sample_options={'beta': 0.04}, prefit=False, eps_pp=0.1, 
+                 sample_options={'beta': 0.01}, prefit=False, eps_pp=0.1, 
                  eps_pq=0.1, max_iter=10, run_hmc=False, hmc_options={}):
         super().__init__(surrogate_list, fit_options, alpha_n, sample_options, 
                          prefit)

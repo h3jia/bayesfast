@@ -15,6 +15,9 @@ example-data/
 des-y1-w-chain-trimmed.txt
 tmp-examples/
 
+# tmp code for development
+tmp-dev/
+
 # Distribution / packaging
 .Python
 build/

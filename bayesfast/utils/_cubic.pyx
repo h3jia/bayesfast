@@ -115,7 +115,8 @@ cdef inline double _derivative(const double* c, double x) nogil:
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)            
-cdef double solve_newton(const double* c, double yp, double x0, double x1, double tol=1e-10) nogil:
+cdef double solve_newton(const double* c, double yp, double x0, double x1, 
+                         double tol=1e-10) nogil:
     cdef int i ##### TODO #####
     cdef double x, y
     i = 0
@@ -136,7 +137,8 @@ cdef double solve_newton(const double* c, double yp, double x0, double x1, doubl
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)            
-cdef double solve_bisect(const double* c, double yp, double x0, double x1, double tol=1e-10) nogil:
+cdef double solve_bisect(const double* c, double yp, double x0, double x1, 
+                         double tol=1e-10) nogil:
     cdef int i ##### TODO #####
     cdef double a, b, x
     i = 0

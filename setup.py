@@ -22,6 +22,14 @@ ext_modules = [
         # libraries=["m"],
     ),
     Extension(
+        "bayesfast.utils._sobol",
+        ["bayesfast/utils/_sobol.pyx"],
+        include_dirs=[np.get_include()],
+        # extra_compile_args=['-fopenmp'],
+        # extra_link_args=['-fopenmp'],
+        libraries=["m"],
+    ),
+    Extension(
         "bayesfast.modules._poly",
         ["bayesfast/modules/_poly.pyx"],
         # include_dirs=[np.get_include()],

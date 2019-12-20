@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from sklearn.decomposition import FastICA
-from ..utils import sobol_seq, check_client
+from ..utils import check_client
 from ..utils.kde import kde
 from ..utils.cubic import cubic_spline
 from ..utils.random import check_state, multivariate_normal
@@ -208,9 +208,9 @@ class RBIG:
                     y, A, B, m = self._ica(self._data)
                 except:
                     warnings.warn(
-                        "we found that sometimes ica goes wrong, but actually it "
-                        "can work if we use a different random seed, so let's give "
-                        "it one more chance.", RuntimeWarning)
+                        "we found that sometimes ica goes wrong, but actually "
+                        "it can work if we use a different random seed, so "
+                        "let's give it one more chance.", RuntimeWarning)
                     y, A, B, m = self._ica(self._data)
                 self._data = self._gaussianize_nd(y)
                 self._A = np.concatenate((self._A, A[np.newaxis]), axis=0)
