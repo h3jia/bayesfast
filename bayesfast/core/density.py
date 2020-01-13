@@ -1054,6 +1054,7 @@ class DensityLite:
     def has_true_fun_and_jac(self):
         return self.has_true_fun and self.has_true_jac
     
+
 """
 def DensityLite(logp=None, grad=None, logp_and_grad=None, dim=None, 
                 logp_args=(), logp_kwargs={}, grad_args=(), 

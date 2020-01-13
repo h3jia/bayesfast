@@ -16,10 +16,10 @@ try:
 except:
     HAS_GETDIST = False
 
-__all__ = ['RBIG']
+__all__ = ['INT']
 
 
-class RBIG:
+class INT:
     
     def __init__(self, data, client=None, bw_factor=1., weights=None, 
                  m_ica=None, random_state=None, random_method='auto', 
