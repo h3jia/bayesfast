@@ -1,5 +1,6 @@
 import numpy as np
 from collections import namedtuple, OrderedDict
+from ..utils.collections import VariableDict, PropertyList
 from copy import deepcopy
 import warnings
 from .module import *
@@ -17,68 +18,6 @@ __all__ = ['VariableDict', 'Pipeline', 'Density', 'DensityLite']
 # TODO: consider use_decay in Density.logp
 # TODO: consider input for Density.fit
 # TODO: use_bound vs use_decay
-
-class VariableDict:
-    
-    def __init__(self):
-        self._fun = OrderedDict()
-        self._jac = OrderedDict()
-    
-    def __getitem__(self, key):
-        new_dict = VariableDict()
-        if isinstance(key, str):
-            try:
-                fun = self._fun[key]
-            except:
-                fun = None
-            try:
-                jac = self._jac[key]
-            except:
-                jac = None
-            if fun is None and jac is None:
-                warnings.warn(
-                    'you asked for the key "{}", but we found neither its '
-                    'fun nor its jac.'.format(k), RuntimeWarning)
-            return np.asarray((fun, jac, 0))[:-1]
-        elif (isinstance(key, (list, tuple)) or 
-              (isinstance(key, np.ndarray) and key.dtype.kind == 'U')):
-            if isinstance(key, np.ndarray):
-                key = key.flatten()
-            for k in key:
-                try:
-                    new_dict._fun[k] = self._fun[k]
-                except:
-                    new_dict._fun[k] = None
-                try:
-                    new_dict._jac[k] = self._jac[k]
-                except:
-                    new_dict._jac[k] = None
-                if new_dict._fun[k] is None and new_dict._jac[k] is None:
-                    warnings.warn(
-                        'you asked for the key "{}", but we found neither its '
-                        'fun nor its jac.'.format(k), RuntimeWarning)
-        else:
-            raise ValueError('key should be a str, or a list/tuple/np.ndarray '
-                             'of str.')
-        return new_dict
-    
-    def __setitem__(self, key, value):
-        if not isinstance(key, str):
-            raise ValueError('key should be a str.')
-        try:
-            value = (value[0], value[1])
-            self._fun[key] = value[0]
-            self._jac[key] = value[1]
-        except:
-            raise ValueError('failed to get the values for fun and jac.')
-    
-    @property
-    def fun(self):
-        return self._fun
-    
-    @property
-    def jac(self):
-        return self._jac
 
 
 class Pipeline:
@@ -189,7 +128,7 @@ class Pipeline:
         if (extract_vars is None) or isinstance(extract_vars, str):
             pass
         else:
-            extract_vars = self._vars_check(extract_vars, 'extract', False,
+            extract_vars = self._var_check(extract_vars, 'extract', False,
                                             'remove')
         copy_x = bool(copy_x)
         return (use_surrogate, original_space, start, stop, extract_vars,
@@ -212,7 +151,7 @@ class Pipeline:
                                  'of {}'.format(tag, step))
         return step
     
-    _vars_check = Module._vars_check
+    _var_check = Module._var_check
     
     def fun(self, x, use_surrogate=False, original_space=True, start=None,
             stop=None, extract_vars=None, copy_x=False):
@@ -530,7 +469,7 @@ class Pipeline:
     
     @input_vars.setter
     def input_vars(self, names):
-        self._input_vars = self._vars_check(names, 'input', False, 'raise')
+        self._input_vars = self._var_check(names, 'input', False, 'raise')
     
     @property
     def var_dims(self):
