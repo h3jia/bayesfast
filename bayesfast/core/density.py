@@ -8,119 +8,110 @@ from ..transforms._constraint import *
 
 __all__ = ['VariableDict', 'Pipeline', 'Density', 'DensityLite']
 
-
 # TODO: finish DensityLite
 # TODO: add call counter
 # TODO: add checks in DensityLite
-# TODO: use customized PropertyList to simplify property checks
-# https://stackoverflow.com/a/39190103/12292488
 # TODO: update logp/logq transform when from_original_grad is ready
 # TODO: consider use_decay in Density.logp
 # TODO: consider input for Density.fit
 # TODO: use_bound vs use_decay
 
 
+ModuleSurrogate = namedtuple('ModuleSurrogate', ['module', 'surrogate'])
+
 class Pipeline:
+    """
+    Constructing composite functions from basic `Module`(s).
     
-    def __init__(self, module_list=None, input_vars=['__var__'], var_dims=None,
-                 surrogate_list=None, var_scales=None, hard_bounds=False):
+    Parameters
+    ----------
+    module_list : Module or 1-d array_like of Module, optional
+        List of `Module`(s) constituting the `Pipeline`. Set to `[]` by default.
+    input_vars : str or 1-d array_like of str, optional
+        Name(s) of input variable(s). Set to `['__var__']` by default.
+    var_dims : 1-d array_like of int, or None, optional
+        Used to divide and extract the variable(s) from the input. If 1-d
+        array_like, should have the same shape as `input_vars`. If `None`, will
+        be interpreted as there is only one input variable. Set to `None` by
+        default.
+    surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
+        List of surrogate modules. Set to `[]` by default.
+    var_scales : None or array_like of float(s), optional
+        Controlling the scaling of input variables. Set to `None` by default.
+    hard_bounds : bool or array_like, optional
+        Controlling whether `var_scales` should be interpreted as hard bounds,
+        or just used to rescale the variables. If bool, will be applied to all
+        the variables. If array_like, should have shape of `(# of input dim)` or
+        `(# of input dim, 2)`. Set to `False` by default.
+        
+    Notes
+    -----
+    See the tutorial for more information of usage.
+    """
+    def __init__(self, module_list=[], input_vars=['__var__'], var_dims=None,
+                 surrogate_list=[], var_scales=None, hard_bounds=False):
         self.module_list = module_list
         self.input_vars = input_vars
         self.var_dims = var_dims
         self.surrogate_list = surrogate_list
         self.var_scales = var_scales
         self.hard_bounds = hard_bounds
-        self._needs_input_check = False
-        # self.lite_options()
     
     @property
     def module_list(self):
-        self._needs_ml_check = True
         return self._module_list
     
     @module_list.setter
     def module_list(self, ml):
-        if ml is not None:
-            if isinstance(ml, Module):
-                ml = [ml]
-            if hasattr(ml, '__iter__'):
-                self._module_list = list(ml)
-                self._ml_check()
-            else:
-                raise ValueError(
-                    'module_list should a Module or a list of Module(s), or '
-                    'None if you want to reset it.')
-        else:
-            self._module_list = []
-            self._needs_ml_check = False
+        if isinstance(ml, Module):
+            ml = [ml]
+        self._module_list = PropertyList(ml, self._ml_check)
     
-    def _ml_check(self):
-        for i, m in enumerate(self._module_list):
+    @staticmethod
+    def _ml_check(ml):
+        for i, m in enumerate(ml):
             if not isinstance(m, Module):
-                raise ValueError('element #{} of self.module_list is not a '
-                                 'Module.'.format(i))
-        self._needs_ml_check = False
+                raise ValueError(
+                    'element #{} of module_list is not a Module.'.format(i))
+        return ml
     
     @property
     def surrogate_list(self):
-        self._needs_sl_check = True
         return self._surrogate_list
     
     @surrogate_list.setter
     def surrogate_list(self, sl):
-        if sl is not None:
-            if isinstance(sl, Surrogate):
-                sl = [sl]
-            if hasattr(sl, '__iter__'):
-                self._surrogate_list = list(sl)
-                self._sl_check()
-            else:
-                raise ValueError(
-                    'surrogate_list should a Surrogate or a list of '
-                    'Surrogate(s), or None if you want to leave it empty.')
-        else:
-            self._surrogate_list = []
-            self._needs_sl_check = False
+        if isinstance(sl, Surrogate):
+            sl = [sl]
+        self._surrogate_list = PropertyList(sl, self._sl_check)
     
-    def _sl_check(self):
-        for i, s in enumerate(self._surrogate_list):
+    def _sl_check(self, sl):
+        for i, s in enumerate(sl):
             if not isinstance(s, Surrogate):
-                raise ValueError('element #{} of self.surrogate_list is not a'
+                raise ValueError('element #{} of surrogate_list is not a '
                                  'Surrogate'.format(i))
-        self._build_surrogate_recipe()
-        self._needs_sl_check = False
+        self._build_surrogate_recipe(sl)
+        return sl
     
-    def _build_surrogate_recipe(self):
-        if self.has_surrogate:
+    def _build_surrogate_recipe(self, sl):
+        # ((0, start_0, extent_0), (1, start_1, extent_1), ...)
+        ns = len(sl)
+        if ns > 0:
             self._surrogate_recipe = np.array(
-                [[i, *s._scope] for i, s in enumerate(self._surrogate_list)])
+                [[i, *s._scope] for i, s in enumerate(sl)])
             _recipe_sort = np.argsort(
                 self._surrogate_recipe[:, 1] % self.n_module)
             self._surrogate_recipe = (
                 self._surrogate_recipe[_recipe_sort].astype(np.int))
-            for i in range(self.n_surrogate - 1):
+            for i in range(ns - 1):
                 if (np.sum(self._surrogate_recipe[i, 1:]) > 
                     self._surrogate_recipe[i + 1, 1]):
                     raise ValueError('the #{} surrogate model overlaps with '
                                      'the next one.'.format(i))
         else:
-            self._surrogate_recipe = np.empty((self.n_surrogate, 3),
-                                              dtype=np.int)
+            self._surrogate_recipe = np.empty((ns, 3), dtype=np.int)
     
-    """
-    def lite_options(self, use_surrogate=False, original_space=True, start=None,
-                    stop=None, extract_vars=None, copy_x=False):
-        keys = ['use_surrogate', 'original_sapce', 'start', 'stop',
-                'extract_vars', 'copy_x']
-        values = self._options_check(use_surrogate, original_space, start, stop,
-                                    extract_vars, copy_x)
-        self._lite_options = OrderedDict(zip(keys, values))
-    """
-    
-    def _options_check(self, use_surrogate, original_space, start, stop,
-                      extract_vars, copy_x):
-        use_surrogate = bool(use_surrogate)
-        original_space = bool(original_space)
+    def _options_check(self, start, stop, extract_vars):
         start = self._step_check(start, 'start')
         stop = self._step_check(stop, 'stop')
         if start > stop:
@@ -129,10 +120,8 @@ class Pipeline:
             pass
         else:
             extract_vars = self._var_check(extract_vars, 'extract', False,
-                                            'remove')
-        copy_x = bool(copy_x)
-        return (use_surrogate, original_space, start, stop, extract_vars,
-                copy_x)
+                                           'remove')
+        return start, stop, extract_vars
     
     def _step_check(self, step, tag):
         if step is None:
@@ -148,83 +137,57 @@ class Pipeline:
                 step = step % self.n_module
             except:
                 raise ValueError('{} should be an int or None, instead '
-                                 'of {}'.format(tag, step))
+                                 'of {}.'.format(tag, step))
         return step
     
     _var_check = Module._var_check
     
+    @property
+    def n_module(self):
+        return len(self._module_list)
+    
+    @property
+    def n_surrogate(self):
+        return len(self._surrogate_list)
+    
+    @property
+    def has_surrogate(self):
+        return self.n_surrogate > 0
+    
     def fun(self, x, use_surrogate=False, original_space=True, start=None,
             stop=None, extract_vars=None, copy_x=False):
-        if self._needs_ml_check:
-            self._ml_check()
-        if self._needs_sl_check:
-            self._sl_check()
-        if self._needs_input_check:
-            self._input_check()
         if copy_x:
             x = deepcopy(x)
-            copy_x = False
-        conf = self._options_check(use_surrogate, original_space, start, stop, 
-                                  extract_vars, copy_x)
-        use_surrogate, original_space, start, stop, extract_vars, copy_x = conf
+            copy_x = False # for possible recursions
+        start, stop, extract_vars = self._options_check(start, stop, 
+                                                        extract_vars)
+        conf = (bool(use_surrogate), bool(original_space), start, stop, 
+                extract_vars) # for possible recursions
         
-        if not isinstance(x, VariableDict):
+        # vectorization using recursions
+        # TODO: review this
+        if isinstance(x, VariableDict):
+            var_dict = x
+        else:
             x = np.atleast_1d(x)
             if x.ndim == 1:
                 if x.dtype.kind == 'f':
-                    var_dict = None
+                    if not original_space:
+                        x = self.to_original(x, False)
+                    var_dict = VariableDict()
+                    if self._input_cum is None:
+                        var_dict._fun[self._input_vars[0]] = x
+                    else:
+                        for i, n in enumerate(self._input_vars):
+                            var_dict._fun[n] = x[
+                                self._input_cum[i]:self._input_cum[i + 1]]
                 elif x.dtype.kind == 'O':
                     return np.asarray([self.fun(_x, *conf) for _x in x])
                 else:
                     raise ValueError('invalid input for fun.')
             else:
                 return np.asarray([self.fun(_x, *conf) for _x in x])
-        else:
-            var_dict = x
         
-        """
-        # TODO: there is probably a more graceful way to vectorize
-        if isinstance(x, VariableDict):
-            var_dict = x
-        else:
-            x = np.atleast_1d(x)
-            if x.dtype.kind == 'f':
-                if x.ndim == 1:
-                    var_dict = None
-                else:
-                    x = np.ascontiguousarray(x)
-                    x_f = x.reshape((size, -1))
-                    shape = x.shape[:-1]
-                    size = np.prod(shape)
-                    if isinstance(extract_vars, str):
-                        result_f = np.empty(size, dtype=np.float)
-                    else:
-                        result_f = np.empty(size, dtype='object')
-                    for i in range(size):
-                        result_f[i] = self.fun(x_f[i], *conf)
-                    return result_f.reshape(shape)
-            elif x.dtype.kind == 'O':
-                x = np.ascontiguousarray(x)
-                x_f = x.reshape(size)
-                shape = x.shape
-                size = np.prod(shape)
-                if isinstance(extract_vars, str):
-                    result_f = np.empty(size, dtype=np.float)
-                else:
-                    result_f = np.empty(size, dtype='object')
-                for i in range(size):
-                    result_f[i] = self.fun(x_f[i], *conf)
-                return result_f.reshape(shape)
-        """
-        
-        if var_dict is None:
-            if not original_space:
-                x = self.to_original(x, False)
-            var_dict = VariableDict()
-            for i, n in enumerate(self._input_vars):
-                var_dict._fun[n] = x[self._input_cum[i]:self._input_cum[i + 1]]
-        else:
-            pass
         if use_surrogate and self.has_surrogate:
             si = np.searchsorted(self._surrogate_recipe[:, 1], start)
             if si == self.n_surrogate:
@@ -257,9 +220,13 @@ class Pipeline:
                     try:
                         nn = _module._paste_vars[j]
                     except:
-                        raise ValueError(
-                            'failed to get the name from paste_vars for '
-                            'copy_vars #{}.'.format(j))
+                        k = 1
+                        while True:
+                            nn = n + '-Copy{}'.format(k)
+                            if nn in var_dict._fun:
+                                k += 1
+                            else:
+                                break
                     var_dict._fun[nn] = np.copy(var_dict._fun[n])
                 for n in _module._delete_vars:
                     del var_dict._fun[n]
@@ -276,78 +243,48 @@ class Pipeline:
     
     __call__ = fun
     
-    """
-    def fun_lite(self, x):
-        return self.fun(x, **self._lite_options)
-    """
-    
     def jac(self, x, use_surrogate=False, original_space=True, start=None,
             stop=None, extract_vars=None, copy_x=False):
         _faj = self.fun_and_jac(x, use_surrogate, original_space, start, stop,
                                 extract_vars, copy_x)
         if isinstance(extract_vars, str):
-            # return np.apply_along_axis(lambda xx: xx[1], -1, _faj)
-            return _faj[1]
+            return _faj[1] # _faj: (fun, jac)
         else:
-            return _faj
-    
-    """
-    def jac_lite(self, x):
-        return self.jac(x, **self._lite_options)
-    """
+            return _faj # _faj: VariableDict
     
     def fun_and_jac(self, x, use_surrogate=False, original_space=True,
                     start=None, stop=None, extract_vars=None, copy_x=False):
-        if self._needs_ml_check:
-            self._ml_check()
-        if self._needs_sl_check:
-            self._sl_check()
-        if self._needs_input_check:
-            self._input_check()
         if copy_x:
             x = deepcopy(x)
-            copy_x = False
-        conf = self._options_check(use_surrogate, original_space, start, stop, 
-                                  extract_vars, copy_x)
-        use_surrogate, original_space, start, stop, extract_vars, copy_x = conf
+            copy_x = False # for possible recursions
+        start, stop, extract_vars = self._options_check(start, stop, 
+                                                        extract_vars)
+        conf = (bool(use_surrogate), bool(original_space), start, stop, 
+                extract_vars) # for possible recursions
         
-        """
-        if not isinstance(x, VariableDict):
-            x = np.atleast_1d(x)
-            if x.ndim == 1:
-                if x.dtype.kind == 'f':
-                    var_dict = None
-                elif x.dtype.kind == 'O':
-                    if isinstance(extract_vars, str):
-                        return np.asarray([(*self.fun_and_jac(_x, *conf), 0)
-                                           for _x in x])[..., :-1]
-                    else:
-                        return np.asarray([self.fun_and_jac(_x, *conf) 
-                                           for _x in x])
-                else:
-                    raise ValueError('invalid input for fun_and_jac.')
-            else:
-                if (isinstance(extract_vars, str) and x.dtype.kind == 'f' and 
-                    x.ndim == 2):
-                    return np.asarray([(*self.fun_and_jac(_x, *conf), 0)
-                                       for _x in x])[..., :-1]
-                else:
-                    return np.asarray([self.fun_and_jac(_x, *conf) for _x 
-                                       in x])
-            # in some cases, the additional 0 is appended to make numpy create 
-            # an object array correctly, 
-            # see https://stackoverflow.com/q/51005699/12292488
-        else:
-            var_dict = x
-        """
-        
-        # TODO: there is probably a more graceful way to vectorize
+        # since in certain cases we need to return (vec of fun, vec of jac)
+        # seems that we directly cannot use recursions to vectorize here
+        # TODO: review this
         if isinstance(x, VariableDict):
             var_dict = x
         else:
             x = np.atleast_1d(x)
             if x.dtype.kind == 'f' and x.ndim == 1:
-                var_dict = None
+                if not original_space:
+                    j = np.diag(self.to_original_grad(x, False))
+                    x = self.to_original(x, False)
+                else:
+                    j = np.eye(x.shape[-1])
+                var_dict = VariableDict()
+                if self._input_cum is None:
+                    var_dict._fun[self._input_vars[0]] = x
+                    var_dict._jac[self._input_vars[0]] = j
+                else:
+                    for i, n in enumerate(self._input_vars):
+                        var_dict._fun[n] = x[
+                            self._input_cum[i]:self._input_cum[i + 1]]
+                        var_dict._jac[n] = j[
+                            self._input_cum[i]:self._input_cum[i + 1]]
             else:
                 x = np.ascontiguousarray(x)
                 if x.dtype.kind == 'f':
@@ -380,18 +317,6 @@ class Pipeline:
                         result[i] = self.fun_and_jac(x_f[i], *conf)
                     return result.reshape(shape)
         
-        if var_dict is None:
-            if not original_space:
-                j = np.diag(self.to_original_grad(x, False))
-                x = self.to_original(x, False)
-            else:
-                j = np.eye(self._input_size)
-            var_dict = VariableDict()
-            for i, n in enumerate(self._input_vars):
-                var_dict._fun[n] = x[self._input_cum[i]:self._input_cum[i + 1]]
-                var_dict._jac[n] = j[self._input_cum[i]:self._input_cum[i + 1]]
-        else:
-            pass
         if use_surrogate and self.has_surrogate:
             si = np.searchsorted(self._surrogate_recipe[:, 1], start)
             if si == self.n_surrogate:
@@ -427,136 +352,113 @@ class Pipeline:
                     try:
                         nn = _module._paste_vars[j]
                     except:
-                        raise ValueError(
-                            'failed to get the name from paste_vars for '
-                            'copy_vars #{}.'.format(j))
+                        k = 1
+                        while True:
+                            nn = n + '-Copy{}'.format(k)
+                            if (nn in var_dict._fun) or (nn in var_dict._jac):
+                                k += 1
+                            else:
+                                break
                     var_dict[nn] = (np.copy(var_dict._fun[n]), 
                                     np.copy(var_dict._jac[n]))
                 for n in _module._delete_vars:
                     del var_dict._fun[n], var_dict._jac[n]
             except:
-                raise
-                """raise RuntimeError(
+                raise RuntimeError(
                     'pipeline fun_and_jac evaluation failed at step '
-                    '#{}.'.format(i))"""
+                    '#{}.'.format(i))
             i += di
         if extract_vars is None:
             return var_dict
         else:
             return var_dict[extract_vars]
     
-    """
-    def fun_and_jac_lite(self, x):
-        return self.fun_and_jac(x, **self._lite_options)
-    """
-    
-    @property
-    def has_true_fun(self):
-        return all(m.has_fun or m.has_fun_and_jac for m in self._module_list)
-    
-    @property
-    def has_true_jac(self):
-        return all(m.has_jac or m.has_fun_and_jac for m in self._module_list)
-    
-    @property
-    def has_true_fun_and_jac(self):
-        return self.has_true_fun and self.has_true_jac
-    
     @property
     def input_vars(self):
-        self._needs_input_check = True
         return self._input_vars
     
     @input_vars.setter
     def input_vars(self, names):
-        self._input_vars = self._var_check(names, 'input', False, 'raise')
+        self._input_vars = PropertyList(
+            names, lambda x: self._var_check(x, 'input', False, 'raise'))
     
     @property
     def var_dims(self):
-        self._needs_input_check = True
         return self._var_dims
     
     @var_dims.setter
     def var_dims(self, dims):
+        if dims is None:
+            self._var_dims = None
+            self._input_cum = None
+        else:
+            self._var_dims = self._dim_check(dims)
+            self._var_dims.flags.writeable = False # TODO: PropertyArray?
+    
+    def _dim_check(self, dims):
         try:
-            dims = np.asarray(dims, dtype=np.int).reshape(-1)
+            dims = np.atleast_1d(dims).astype(np.int)
             assert np.all(dims > 0)
-            assert len(dims) > 0
+            assert dims.size > 0 and dims.ndim == 1
         except:
-            raise ValueError(
-                'var_dims should be an array of positive int(s), instead of '
-                '{}.'.format(dims))
-        self._var_dims = dims
+            raise ValueError('var_dims should be a 1-d array_like of positive '
+                             'int(s), or None, instead of {}.'.format(dims))
         self._input_cum = np.cumsum(np.insert(dims, 0, 0))
-        self._input_size = np.sum(dims)
+        return dims
     
     @property
     def input_size(self):
-        return np.sum(self._var_dims)
+        return np.sum(self._var_dims) if (self.var_dims is not None) else None
     
     @property
     def var_scales(self):
-        self._needs_input_check = True
         return self._var_scales
     
     @var_scales.setter
     def var_scales(self, scales):
         if scales is None:
-            pass
+            self._var_scales = None
         else:
-            try:
-                scales = np.ascontiguousarray(scales)
-                if scales.shape == (self.input_size,):
-                    scales = np.array((np.zeros_like(scales), scales)).T.copy()
-                if not scales.shape == (self.input_size, 2):
-                    raise ValueError('I do not know how to interpret the shape '
-                                     'of var_scales.')
-            except:
-                raise ValueError('Invalid value for var_scales.')
-        self._var_scales = scales
+            self._var_scales = self._scale_check(scales)
+            self._var_scales.flags.writeable = False # TODO: PropertyArray?
+    
+    @staticmethod
+    def _scale_check(scales):
+        try:
+            scales = np.ascontiguousarray(scales)
+            if scales.ndim == 1:
+                scales = np.array((np.zeros_like(scales), scales)).T.copy()
+            if not (scales.ndim == 2 and scales.shape[-1] == 2):
+                raise ValueError('I do not know how to interpret the shape '
+                                 'of var_scales.')
+        except:
+            raise ValueError('Invalid value for var_scales.')
+        return scales
     
     @property
     def hard_bounds(self):
-        self._needs_input_check = True
         return self._hard_bounds
     
     @hard_bounds.setter
     def hard_bounds(self, bounds):
         if isinstance(bounds, bool):
-            self._hard_bounds = np.full((self.input_size, 2), bounds, np.uint8)
-        else:
-            try:
-                bounds = np.ascontiguousarray(bounds).astype(bool).astype(
-                    np.uint8)
-                if bounds.shape == (self.input_size,):
-                    bounds = np.array((bounds, bounds)).T.copy()
-                elif bounds.shape == (self.input_size, 2):
-                    pass
-                else:
-                    raise ValueError('I do not know how to interpret the shape '
-                                     'of hard_bounds.')
-            except:
-                raise ValueError('Invalid value for hard_bounds')
             self._hard_bounds = bounds
+        else:
+            self._hard_bounds = self._bounds_check(bounds)
+            self._hard_bounds.flags.writeable = False # TODO: PropertyArray?
     
-    def _input_check(self):
-        self.input_vars = self._input_vars
-        self.var_dims = self._var_dims
-        self.var_scales = self._var_scales
-        self.hard_bounds = self._hard_bounds
-        self._needs_input_check = False
-    
-    @property
-    def n_module(self):
-        return len(self._module_list)
-    
-    @property
-    def n_surrogate(self):
-        return len(self._surrogate_list)
-    
-    @property
-    def has_surrogate(self):
-        return self.n_surrogate > 0
+    @staticmethod
+    def _bounds_check(bounds):
+        try:
+            bounds = np.atleast_1d(bounds).astype(bool).astype(np.uint8).copy()
+            if bounds.ndim == 1:
+                bounds = np.array((bounds, bounds)).T.copy()
+            if not (bounds.ndim == 2 and bounds.shape[-1] == 2):
+                raise ValueError(
+                    'I do not know how to interpret the shape of hard_bounds.')
+        except:
+            raise ValueError('Invalid value for hard_bounds')
+        return bounds
     
     def _constraint(self, x, out, f, f2):
         _return = False
@@ -570,11 +472,14 @@ class Pipeline:
             if not (isinstance(out, np.ndarray) and x.shape == out.shape):
                 raise ValueError('invalid value for out.')
             out = np.ascontiguousarray(out)
+        if isinstance(self._hard_bounds, bool):
+            _hb = self._hard_bounds * np.ones((x.shape[-1], 2), dtype=np.uint8)
+        else:
+            _hb = self._hard_bounds
         if x.ndim == 1:
-            f(x, self._var_scales, out, self._hard_bounds, x.shape[0])
+            f(x, self._var_scales, out, _hb, x.shape[0])
         elif x.ndim == 2:
-            f2(x, self._var_scales, out, self._hard_bounds, x.shape[1],
-               x.shape[0])
+            f2(x, self._var_scales, out, _hb, x.shape[1], x.shape[0])
         else:
             raise NotImplementedError('x should be 1-d or 2-d for now.')
         if _return:
@@ -708,13 +613,6 @@ class Density(Pipeline):
     
     __call__ = logp
     
-    """
-    def logp_lite(self, x):
-        conf = self._lite_options.copy()
-        del conf['extract_vars']
-        return self.logp(x, **conf)
-    """
-    
     def grad(self, x, use_surrogate=False, original_space=True, start=None,
              stop=None, copy_x=False):
         _grad = self.jac(x, use_surrogate, original_space, start, stop,
@@ -729,13 +627,6 @@ class Density(Pipeline):
             _grad += (self.to_original_grad2(x, False) / 
                       self.to_original_grad(x, False))
         return _grad
-    
-    """
-    def grad_lite(self, x):
-        conf = self._lite_options.copy()
-        del conf['extract_vars']
-        return self.grad(x, **conf)
-    """
     
     def logp_and_grad(self, x, use_surrogate=False, original_space=True, 
                       start=None, stop=None, copy_x=False):
@@ -756,13 +647,6 @@ class Density(Pipeline):
             _grad += (self.to_original_grad2(x, False) / 
                       self.to_original_grad(x, False))
         return _logp, _grad
-    
-    """
-    def logp_and_grad_lite(self, x):
-        conf = self._lite_options.copy()
-        del conf['extract_vars']
-        return self.logp_and_grad(x, **conf)
-    """
     
     @property
     def alpha(self):
@@ -823,10 +707,9 @@ class Density(Pipeline):
                   gamma=None):
         try:
             x = np.ascontiguousarray(x)
-            assert x.shape[-1] == self._input_size
         except:
             raise ValueError('invalid value for x.')
-        x = x.reshape((-1, self._input_size))
+        x = x.reshape((-1, x.shape[-1]))
         x_o = x if original_space else self.to_original(x)
         self._mu = np.mean(x_o, axis=0)
         self._hess = np.linalg.inv(np.cov(x_o, rowvar=False))

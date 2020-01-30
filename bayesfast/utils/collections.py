@@ -26,11 +26,8 @@ class VariableDict:
                     'you asked for the key "{}", but we found neither its '
                     'fun nor its jac.'.format(k), RuntimeWarning)
             return np.asarray((fun, jac, 0))[:-1]
-        elif (isinstance(key, (list, tuple)) or 
-              (isinstance(key, np.ndarray) and key.dtype.kind == 'U')):
+        elif isinstance(key, (list, tuple, np.ndarray)):
             new_dict = VariableDict()
-            if isinstance(key, np.ndarray):
-                key = key.flatten()
             for k in key:
                 try:
                     new_dict._fun[k] = self._fun[k]

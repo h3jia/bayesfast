@@ -7,6 +7,7 @@ __all__ = ['Module', 'Surrogate']
 
 # TODO: add link of tutorial
 # TODO: implement `Module.print_summary()`
+# TODO: PropertyArray?
 
 
 class Module:
@@ -16,11 +17,11 @@ class Module:
     Parameters
     ----------
     fun : callable or None, optional
-        Callable returning the value of function, or None if undefined.
+        Callable returning the value of function, or `None` if undefined.
     jac : callable or None, optional
-        Callable returning the value of Jacobian, or None if undefined.
+        Callable returning the value of Jacobian, or `None` if undefined.
     fun_and_jac : callable or None, optional
-        Callable returning the function and Jacobian at the same time, or None
+        Callable returning the function and Jacobian at the same time, or `None`
         if undefined.
     input_vars : str or 1-d array_like of str, optional
         Name(s) of input variable(s). Set to `['__var__']` by default.
@@ -33,10 +34,10 @@ class Module:
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to `[]` by default.
-    recombine_input : bool or 1-d array_like of int, optional
+    recombine_input : bool or 1-d array_like of positive int, optional
         Controlling the recombination of input variables. Set to `False` by
         default.
-    recombine_output : bool or 1-d array_like of int, optional
+    recombine_output : bool or 1-d array_like of positive int, optional
         Controlling the recombination of output variables. Set to `False` by
         default.
     var_scales : None or array_like, optional
@@ -183,7 +184,7 @@ class Module:
     
     @property
     def has_fun(self):
-        return (self._fun is not None)
+        return self._fun is not None
     
     __call__ = fun
     
@@ -216,7 +217,7 @@ class Module:
     
     @property
     def has_jac(self):
-        return (self._jac is not None)
+        return self._jac is not None
     
     @property
     def fun_and_jac(self):
@@ -251,7 +252,7 @@ class Module:
     
     @property
     def has_fun_and_jac(self):
-        return (self._fun_and_jac is not None)
+        return self._fun_and_jac is not None
     
     @property
     def ncall_fun(self):
@@ -410,9 +411,10 @@ class Module:
     def var_scales(self, scales):
         if scales is None:
             self._var_scales = None
-            self._var_scales_diff = 1
+            self._var_scales_diff = 1.
         else:
-            self._var_scales = PropertyList(scales, self._scale_check)
+            self._var_scales = self._scale_check(scales)
+            self._var_scales.flags.writeable = False # TODO: PropertyArray?
     
     @property
     def label(self):
