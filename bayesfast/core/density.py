@@ -11,7 +11,6 @@ __all__ = ['VariableDict', 'Pipeline', 'Density', 'DensityLite']
 # TODO: finish DensityLite
 # TODO: add call counter
 # TODO: add checks in DensityLite
-# TODO: update logp/logq transform when from_original_grad is ready
 # TODO: consider use_decay in Density.logp
 # TODO: consider input for Density.fit
 # TODO: use_bound vs use_decay
@@ -173,7 +172,7 @@ class Pipeline:
             if x.ndim == 1:
                 if x.dtype.kind == 'f':
                     if not original_space:
-                        x = self.to_original(x, False)
+                        x = self.to_original(x)
                     var_dict = VariableDict()
                     if self._input_cum is None:
                         var_dict._fun[self._input_vars[0]] = x
@@ -271,8 +270,8 @@ class Pipeline:
             x = np.atleast_1d(x)
             if x.dtype.kind == 'f' and x.ndim == 1:
                 if not original_space:
-                    j = np.diag(self.to_original_grad(x, False))
-                    x = self.to_original(x, False)
+                    j = np.diag(self.to_original_grad(x))
+                    x = self.to_original(x)
                 else:
                     j = np.eye(x.shape[-1])
                 var_dict = VariableDict()
@@ -425,7 +424,7 @@ class Pipeline:
     @staticmethod
     def _scale_check(scales):
         try:
-            scales = np.ascontiguousarray(scales)
+            scales = np.ascontiguousarray(scales).astype(np.float)
             if scales.ndim == 1:
                 scales = np.array((np.zeros_like(scales), scales)).T.copy()
             if not (scales.ndim == 2 and scales.shape[-1] == 2):
@@ -444,11 +443,11 @@ class Pipeline:
         if isinstance(bounds, bool):
             self._hard_bounds = bounds
         else:
-            self._hard_bounds = self._bounds_check(bounds)
+            self._hard_bounds = self._bound_check(bounds)
             self._hard_bounds.flags.writeable = False # TODO: PropertyArray?
     
     @staticmethod
-    def _bounds_check(bounds):
+    def _bound_check(bounds):
         try:
             bounds = np.atleast_1d(bounds).astype(bool).astype(np.uint8).copy()
             if bounds.ndim == 1:
@@ -460,104 +459,78 @@ class Pipeline:
             raise ValueError('Invalid value for hard_bounds')
         return bounds
     
-    def _constraint(self, x, out, f, f2):
-        _return = False
-        x = np.ascontiguousarray(x)
-        if out is None:
-            out = x
-        elif out is False:
-            out = np.empty_like(x)
-            _return = True
-        else:
-            if not (isinstance(out, np.ndarray) and x.shape == out.shape):
-                raise ValueError('invalid value for out.')
-            out = np.ascontiguousarray(out)
-        if isinstance(self._hard_bounds, bool):
-            _hb = self._hard_bounds * np.ones((x.shape[-1], 2), dtype=np.uint8)
-        else:
-            _hb = self._hard_bounds
-        if x.ndim == 1:
-            f(x, self._var_scales, out, _hb, x.shape[0])
-        elif x.ndim == 2:
-            f2(x, self._var_scales, out, _hb, x.shape[1], x.shape[0])
-        else:
-            raise NotImplementedError('x should be 1-d or 2-d for now.')
-        if _return:
-            return out
-        
-    def from_original(self, x, out=False):
+    def _constraint(self, x, out, f, f2, k):
         if self._var_scales is None:
-            if out is None:
+            if k == 0:
+                _out = x.copy()
+            elif k == 1:
+                _out = np.ones_like(x)
+            elif k == 2:
+                _out = np.zeros_like(x)
+            else:
+                raise RuntimeError('unexpected value for k.')
+            if out is False:
+                x = _out
                 return
-            elif out is False:
-                return x.copy()
+            elif out is True:
+                return _out
             else:
                 if not (isinstance(out, np.ndarray) and x.shape == out.shape):
                     raise ValueError('invalid value for out.')
-                out = x.copy()
+                out = _out
                 return
         else:
-            return self._constraint(x, out, _from_original_f, _from_original_f2)
-    
-    def from_original_grad(self, x, out=False):
-        raise NotImplementedError
-    
-    def from_original_grad2(self, x, out=False):
-        raise NotImplementedError
-    
-    def to_original(self, x, out=False):
-        if self._var_scales is None:
-            if out is None:
-                return
-            elif out is False:
-                return x.copy()
+            _return = False
+            x = np.ascontiguousarray(x)
+            if out is False:
+                out = x
+            elif out is True:
+                out = np.empty_like(x)
+                _return = True
             else:
                 if not (isinstance(out, np.ndarray) and x.shape == out.shape):
                     raise ValueError('invalid value for out.')
-                out = x.copy()
-                return
-        else:
-            return self._constraint(x, out, _to_original_f, _to_original_f2)
-    
-    def to_original_grad(self, x, out=False):
-        if self._var_scales is None:
-            if out is None:
-                x = np.ones_like(x)
-                return
-            elif out is False:
-                return np.ones_like(x)
+                out = np.ascontiguousarray(out)
+            if isinstance(self._hard_bounds, bool):
+                _hb = self._hard_bounds * np.ones((x.shape[-1], 2), np.uint8)
             else:
-                if not (isinstance(out, np.ndarray) and x.shape == out.shape):
-                    raise ValueError('invalid value for out.')
-                out = np.ones_like(x)
-                return
-        else:
-            return self._constraint(x, out, _to_original_j, _to_original_j2)
-    
-    def to_original_grad2(self, x, out=False):
-        if self._var_scales is None:
-            if out is None:
-                x = np.zeros_like(x)
-                return
-            elif out is False:
-                return np.zeros_like(x)
+                _hb = self._hard_bounds
+            if x.ndim == 1:
+                f(x, self._var_scales, out, _hb, x.shape[0])
+            elif x.ndim == 2:
+                f2(x, self._var_scales, out, _hb, x.shape[1], x.shape[0])
             else:
-                if not (isinstance(out, np.ndarray) and x.shape == out.shape):
-                    raise ValueError('invalid value for out.')
-                out = np.zeros_like(x)
-                return
-        else:
-            return self._constraint(x, out, _to_original_jj, _to_original_jj2)
+                raise NotImplementedError('x should be 1-d or 2-d for now.')
+            if _return:
+                return out
+    
+    def from_original(self, x, out=True):
+        return self._constraint(x, out, _from_original_f, _from_original_f2, 0)
+    
+    def from_original_grad(self, x, out=True):
+        return self._constraint(x, out, _from_original_j, _from_original_j2, 1)
+    
+    def from_original_grad2(self, x, out=True):
+        return self._constraint(
+            x, out, _from_original_jj, _from_original_jj2, 2)
+    
+    def to_original(self, x, out=True):
+        return self._constraint(x, out, _to_original_f, _to_original_f2, 0)
+    
+    def to_original_grad(self, x, out=True):
+        return self._constraint(x, out, _to_original_j, _to_original_j2, 1)
+    
+    def to_original_grad2(self, x, out=True):
+        return self._constraint(x, out, _to_original_jj, _to_original_jj2, 2)
     
     def _get_diff(self, density, x_trans, x):
-        if x_trans is None:
-            if x is None:
-                raise ValueError('x_trans and x cannot both be None.')
-            else:
-                x_trans = self.from_original(x, False)
-        diff = np.sum(
-            np.log(np.abs(self.to_original_grad(x_trans, False))), axis=-1)
-        return diff
+        if x is not None:
+            return -np.sum(np.log(np.abs(self.from_original_grad(x))), axis=-1)
+        elif x_trans is not None:
+            return np.sum(np.log(np.abs(self.to_original_grad(x_trans))), 
+                          axis=-1)
+        else:
+            raise ValueError('x and x_trans cannot both be None.')
     
     def to_original_density(self, density, x_trans=None, x=None):
         diff = self._get_diff(density, x_trans, x)
@@ -608,7 +581,7 @@ class Density(Pipeline):
                               x_o - self._mu)
             _logp += -self._gamma * np.clip(beta2 - self._alpha2, 0, np.inf)
         if not original_space:
-            _logp += np.sum(np.log(np.abs(self.to_original_grad(x, False))))
+            _logp += np.sum(np.log(np.abs(self.to_original_grad(x))))
         return _logp
     
     __call__ = logp
@@ -624,8 +597,7 @@ class Density(Pipeline):
             _grad += (-2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
                       (beta2 > self._alpha2)[..., np.newaxis])
         if not original_space:
-            _grad += (self.to_original_grad2(x, False) / 
-                      self.to_original_grad(x, False))
+            _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _grad
     
     def logp_and_grad(self, x, use_surrogate=False, original_space=True, 
@@ -643,9 +615,8 @@ class Density(Pipeline):
             _grad += (-2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
                       (beta2 > self._alpha2)[..., np.newaxis])
         if not original_space:
-            _logp += np.sum(np.log(np.abs(self.to_original_grad(x, False))))
-            _grad += (self.to_original_grad2(x, False) / 
-                      self.to_original_grad(x, False))
+            _logp += np.sum(np.log(np.abs(self.to_original_grad(x))))
+            _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _logp, _grad
     
     @property
