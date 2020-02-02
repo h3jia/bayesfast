@@ -5,7 +5,6 @@ import warnings
 
 __all__ = ['Module', 'Surrogate']
 
-# TODO: add link of tutorial
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
 
@@ -48,12 +47,8 @@ class Module:
         Additional arguments to be passed to `fun`, `jac` and `fun_and_jac`.
         Will be stored as tuples.
     fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
-        Additional keyword arguments to be passed to `fun`, `jac` and 
+        Additional keyword arguments to be passed to `fun`, `jac` and
         `fun_and_jac`.
-    
-    Notes
-    -----
-    See the tutorial for more information of usage.
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
                  input_vars=['__var__'], output_vars=['__var__'], copy_vars=[],
@@ -449,7 +444,7 @@ class Module:
             except:
                 raise ValueError('{}_kwargs should be a dict, instead of '
                                  '{}.'.format(tag, kwargs))
-        
+    
     @property
     def fun_args(self):
         return self._fun_args
@@ -457,7 +452,7 @@ class Module:
     @fun_args.setter
     def fun_args(self, args):
         self._fun_args = self._args_setter(args, 'fun')
-            
+    
     @property
     def fun_kwargs(self):
         return self._fun_kwargs
@@ -465,7 +460,7 @@ class Module:
     @fun_kwargs.setter
     def fun_kwargs(self, kwargs):
         self._fun_kwargs = self._kwargs_setter(kwargs, 'fun')
-            
+    
     @property
     def jac_args(self):
         return self._jac_args
@@ -473,7 +468,7 @@ class Module:
     @jac_args.setter
     def jac_args(self, args):
         self._jac_args = self._args_setter(args, 'jac')
-            
+    
     @property
     def jac_kwargs(self):
         return self._jac_kwargs
@@ -481,7 +476,7 @@ class Module:
     @jac_kwargs.setter
     def jac_kwargs(self, kwargs):
         self._jac_kwargs = self._kwargs_setter(kwargs, 'jac')
-            
+    
     @property
     def fun_and_jac_args(self):
         return self._fun_and_jac_args
@@ -489,7 +484,7 @@ class Module:
     @fun_and_jac_args.setter
     def fun_and_jac_args(self, args):
         self._fun_and_jac_args = self._args_setter(args, 'fun_and_jac')
-            
+    
     @property
     def fun_and_jac_kwargs(self):
         return self._fun_and_jac_kwargs
@@ -497,7 +492,7 @@ class Module:
     @fun_and_jac_kwargs.setter
     def fun_and_jac_kwargs(self, kwargs):
         self._fun_and_jac_kwargs = self._kwargs_setter(kwargs, 'fun_and_jac')
-            
+    
     def reset_counter(self):
         self._ncall_fun = 0
         self._ncall_jac = 0
@@ -534,8 +529,7 @@ class Surrogate(Module):
     
     Notes
     -----
-    Unlike `Module`, the default value of `recombine_input` will be `True`. See
-    the tutorial for more information of usage.
+    Unlike `Module`, the default value of `recombine_input` will be `True`.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1), *args,
                  **kwargs):
