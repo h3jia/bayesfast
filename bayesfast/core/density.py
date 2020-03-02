@@ -11,6 +11,8 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: add call counter?
 # TODO: review the interface of decay and bound
 # TODO: move fit to Pipeline?
+# TODO: finish DensityLite
+# TODO: add checks in DensityLite
 
 
 class _PipelineBase:
@@ -834,7 +836,7 @@ class DensityLite(_PipelineBase):
     def logp(self, lp):
         if callable(lp):
             self._logp = lp
-        elif lp is None:
+        elif logp_ is None:
             self._logp = None
         else:
             raise ValueError('logp should be callable, or None if you want to '
@@ -842,6 +844,7 @@ class DensityLite(_PipelineBase):
     
     def _logp_wrapped(self, x, original_space=True, copy_x=False, 
                       vectorized=True):
+        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -849,8 +852,8 @@ class DensityLite(_PipelineBase):
         if vectorized:
             _logp = self._logp(x_o, *self.logp_args, **logp_kwargs)
         else:
-            _logp = np.apply_along_axis(self._logp, -1, x_o, *self.logp_args,
-                                        **self.logp_kwargs)
+            _logp = np.apply_along_axis(self._logp, -1, x_o, self.logp_args,
+                                        self.logp_kwargs)
         if not original_space:
             _logp += self._get_diff(x_trans=x)
         return _logp
@@ -872,7 +875,7 @@ class DensityLite(_PipelineBase):
     def grad(self, gd):
         if callable(gd):
             self._grad = gd
-        elif gd is None:
+        elif grad_ is None:
             self._grad = None
         else:
             raise ValueError('grad should be callable, or None if you want to '
@@ -880,6 +883,7 @@ class DensityLite(_PipelineBase):
     
     def _grad_wrapped(self, x, original_space=True, copy_x=False,
                       vectorized=True):
+        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -887,8 +891,8 @@ class DensityLite(_PipelineBase):
         if vectorized:
             _grad = self._grad(x_o, *self.grad_args, **self.grad_kwargs)
         else:
-            _grad = np.apply_along_axis(self._grad, -1, x_o, *self.grad_args,
-                                        **self.grad_kwargs)
+            _grad = np.apply_along_axis(self._grad, -1, x_o, self.grad_args,
+                                        self.grad_kwargs)
         if not original_space:
             _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _grad
@@ -911,14 +915,15 @@ class DensityLite(_PipelineBase):
     def logp_and_grad(self, lpgd):
         if callable(lpgd):
             self._logp_and_grad = lpgd
-        elif lpgd is None:
+        elif logp_and_grad_ is None:
             self._logp_and_grad = None
         else:
             raise ValueError('logp_and_grad should be callable, or None if you'
                              'want to reset it.')
     
     def _logp_and_grad_wrapped(self, x, original_space=True, copy_x=False,
-                               vectorized=False):
+                               vectorized=True):
+        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -927,12 +932,7 @@ class DensityLite(_PipelineBase):
             _logp, _grad = self._logp_and_grad(x_o, *self.logp_and_grad_args,
                                                **self.logp_and_grad_kwargs)
         else:
-            _lpgd = np.apply_along_axis(
-                self._logp_and_grad, -1, x_o, *self.logp_and_grad_args,
-                **self.logp_and_grad_kwargs)
-            _logp = _lpgd[..., 0].astype(np.float)
-            _grad = np.apply_along_axis(
-                lambda x: list(x), -1, _lpgd[..., 1]).astype(np.float)
+            
         if not original_space:
             _logp += self._get_diff(x_trans=x)
             _grad += self.to_original_grad2(x) / self.to_original_grad(x)
