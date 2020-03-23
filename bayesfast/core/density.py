@@ -11,8 +11,6 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: add call counter?
 # TODO: review the interface of decay and bound
 # TODO: move fit to Pipeline?
-# TODO: finish DensityLite
-# TODO: add checks in DensityLite
 
 
 class _PipelineBase:
@@ -410,7 +408,7 @@ class Pipeline(_PipelineBase):
                 extract_vars) # for possible recursions
         
         # since in certain cases we need to return (vec of fun, vec of jac)
-        # seems that we directly cannot use recursions to vectorize here
+        # seems that we cannot directly use recursions to vectorize here
         # TODO: review this
         if isinstance(x, VariableDict):
             var_dict = x
@@ -844,7 +842,6 @@ class DensityLite(_PipelineBase):
     
     def _logp_wrapped(self, x, original_space=True, copy_x=False, 
                       vectorized=True):
-        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -883,7 +880,6 @@ class DensityLite(_PipelineBase):
     
     def _grad_wrapped(self, x, original_space=True, copy_x=False,
                       vectorized=True):
-        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -923,7 +919,6 @@ class DensityLite(_PipelineBase):
     
     def _logp_and_grad_wrapped(self, x, original_space=True, copy_x=False,
                                vectorized=True):
-        ########################################################################
         x = np.atleast_1d(x)
         if copy_x:
             x = np.copy(x)
@@ -932,7 +927,13 @@ class DensityLite(_PipelineBase):
             _logp, _grad = self._logp_and_grad(x_o, *self.logp_and_grad_args,
                                                **self.logp_and_grad_kwargs)
         else:
-            
+            # TODO: review this
+            _lag = np.apply_along_axis(
+                self._logp_and_grad, -1, x_o, self.logp_and_grad_args,
+                self.logp_and_grad_kwargs)
+            _logp = _lag[..., 0]
+            _grad = np.apply_along_axis(lambda x: list(x), -1, _lag[..., 1])
+            # otherwise, it will be an object array
         if not original_space:
             _logp += self._get_diff(x_trans=x)
             _grad += self.to_original_grad2(x) / self.to_original_grad(x)
@@ -1011,4 +1012,3 @@ class DensityLite(_PipelineBase):
     def logp_and_grad_kwargs(self, kwargs):
         self._logp_and_grad_kwargs = self._kwargs_setter(kwargs,
                                                          'logp_and_grad')
-    
