@@ -1,6 +1,7 @@
 import numpy as np
 from collections import namedtuple, OrderedDict
 from ..utils.collections import VariableDict, PropertyList
+from ..utils import all_isinstance
 from copy import deepcopy
 import warnings
 from .module import Module, Surrogate
@@ -210,7 +211,11 @@ class Pipeline(_PipelineBase):
     def module_list(self, ml):
         if isinstance(ml, Module):
             ml = [ml]
-        self._module_list = PropertyList(ml, self._ml_check)
+        if hasattr(ml, '__iter__'):
+            self._module_list = PropertyList(ml, self._ml_check)
+        else:
+            raise ValueError('module_list should be a Module, or consist of '
+                             'Module(s).')
     
     @staticmethod
     def _ml_check(ml):
@@ -228,7 +233,11 @@ class Pipeline(_PipelineBase):
     def surrogate_list(self, sl):
         if isinstance(sl, Surrogate):
             sl = [sl]
-        self._surrogate_list = PropertyList(sl, self._sl_check)
+        if hasattr(sl, '__iter__'):
+            self._surrogate_list = PropertyList(sl, self._sl_check)
+        else:
+            raise ValueError('surrogate_list should be a Surrogate, or consist '
+                             'of Surrogate(s).')
     
     def _sl_check(self, sl):
         for i, s in enumerate(sl):
@@ -731,7 +740,7 @@ class Density(Pipeline):
     def fit(self, var_dicts, use_decay=False, use_bound=None, use_mu_f=None,
             decay_options={}, fit_options={}):
         if not (hasattr(var_dicts, '__iter__') and
-                all(isinstance(vd, VariableDict) for vd in var_dicts)):
+                all_isinstance(var_dicts, VariableDict)):
             raise ValueError('var_dicts should consist of VariableDict(s).')
         
         if not isinstance(decay_options, dict):
@@ -739,8 +748,8 @@ class Density(Pipeline):
         
         if isinstance(fit_options, dict):
             fit_options = [fit_options for i in range(self.n_surrogate)]
-        elif (hasattr(fit_options, '__iter__') and 
-              all(isinstance(fi, dict) for fi in fit_options)):
+        elif (hasattr(fit_options, '__iter__') and
+              all_isinstance(fit_options, dict)):
             fit_options = list(fit_options)
             if len(fit_options) < self.n_surrogate:
                 fit_options.extend([{} for i in range(self.n_surrogate - 

@@ -2,8 +2,9 @@ from .module import Surrogate
 from .density import Density, DensityLite
 from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
-from ..utils import Laplace, threadpool_limits, check_client
+from ..utils import Laplace, threadpool_limits, check_client, all_isinstance
 from ..utils.random import check_state, resample, multivariate_normal
+from ..utils.collections import VariableDict, PropertyList
 import numpy as np
 from distributed import Client
 from collections import namedtuple, OrderedDict
@@ -23,23 +24,16 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #       https://arxiv.org/pdf/1804.00154.pdf
 
 class BaseStep:
-    
+    """Utilities shared by `OptimizeStep`, `SampleStep` and `PostStep`."""
     def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2, 
                  sample_options={}, prefit=False):
-        if isinstance(surrogate_list, Surrogate):
-            self._surrogate_list = [surrogate_list]
-        elif (hasattr(surrogate_list, '__iter__') and 
-              all(isinstance(su, Surrogate) for su in surrogate_list)):
-            self._surrogate_list = list(surrogate_list)
-        else:
-            raise ValueError('surrogate_list should be a Surrogate or consist '
-                             'of Surrogate(s).')
+        self.surrogate_list = surrogate_list
         
         if isinstance(fit_options, dict):
             self._fit_options = [
-                fit_options for i in range(max(1, self.n_surrogate))]
-        elif (hasattr(fit_options, '__iter__') and 
-              all(isinstance(fi, dict) for fi in fit_options)):
+                fit_options for i in range(max(1, self.n_surrogate))] ########################################################### ?
+        elif (hasattr(fit_options, '__iter__') and
+              all_isinstance(fit_options, dict)):
             self._fit_options = list(fit_options)
             if len(self._fit_options) < self.n_surrogate:
                 self._fit_options.extend([{} for i in range(
@@ -48,20 +42,30 @@ class BaseStep:
             raise ValueError(
                 'fit_options should be a dict or consist of dict(s).')
         
-        alpha_n = float(alpha_n)
-        if alpha_n <= 0:
-            raise ValueError('alpha_n should be positive.')
-        self._alpha_n = alpha_n
+        self.alpha_n = alpha_n
         
         if not isinstance(sample_options, dict):
             raise ValueError('sample_options should be a dict.')
         self._sample_options = sample_options
         
         self._prefit = bool(prefit)
-        
+    
     @property
     def surrogate_list(self):
         return self._surrogate_list
+    
+    @surrogate_list.setter
+    def surrogate_list(self, sl):
+        if isinstance(sl, Surrogate):
+            sl = [sl]
+        self._surrogate_list = PropertyList(sl, self._sl_check)
+    
+    def _sl_check(self, sl):
+        for i, s in enumerate(sl):
+            if not isinstance(s, Surrogate):
+                raise ValueError('element #{} of surrogate_list is not a '
+                                 'Surrogate'.format(i))
+        return sl
     
     @property
     def n_surrogate(self):
@@ -78,6 +82,13 @@ class BaseStep:
     @property
     def alpha_n(self):
         return self._alpha_n
+    
+    @alpha_n.setter
+    def alpha_n(self, a):
+        a = float(a)
+        if a <= 0:
+            raise ValueError('alpha_n should be positive.')
+        self._alpha_n = a
     
     @property
     def n_eval(self):

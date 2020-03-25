@@ -1,6 +1,7 @@
 import numpy as np
 from collections import namedtuple
 from ..utils.collections import PropertyList
+from ..utils import all_isinstance
 import warnings
 
 __all__ = ['Module', 'Surrogate']
@@ -268,7 +269,7 @@ class Module:
         else:
             try:
                 names = list(names)
-                assert all(isinstance(nn, str) for nn in names)
+                assert all_isinstance(names, str)
                 if not allow_empty:
                     assert len(names) > 0
             except:

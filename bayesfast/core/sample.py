@@ -3,7 +3,7 @@ from distributed import Sub, Client, get_client, LocalCluster
 from ..utils import random as bfrandom
 from ..samplers import NUTS
 from ..samplers.hmc_utils import Trace
-from ..utils import threadpool_limits, check_client
+from ..utils import threadpool_limits, check_client, all_isinstance
 import numpy as np
 import warnings
 from inspect import isclass
@@ -30,8 +30,8 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
         raise ValueError('density should be a Density or DensityLite.')
     if isinstance(trace, Trace):
         trace = [trace]
-    if (hasattr(trace, '__iter__') and len(trace) > 0 and 
-        all(isinstance(t, Trace) for t in trace)):
+    if (hasattr(trace, '__iter__') and len(trace) > 0 and
+        all_isinstance(trace, Trace)):
         n_chain = len(trace)
     else:
         try:
