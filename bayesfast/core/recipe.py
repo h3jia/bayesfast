@@ -24,7 +24,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #       https://arxiv.org/pdf/1804.00154.pdf
 
 class BaseStep:
-    """Utilities shared by `OptimizeStep`, `SampleStep` and `PostStep`."""
+    """Utilities shared by `OptimizeStep` and `SampleStep`."""
     def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2, 
                  sample_options={}, prefit=False):
         self.surrogate_list = surrogate_list
@@ -106,58 +106,73 @@ class BaseStep:
 
 class OptimizeStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
-                 sample_options={'beta': 0.01}, prefit=False, eps_pp=0.1, 
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2.,
+                 sample_options={'beta': 0.01}, prefit=False, eps_pp=0.1,
                  eps_pq=0.1, max_iter=10, run_hmc=False, hmc_options={}):
-        super().__init__(surrogate_list, fit_options, alpha_n, sample_options, 
+        super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
                          prefit)
-        
-        eps_pp = float(eps_pp)
-        if eps_pp <= 0:
-            raise ValueError('eps_pp should be a positive float.')
-        self._eps_pp = eps_pp
-        
-        eps_pq = float(eps_pq)
-        if eps_pq <= 0:
-            raise ValueError('eps_pq should be a positive float.')
-        self._eps_pq = eps_pq
-        
-        max_iter = int(max_iter)
-        if max_iter < 2:
-            raise ValueError('max_iter should be larger than 1.')
-        self._max_iter = max_iter
-        
-        self._run_hmc = bool(run_hmc)
-        if not isinstance(hmc_options, dict):
-            raise ValueError('hmc_options should be a dict.')
-        self._hmc_options = hmc_options
+        self.eps_pp = eps_pp
+        self.eps_pq = eps_pq
+        self.max_iter = max_iter
+        self.run_hmc = run_hmc
         
     @property
     def eps_pp(self):
         return self._eps_pp
     
+    @eps_pp.setter
+    def eps_pp(self, eps):
+        eps = float(eps)
+        if eps <= 0:
+            raise ValueError('eps_pp should be a positive float.')
+        self._eps_pp = eps
+    
     @property
     def eps_pq(self):
         return self._eps_pq
+    
+    @eps_pq.setter
+    def eps_pq(self, eps):
+        eps = float(eps)
+        if eps <= 0:
+            raise ValueError('eps_pq should be a positive float.')
+        self._eps_pq = eps
     
     @property
     def max_iter(self):
         return self._max_iter
     
+    @max_iter.setter
+    def max_iter(self, mi):
+        mi = int(mi)
+        if mi < 2:
+            raise ValueError('max_iter should be larger than 1.')
+        self._max_iter = mi
+    
     @property
     def run_hmc(self):
         return self._run_hmc
     
+    @run_hmc.setter
+    def run_hmc(self, run):
+        self._run_hmc = bool(run)
+    
     @property
     def hmc_options(self):
         return self._hmc_options
+    
+    @hmc_options.setter
+    def hmc_options(self, ho):
+        if not isinstance(ho, dict):
+            raise ValueError('hmc_options should be a dict.')
+        self._hmc_options = ho
 
 
 class SampleStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2., 
-                 sample_options={}, prefit=False, resample_options={}, 
-                 reuse_steps=0, logp_cutoff=True, alpha_min=1.5, 
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2.,
+                 sample_options={}, prefit=False, resample_options={},
+                 reuse_steps=0, logp_cutoff=True, alpha_min=1.5,
                  alpha_supp=0.1, adapt_metric=False):
         super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
                          prefit)
@@ -219,22 +234,24 @@ class SampleStep(BaseStep):
 class PostStep:
     
     def __init__(self, n_is=None, k_trunc=None):
-        if n_is is None:
-            self._n_is = 0
-        else:
-            self._n_is = int(n_is)
-        if k_trunc is None:
-            self._k_trunc = 0.25
-        else:
-            self._k_trunc = float(k_trunc)
+        self.n_is = n_is
+        self.k_trunc = k_trunc
     
     @property
     def n_is(self):
         return self._n_is
     
+    @n_is.setter
+    def n_is(self, n):
+        self._n_is = 0 if (n is None) else int(n)
+    
     @property
     def k_trunc(self):
         return self._k_trunc
+    
+    @k_trunc.setter
+    def k_trunc(self, k):
+        self._k_trunc = 0.25 if (k_trunc is None) else float(k_trunc)
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
