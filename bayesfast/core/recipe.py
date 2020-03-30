@@ -15,12 +15,13 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 
 # TODO: early stop in pipeline evaluation
+# TODO: early stop by comparing KL
 # TODO: use tqdm to add progress bar for _map_fun
 # TODO: better control when we don't have enough points before resampling
 # TODO: allow IS over hmc_samples in OptimizeStep
 # TODO: review the choice of x_0 for SampleStep
 # TODO: monitor the progress of IS
-# TODO: improve optimization with trust region? 
+# TODO: improve optimization with trust region?
 #       https://arxiv.org/pdf/1804.00154.pdf
 
 class BaseStep:

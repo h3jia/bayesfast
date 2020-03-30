@@ -523,6 +523,8 @@ class Surrogate(Module):
         index where the true `Module` should start to be replaced by the
         `Surrogate`, and `extent` represents the number of `Module`s to be
         replaced.
+    fit_options : dict, optional
+        Additional keyword arguments for fitting the surrogate model.
     args : array_like, optional
         Additional arguments to be passed to `Module.__init__`.
     kwargs : dict, optional
@@ -532,8 +534,8 @@ class Surrogate(Module):
     -----
     Unlike `Module`, the default value of `recombine_input` will be `True`.
     """
-    def __init__(self, input_size=None, output_size=None, scope=(0, 1), *args,
-                 **kwargs):
+    def __init__(self, input_size=None, output_size=None, scope=(0, 1),
+                 fit_options={}, *args, **kwargs):
         self._initialized = False
         super().__init__(None, None, None, *args, **kwargs)
         if len(args) < 6 and not 'recombine_input' in kwargs:
@@ -557,6 +559,7 @@ class Surrogate(Module):
         self.input_size = input_size
         self.output_size = output_size
         self.scope = scope
+        self.fit_options = fit_options
         if not hasattr(self, '_fun'):
             self._fun = None
         if not hasattr(self, '_jac'):
@@ -580,6 +583,14 @@ class Surrogate(Module):
             self._scope = SurrogateScope(int(start), int(extent))
         except:
             raise ValueError('invalid value for scope.')
+    
+    @property
+    def fit_options(self):
+        return self._fit_options
+    
+    @fit_options.setter
+    def fit_options(self, options):
+        self._fit_options = dict(options)
     
     @property
     def input_size(self):

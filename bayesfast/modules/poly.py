@@ -9,7 +9,21 @@ __all__ = ['PolyConfig', 'PolyModel']
 
 
 class PolyConfig:
+    """
+    Configuring the PolyModel.
     
+    Parameters
+    ----------
+    order : str
+        Specifying the order of the polynomial model. Should be one of 'linear',
+        'quadratic', 'cubic-2' and 'cubic-3'.
+    input_mask : 
+        
+    output_mask : 
+        
+    coef : 
+        
+    """
     def __init__(self, order, input_mask=None, output_mask=None, coef=None):
         if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
             self._order = order
