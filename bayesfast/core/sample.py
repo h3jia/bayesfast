@@ -62,7 +62,7 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
         density_options = dict(density_options).copy()
     except:
         raise ValueError('density_options should be a dict.')
-    if not 'use_surrogate' in density_options:
+    if isinstance(density, Density) and not 'use_surrogate' in density_options:
         density_options['use_surrogate'] = True
     if not 'original_space' in density_options:
         density_options['original_space'] = False

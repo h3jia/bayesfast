@@ -53,6 +53,14 @@ class _PipelineBase:
             self._hard_bounds = self._bound_check(bounds)
             self._hard_bounds.flags.writeable = False # TODO: PropertyArray?
     
+    @property
+    def copy_input(self):
+        return self._copy_input
+    
+    @copy_input.setter
+    def copy_input(self, copy):
+        self._copy_input = bool(copy)
+    
     @staticmethod
     def _bound_check(bounds):
         try:
@@ -189,6 +197,9 @@ class Pipeline(_PipelineBase):
         or just used to rescale the variables. If bool, will be applied to all
         the variables. If array_like, should have shape of `(input_size,)` or
         `(input_size, 2)`. Set to `False` by default.
+    copy_input : bool, optional
+        Whether to make a copy of the input before evaluating the Pipeline. Set
+        to False by default.
         
     Notes
     -----
@@ -309,10 +320,11 @@ class Pipeline(_PipelineBase):
         return self.n_surrogate > 0
     
     def fun(self, x, use_surrogate=False, original_space=True, start=None,
-            stop=None, extract_vars=None, copy_x=False):
-        if copy_x:
+            stop=None, extract_vars=None):
+        copy_input = self.copy_input
+        if copy_input:
             x = deepcopy(x)
-            copy_x = False # for possible recursions
+            copy_input = False # for possible recursions
         start, stop, extract_vars = self._options_check(start, stop, 
                                                         extract_vars)
         conf = (bool(use_surrogate), bool(original_space), start, stop, 
@@ -398,19 +410,20 @@ class Pipeline(_PipelineBase):
     __call__ = fun
     
     def jac(self, x, use_surrogate=False, original_space=True, start=None,
-            stop=None, extract_vars=None, copy_x=False):
+            stop=None, extract_vars=None):
         _faj = self.fun_and_jac(x, use_surrogate, original_space, start, stop,
-                                extract_vars, copy_x)
+                                extract_vars)
         if isinstance(extract_vars, str):
             return _faj[1] # _faj: (fun, jac)
         else:
             return _faj # _faj: VariableDict
     
     def fun_and_jac(self, x, use_surrogate=False, original_space=True,
-                    start=None, stop=None, extract_vars=None, copy_x=False):
-        if copy_x:
+                    start=None, stop=None, extract_vars=None):
+        copy_input = self.copy_input
+        if copy_input:
             x = deepcopy(x)
-            copy_x = False # for possible recursions
+            copy_input = False # for possible recursions
         start, stop, extract_vars = self._options_check(start, stop, 
                                                         extract_vars)
         conf = (bool(use_surrogate), bool(original_space), start, stop, 
@@ -597,9 +610,9 @@ class Density(Pipeline):
                 'density_name should be a str, instead of {}'.format(name))
     
     def logp(self, x, use_surrogate=False, original_space=True, start=None,
-             stop=None, copy_x=False):
+             stop=None):
         _logp = self.fun(x, use_surrogate, original_space, start, stop,
-                         self._density_name, copy_x)[..., 0]
+                         self._density_name)[..., 0]
         if self._use_decay and use_surrogate:
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
@@ -612,9 +625,9 @@ class Density(Pipeline):
     __call__ = logp
     
     def grad(self, x, use_surrogate=False, original_space=True, start=None,
-             stop=None, copy_x=False):
+             stop=None):
         _grad = self.jac(x, use_surrogate, original_space, start, stop,
-                         self._density_name, copy_x)[..., 0, :]
+                         self._density_name)[..., 0, :]
         if self._use_decay and use_surrogate:
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
@@ -626,10 +639,9 @@ class Density(Pipeline):
         return _grad
     
     def logp_and_grad(self, x, use_surrogate=False, original_space=True, 
-                      start=None, stop=None, copy_x=False):
+                      start=None, stop=None):
         _logp_and_grad = self.fun_and_jac(
-            x, use_surrogate, original_space, start, stop, self._density_name,
-            copy_x)
+            x, use_surrogate, original_space, start, stop, self._density_name)
         _logp = _logp_and_grad[0][..., 0]
         _grad = _logp_and_grad[1][..., 0, :]
         if self._use_decay and use_surrogate:
@@ -801,7 +813,8 @@ class DensityLite(_PipelineBase):
         Callable returning the logp and grad_logp at the same time, or `None`
         if undefined.
     input_size : None or positive int, optional
-        The size of input variables. Set to `None` by default.
+        The size of input variables. Only used to generate starting points when
+        no x_0 is given during sampling. Set to `None` by default.
     var_scales : None or array_like of float(s), optional
         Controlling the scaling of input variables. Set to `None` by default.
     hard_bounds : bool or array_like, optional
@@ -809,6 +822,9 @@ class DensityLite(_PipelineBase):
         or just used to rescale the variables. If bool, will be applied to all
         the variables. If array_like, should have shape of `(input_size,)` or
         `(input_size, 2)`. Set to `False` by default.
+    copy_input : bool, optional
+        Whether to make a copy of the input before evaluating the Pipeline. Set
+        to False by default.
     logp_args, grad_args, logp_and_grad_args : array_like, optional
         Additional arguments to be passed to `logp`, `grad` and `logp_and_grad`.
         Will be stored as tuples.
@@ -818,11 +834,18 @@ class DensityLite(_PipelineBase):
     """
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
                  input_size=None, var_scales=None, hard_bounds=False,
+                 copy_input=False,
                  logp_args=(), logp_kwargs={}, grad_args=(), grad_kwargs={},
                  logp_and_grad_args=(), logp_and_grad_kwargs={}):
         self.logp = logp
         self.grad = grad
         self.logp_and_grad = logp_and_grad
+        
+        self.input_size = input_size
+        self.var_scales = var_scales
+        self.hard_bounds = hard_bounds
+        self.copy_input = copy_input
+        
         self.logp_args = logp_args
         self.logp_kwargs = logp_kwargs
         self.grad_args = grad_args
@@ -849,6 +872,8 @@ class DensityLite(_PipelineBase):
             raise ValueError('logp should be callable, or None if you want to '
                              'reset it.')
     
+    __call__ = logp
+    
     def _logp_wrapped(self, x, original_space=True, copy_x=False, 
                       vectorized=True):
         x = np.atleast_1d(x)
@@ -856,7 +881,7 @@ class DensityLite(_PipelineBase):
             x = np.copy(x)
         x_o = x if original_space else self.to_original(x)
         if vectorized:
-            _logp = self._logp(x_o, *self.logp_args, **logp_kwargs)
+            _logp = self._logp(x_o, *self.logp_args, **self.logp_kwargs)
         else:
             _logp = np.apply_along_axis(self._logp, -1, x_o, self.logp_args,
                                         self.logp_kwargs)
@@ -911,8 +936,8 @@ class DensityLite(_PipelineBase):
         if self.has_logp_and_grad:
             return self._logp_and_grad_wrapped
         elif self.has_logp and self.has_grad:
-            return lambda *args: (self._logp_wrapped(*args), 
-                                  self._grad_wrapped(*args))
+            return lambda *args, **kwargs: (self._logp_wrapped(*args, **kwargs), 
+                                            self._grad_wrapped(*args, **kwargs))
         else:
             raise ValueError('No valid definition of logp_and_grad is found.')
     
@@ -920,7 +945,7 @@ class DensityLite(_PipelineBase):
     def logp_and_grad(self, lpgd):
         if callable(lpgd):
             self._logp_and_grad = lpgd
-        elif logp_and_grad_ is None:
+        elif lpgd is None:
             self._logp_and_grad = None
         else:
             raise ValueError('logp_and_grad should be callable, or None if you'
