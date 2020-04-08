@@ -116,6 +116,7 @@ class OptimizeStep(BaseStep):
         self.eps_pq = eps_pq
         self.max_iter = max_iter
         self.run_hmc = run_hmc
+        self.hmc_options = hmc_options
         
     @property
     def eps_pp(self):
@@ -252,7 +253,7 @@ class PostStep:
     
     @k_trunc.setter
     def k_trunc(self, k):
-        self._k_trunc = 0.25 if (k_trunc is None) else float(k_trunc)
+        self._k_trunc = 0.25 if (k is None) else float(k)
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')

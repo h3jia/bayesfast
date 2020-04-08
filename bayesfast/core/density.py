@@ -206,13 +206,15 @@ class Pipeline(_PipelineBase):
     See the tutorial for more information of usage.
     """
     def __init__(self, module_list=[], input_vars=['__var__'], var_dims=None,
-                 surrogate_list=[], var_scales=None, hard_bounds=False):
+                 surrogate_list=[], var_scales=None, hard_bounds=False,
+                 copy_input=False):
         self.module_list = module_list
         self.input_vars = input_vars
         self.var_dims = var_dims
         self.surrogate_list = surrogate_list
         self.var_scales = var_scales
         self.hard_bounds = hard_bounds
+        self.copy_input = copy_input
     
     @property
     def module_list(self):
