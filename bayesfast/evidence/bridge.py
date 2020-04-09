@@ -62,7 +62,7 @@ def BS(logp_xp, logp_xq, logq_xp, logq_xq):
     if logr_err > 0.5:
         warnings.warn('the estimated error for logr may be unreliable since it '
                       'is larger than 0.5.')
-    return logr, logr_err, re2_p, re2_q, tau
+    return logr, logr_err, re2_p, re2_q
 
 
 def adapt_nq(re2_p, re2_q, n_q0, n_call_p, f_err=0.1, f_eva=0.1):
