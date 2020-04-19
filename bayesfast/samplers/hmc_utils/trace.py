@@ -7,6 +7,8 @@ from copy import deepcopy
 
 __all__ = ['Trace']
 
+# TODO: review the code
+
 
 class Trace:
     

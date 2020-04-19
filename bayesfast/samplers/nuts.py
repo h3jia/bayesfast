@@ -5,6 +5,8 @@ from .hmc_utils.integration import IntegrationError
 
 __all__ = ['NUTS']
 
+# TODO: review the code
+
 
 class NUTS(BaseHMC):
 

@@ -40,7 +40,7 @@ class Module:
     recombine_output : bool or 1-d array_like of positive int, optional
         Controlling the recombination of output variables. Set to `False` by
         default.
-    var_scales : None or array_like, optional
+    input_scales : None or array_like, optional
         Controlling the scaling of input variables. Set to `None` by default.
     label : str, optional
         Label of Module used in the `print_summary` method.
@@ -54,7 +54,7 @@ class Module:
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
                  input_vars=['__var__'], output_vars=['__var__'], copy_vars=[],
                  paste_vars=[], delete_vars=[], recombine_input=False,
-                 recombine_output=False, var_scales=None, label=None,
+                 recombine_output=False, input_scales=None, label=None,
                  fun_args=(), fun_kwargs={}, jac_args=(), jac_kwargs={},
                  fun_and_jac_args=(), fun_and_jac_kwargs={}):
         self._fun_jac_init(fun, jac, fun_and_jac)
@@ -65,7 +65,7 @@ class Module:
         self.delete_vars = delete_vars
         self.recombine_input = recombine_input
         self.recombine_output = recombine_output
-        self.var_scales = var_scales
+        self.input_scales = input_scales
         self.label = label
         
         self.fun_args = fun_args
@@ -106,7 +106,7 @@ class Module:
         
         args = self._adjust_dim(args, dim, tag_1)
         if strategy is False:
-            if tag == 'input' and self._var_scales is not None:
+            if tag == 'input' and self._input_scales is not None:
                 strategy = np.array([a.shape[0] for a in args], dtype=np.int)
                 cum = np.cumsum(np.insert(strategy, 0, 0))
             else:
@@ -115,9 +115,10 @@ class Module:
             cargs = np.concatenate(args, axis=0)
         except:
             raise ValueError('failed to concatenate {}.'.format(tag_1))
-        if tag == 'input' and self._var_scales is not None:
+        if tag == 'input' and self._input_scales is not None:
             try:
-                cargs = (cargs - self._var_scales[:, 0]) / self._var_scales_diff
+                cargs = ((cargs - self._input_scales[:, 0]) / 
+                         self._input_scales_diff)
             except:
                 raise ValueError('failed to rescale the input variables.')
         if strategy is True:
@@ -209,7 +210,7 @@ class Module:
         args = self._recombine(args, 'input')
         jac_out = self._jac(*args, *self._jac_args, **self._jac_kwargs)
         jac_out = self._recombine(jac_out, 'output_jac')
-        return [j / self._var_scales_diff for j in jac_out]
+        return [j / self._input_scales_diff for j in jac_out]
     
     @property
     def has_jac(self):
@@ -244,7 +245,7 @@ class Module:
             *args, *self.fun_and_jac_args, **self.fun_and_jac_kwargs)
         fun_out = self._recombine(fun_out, 'output_fun')
         jac_out = self._recombine(jac_out, 'output_jac')
-        return (fun_out, [j / self._var_scales_diff for j in jac_out])
+        return (fun_out, [j / self._input_scales_diff for j in jac_out])
     
     @property
     def has_fun_and_jac(self):
@@ -393,24 +394,24 @@ class Module:
                 scales = np.array((np.zeros_like(scales), scales)).T.copy()
             if not (scales.ndim == 2 and scales.shape[-1] == 2):
                 raise ValueError('I do not know how to interpret the shape '
-                                 'of var_scales.')
+                                 'of input_scales.')
         except:
-            raise ValueError('Invalid value for var_scales.')
-        self._var_scales_diff = scales[:, 1] - scales[:, 0]
+            raise ValueError('Invalid value for input_scales.')
+        self._input_scales_diff = scales[:, 1] - scales[:, 0]
         return scales
     
     @property
-    def var_scales(self):
-        return self._var_scales
+    def input_scales(self):
+        return self._input_scales
     
-    @var_scales.setter
-    def var_scales(self, scales):
+    @input_scales.setter
+    def input_scales(self, scales):
         if scales is None:
-            self._var_scales = None
-            self._var_scales_diff = 1.
+            self._input_scales = None
+            self._input_scales_diff = 1.
         else:
-            self._var_scales = self._scale_check(scales)
-            self._var_scales.flags.writeable = False # TODO: PropertyArray?
+            self._input_scales = self._scale_check(scales)
+            self._input_scales.flags.writeable = False # TODO: PropertyArray?
     
     @property
     def label(self):

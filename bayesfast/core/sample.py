@@ -10,7 +10,6 @@ from inspect import isclass
 
 __all__ = ['sample']
 
-
 # TODO: use tqdm to rewrite sampling progress report
 # TODO: fix multi-threading
 # TODO: add wrapper for emcee
@@ -18,10 +17,10 @@ __all__ = ['sample']
 # TODO: fix pub/sub key
 # TODO: use previous samples to determine initial mass
 
+
 def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
            trace=None, random_state=None, x_0=None, verbose=True,
-           return_trace=False, density_options={}, sampler_options={},
-           sampler='NUTS'):
+           return_trace=False, sampler_options={}, sampler='NUTS'):
     # DEVELOPMENT NOTES
     # if use_surrogate is not specified in density_options
     # x_0 is interpreted as in original space and will be transformed
@@ -150,3 +149,9 @@ def sample(density, client=None, n_chain=4, n_iter=None, n_warmup=None,
         if _new_client:
             client.cluster.close()
             client.close()
+
+
+class Sampler:
+    
+    def __init__(self, method='NUTS'):
+        raise NotImplementedError

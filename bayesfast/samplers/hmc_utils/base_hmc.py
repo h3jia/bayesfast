@@ -11,6 +11,8 @@ from distributed import Pub
 
 __all__ = ['BaseHMC']
 
+# TODO: review the code
+
 
 HMCStepData = namedtuple("HMCStepData", 
                          "end, accept_stat, divergence_info, stats")

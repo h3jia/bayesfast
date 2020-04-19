@@ -4,6 +4,8 @@ import warnings
 
 __all__ = ['DualAverageAdaptation']
 
+# TODO: review the code
+
 
 class DualAverageAdaptation:
     

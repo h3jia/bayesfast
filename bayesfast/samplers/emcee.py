@@ -7,6 +7,8 @@ except:
 
 __all__ = ['EnsembleSampler']
 
+# TODO: implement the wrapper of emcee sampler
+
 
 class EnsembleSampler:
     

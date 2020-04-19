@@ -2,6 +2,8 @@ from collections import namedtuple, OrderedDict
 
 __all__ = ['StepStats', 'SamplerStats']
 
+# TODO: review the code
+
 
 stats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
                'step_size', 'step_size_bar', 'warmup', 'energy_change', 
