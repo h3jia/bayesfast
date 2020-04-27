@@ -987,8 +987,8 @@ class DensityLite(_PipelineBase, _DensityBase):
         if self.vectorized:
             _logp = self._logp(x_o, *self.logp_args, **self.logp_kwargs)
         else:
-            _logp = np.apply_along_axis(self._logp, -1, x_o, self.logp_args,
-                                        self.logp_kwargs)
+            _logp = np.apply_along_axis(self._logp, -1, x_o, *self.logp_args,
+                                        **self.logp_kwargs)
         if not original_space:
             _logp += self._get_diff(x_trans=x)
         return _logp
@@ -1028,8 +1028,8 @@ class DensityLite(_PipelineBase, _DensityBase):
         if self.vectorized:
             _grad = self._grad(x_o, *self.grad_args, **self.grad_kwargs)
         else:
-            _grad = np.apply_along_axis(self._grad, -1, x_o, self.grad_args,
-                                        self.grad_kwargs)
+            _grad = np.apply_along_axis(self._grad, -1, x_o, *self.grad_args,
+                                        **self.grad_kwargs)
         if not original_space:
             _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _grad
@@ -1073,8 +1073,8 @@ class DensityLite(_PipelineBase, _DensityBase):
         else:
             # TODO: review this
             _lag = np.apply_along_axis(
-                self._logp_and_grad, -1, x_o, self.logp_and_grad_args,
-                self.logp_and_grad_kwargs)
+                self._logp_and_grad, -1, x_o, *self.logp_and_grad_args,
+                **self.logp_and_grad_kwargs)
             _logp = _lag[..., 0]
             _grad = np.apply_along_axis(lambda x: list(x), -1, _lag[..., 1])
             # otherwise, it will be an object array

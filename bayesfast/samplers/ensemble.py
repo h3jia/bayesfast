@@ -11,6 +11,5 @@ __all__ = ['EnsembleSampler']
 
 
 class EnsembleSampler:
-    
-    def __init__(self, *args, **kwargs):
+    def __init__(*args, **kwargs):
         raise NotImplementedError

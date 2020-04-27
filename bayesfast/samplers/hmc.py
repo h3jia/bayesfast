@@ -7,6 +7,5 @@ __all__ = ['HMC']
 
 
 class HMC(BaseHMC):
-    
-    def __init__(self, *args, **kwargs):
+    def __init__(*args, **kwargs):
         raise NotImplementedError

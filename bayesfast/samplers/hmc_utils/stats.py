@@ -1,51 +1,67 @@
 from collections import namedtuple, OrderedDict
 
-__all__ = ['StepStats', 'SamplerStats']
+__all__ = ['NStepStats', 'NStats']
 
-# TODO: review the code
-
-
-stats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
-               'step_size', 'step_size_bar', 'warmup', 'energy_change', 
-               'max_energy_change', 'diverging')
+# TODO: finish HStats
 
 
-StepStats = namedtuple('StepStats', stats_items)
+nstats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
+                'step_size', 'step_size_bar', 'warmup', 'energy_change',
+                'max_energy_change', 'diverging')
 
 
-class SamplerStats:
-    
-    def __init__(self, logp=None):
-        for si in stats_items:
-            setattr(self, '_' + si, ['__init__'])
-        if logp is not None:
-            try:
-                self._logp[0] = float(logp)
-            except:
-                raise ValueError('logp should be a float.')
+NStepStats = namedtuple('NStepStats', nstats_items)
+
+
+class _HStats:
+    """Utilities shared by HStats and NStats."""
+    def __init__(self):
+        for si in self.stats_items:
+            setattr(self, '_' + si, [])
     
     def update(self, step_stats):
-        if not isinstance(step_stats, StepStats):
-            raise ValueError('step_stats should be a StepStats.')
-        for si in stats_items:
+        if not isinstance(step_stats, self._step_stats):
+            raise ValueError('invalid value for step_stats.')
+        for si in self.stats_items:
             getattr(self, '_' + si).append(getattr(step_stats, si))
     
     def get(self, since_iter=None, include_warmup=False):
         if since_iter is None:
-            since_iter = 1 if include_warmup else self.n_warmup + 1
+            since_iter = 0 if include_warmup else self.n_warmup
         else:
             try:
                 since_iter = int(since_iter)
             except:
                 raise ValueError('invalid value for since_iter.')
         return OrderedDict(
-            zip(stats_items, [getattr(self, '_' + si)[since_iter:] for si in 
-            stats_items]))
-        
+            zip(self.stats_items, [getattr(self, '_' + si)[since_iter:] for si
+            in self.stats_items]))
+    
+    __call__ = get
+    
+    @property
+    def stats_items(self):
+        raise NotImplementedError('Abstract property.')
+    
     @property
     def n_iter(self):
-        return len(self._logp) - 1
+        return len(self._logp)
     
     @property
     def n_warmup(self):
-        return self._warmup.index(False) - 1
+        return self._warmup.index(False)
+
+
+class HStats(_HStats):
+    """Stats class for the (vanilla) HMC sampler."""
+    def __init__(*args, **kwargs):
+        raise NotImplementedError
+
+
+class NStats(_HStats):
+    """Stats class for the NUTS sampler."""
+    @property
+    def stats_items(self):
+        return nstats_items
+    
+    _step_stats = NStepStats
