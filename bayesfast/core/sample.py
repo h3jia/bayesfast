@@ -1,5 +1,5 @@
 from .density import *
-from distributed import Sub, Client, get_client, LocalCluster
+from distributed import Pub, Sub, Client, get_client, LocalCluster
 from ..utils import random as bfrandom
 from ..samplers import NUTS, NTrace, HTrace, ETrace, TraceTuple
 from ..utils import threadpool_limits, check_client, all_isinstance
@@ -69,22 +69,26 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
                     raise RuntimeError('unexpected type for trace.')
                 return trace
             def nuts_worker(i):
-                with threadpool_limits(1):
-                    _trace = nested_helper(trace, i)
-                    def logp_and_grad(x):
-                        return density.logp_and_grad(
-                            x, original_space=not _trace.transform_x)
-                    nuts = NUTS(logp_and_grad=logp_and_grad, trace=_trace, 
-                                dask_key=dask_key)
-                    t = nuts.run(n_run, verbose)
-                    if t.transform_x:
-                        t._samples_original = density.to_original(t.samples)
-                        t._logp_original = density.to_original_density(
-                            t.logp, x_trans=t.samples)
-                return t
+                try:
+                    with threadpool_limits(1):
+                        _trace = nested_helper(trace, i)
+                        def logp_and_grad(x):
+                            return density.logp_and_grad(
+                                x, original_space=not _trace.transform_x)
+                        nuts = NUTS(logp_and_grad=logp_and_grad, trace=_trace, 
+                                    dask_key=dask_key)
+                        t = nuts.run(n_run, verbose)
+                        if t.transform_x:
+                            t._samples_original = density.to_original(t.samples)
+                            t._logp_original = density.to_original_density(
+                                t.logp, x_trans=t.samples)
+                    return t
+                except:
+                    pub = Pub(dask_key)
+                    pub.put(['Error', i])
+                    raise
             
             foo = client.map(nuts_worker, range(trace.n_chain))
-            #foo = list(map(nuts_worker, range(trace.n_chain))) ##################
             for msg in sub:
                 if not hasattr(msg, '__iter__'):
                     warnings.warn('unexpected message: {}.'.format(msg),

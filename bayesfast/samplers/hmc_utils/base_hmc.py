@@ -148,10 +148,6 @@ class BaseHMC:
                 else:
                     pub.put(['SamplingFinished', msg])
             return self.trace
-        except:
-            if self._dask_key is not None:
-                pub.put(['Error', self._chain_id])
-            raise
         finally:
             warnings.showwarning = warnings._showwarning_orig
     
@@ -171,7 +167,8 @@ class BaseHMC:
             try:
                 key = str(key)
             except:
-                raise ValueError('invalid value for dask_key.')
+                warnings.warn('invalid value for dask_key.', RuntimeWarning)
+                key = None
         self._dask_key = key
     
     @property
