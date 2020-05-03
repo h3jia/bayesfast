@@ -26,8 +26,8 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2, 
-                 sample_options={}, prefit=False):
+    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2,
+                 prefit=False):
         self.surrogate_list = surrogate_list
         
         if isinstance(fit_options, dict):
@@ -44,11 +44,6 @@ class BaseStep:
                 'fit_options should be a dict or consist of dict(s).')
         
         self.alpha_n = alpha_n
-        
-        if not isinstance(sample_options, dict):
-            raise ValueError('sample_options should be a dict.')
-        self._sample_options = sample_options
-        
         self._prefit = bool(prefit)
     
     @property
@@ -95,10 +90,6 @@ class BaseStep:
     def n_eval(self):
         return int(self._alpha_n * 
                    max(su.n_param for su in self._surrogate_list))
-    
-    @property
-    def sample_options(self):
-        return self._sample_options
     
     @property
     def prefit(self):

@@ -7,6 +7,8 @@ from scipy.linalg import lstsq
 
 __all__ = ['PolyConfig', 'PolyModel']
 
+# TODO: check the fit mechanism
+
 
 class PolyConfig:
     """
@@ -17,14 +19,16 @@ class PolyConfig:
     order : str
         Specifying the order of the polynomial model. Should be one of 'linear',
         'quadratic', 'cubic-2' and 'cubic-3'.
-    input_mask : 
-        
-    output_mask : 
-        
-    coef : 
-        
+    input_mask : None or 1-d array_like, optional
+        The indice of input variables that are activated. If `None`, will be
+        understood as np.arange(input_size), i.e. all the variables are
+        activated. Set to `None` by default.
+    output_mask : None or 1-d array_like, optional
+        The indice of output variables that are activated. If `None`, will be
+        understood as np.arange(output_size), i.e. all the variables are
+        activated. Set to `None` by default.
     """
-    def __init__(self, order, input_mask=None, output_mask=None, coef=None):
+    def __init__(self, order, input_mask=None, output_mask=None):
         if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
             self._order = order
         else:
@@ -35,7 +39,9 @@ class PolyConfig:
             np.unique(np.asarray(input_mask, dtype=np.int)))
         self._output_mask = None if (output_mask is None) else np.sort(
             np.unique(np.asarray(output_mask, dtype=np.int)))
-        self.coef = coef
+        self._input_mask.flags.writeable = False # TODO: PropertyArray?
+        self._output_mask.flags.writeable = False # TODO: PropertyArray?
+        self._coef = None
     
     @property
     def order(self):
@@ -43,11 +49,11 @@ class PolyConfig:
     
     @property
     def input_mask(self):
-        return copy.copy(self._input_mask)
+        return self._input_mask
     
     @property
     def output_mask(self):
-        return copy.copy(self._output_mask)
+        return self._output_mask
     
     @property
     def input_size(self):
@@ -59,6 +65,11 @@ class PolyConfig:
     
     @property
     def _A_shape(self):
+        """
+        The shape of all the coefficients.
+        Note that not all the elements are independent.
+        It's organized for the convenience of polynomial evaluation.
+        """
         if self._input_mask is None or self._output_mask is None:
             raise RuntimeError('you have not defined self.input_mask and/or '
                                'self.output_mask yet.')
@@ -73,10 +84,14 @@ class PolyConfig:
                     self.input_size)
         else:
             raise RuntimeError(
-                'unexpected value of self.order "{}".'.format(self._order))
+                'unexpected value "{}" for self.order.'.format(self._order))
     
     @property
     def _a_shape(self):
+        """
+        The shape of all independent coefficients for one single output vairable.
+        This would be the shape of lstsq regression.
+        """
         if self._input_mask is None or self._output_mask is None:
             raise RuntimeError('you have not defined self.input_mask and/or '
                                'self.output_mask yet.')
@@ -91,54 +106,54 @@ class PolyConfig:
                     (self.input_size - 2) // 6,)
         else:
             raise RuntimeError(
-                'unexpected value of self.order "{}".'.format(self._order))
+                'unexpected value "{}" for self.order.'.format(self._order))
     
-    @property
-    def coef(self):
-        return self._coef
-    
-    @coef.setter
-    def coef(self, A):
-        if A is not None:
-            if A.shape != self._A_shape:
-                raise ValueError(
-                    'shape of the coef matrix {} does not match the expected '
-                    'shape {}.'.format(A.shape, self._A_shape))
-            self._coef = np.copy(A)
-        else:
-            self._coef = None
-            
-    def _set(self, a, ii):
+    def _set(self, a, i):
         if self._input_mask is None or self._output_mask is None:
             raise RuntimeError('you have not defined self.input_mask and/or '
                                'self.output_mask yet.')
-        ii = int(ii)
+        a = np.ascontiguousarray(a)
+        i = int(i)
         if a.shape != self._a_shape:
             raise ValueError('shape of a {} does not match the expected shape '
                              '{}.'.format(a.shape, self._a_shape))
-        if not 0 <= ii <= self.output_size:
-            raise ValueError('ii = {} out of range for self.output_size = '
-                             '{}.'.format(ii, self.output_size))
+        if not 0 <= i < self.output_size:
+            raise ValueError('i = {} out of range for self.output_size = '
+                             '{}.'.format(i, self.output_size))
         if self._order == 'linear':
-            coefii = a
+            coefi = a
         else:
-            coefii = np.empty(self._A_shape[1:])
+            coefi = np.empty(self._A_shape[1:])
             if self._order == 'quadratic':
-                _set_quadratic(a, coefii, self.input_size)
+                _set_quadratic(a, coefi, self.input_size)
             elif self._order == 'cubic-2':
-                _set_cubic_2(a, coefii, self.input_size)
+                _set_cubic_2(a, coefi, self.input_size)
             elif self._order == 'cubic-3':
-                _set_cubic_3(a, coefii, self.input_size)
+                _set_cubic_3(a, coefi, self.input_size)
             else:
                 raise RuntimeError(
                     'unexpected value of self.order "{}".'.format(self._order))
         if self._coef is None:
             self._coef = np.zeros(self._A_shape)
-        self._coef[ii] = coefii
+        self._coef[i] = coefi
 
 
 class PolyModel(Surrogate):
+    """
+    Polynomial surrogate model, currently up to cubic order.
     
+    Parameters
+    ----------
+    configs : str, PolyConfig, or 1-d array_like of them
+        Determining the configuration of the model. If str, should be one of
+        ('linear', 'quadratic', 'cubic-2', 'cubic-3'). Note that 'quadratic'
+        will be interpreted as ['linear', 'quadratic'], i.e. up to quadratic
+        order; similar for `cubic-2` and `cubic-3`.
+    args : array_like, optional
+        Additional arguments to be passed to `Surrogate.__init__`.
+    kwargs : dict, optional
+        Additional keyword arguments to be passed to `Surrogate.__init__`.
+    """
     def __init__(self, configs, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if isinstance(configs, str):
@@ -151,15 +166,11 @@ class PolyModel(Surrogate):
             elif configs == 'cubic-3':
                 configs = ['linear', 'quadratic', 'cubic-2', 'cubic-3']
             else:
-                raise ValueError('if configs is a str, it should be "linear" '
+                raise ValueError('if configs is a str, it should be "linear", '
                                  '"quadratic", "cubic-2" or "cubic-3".')
         if isinstance(configs, PolyConfig):
-            if configs._input_mask is None:
-                configs._input_mask = np.arange(self._input_size)
-            if configs._output_mask is None:
-                configs._output_mask = np.arange(self._output_size)
-            self._configs = [configs]
-        elif hasattr(configs, '__iter__'):
+            configs = [configs]
+        if hasattr(configs, '__iter__'):
             self._configs = []
             for conf in configs:
                 if isinstance(conf, str):
@@ -171,22 +182,21 @@ class PolyModel(Surrogate):
                         conf._output_mask = np.arange(self._output_size)
                     self._configs.append(conf)
                 else:
-                    raise ValueError(
-                        'not all the element(s) in configs are PolyConfig(s).')
+                    raise ValueError('invalid value for the #{} element of '
+                                     'configs.'.format(i))
         else:
-            raise ValueError(
-                'configs should be a PolyConfig, or consist of PolyConfig(s).')
+            raise ValueError('invalid value for configs.')
+        self._configs = tuple(self._configs)
         self._build_recipe()
         self._use_bound = False
-        
-    # TODO: use PropertyList to handle None masks
+    
     @property
     def configs(self):
         return self._configs
     
     @property
     def n_config(self):
-        return len(self._config)
+        return len(self._configs)
     
     @property
     def alpha(self):
@@ -273,7 +283,7 @@ class PolyModel(Surrogate):
     
     @property
     def recipe(self):
-        return self._recipe.copy()
+        return self._recipe
     
     def _build_recipe(self):
         rr = np.full((self._output_size, 4), -1)
@@ -314,6 +324,7 @@ class PolyModel(Surrogate):
                 'no PolyConfig has output for variable(s) {}.'.format(
                 np.argwhere(np.any(np.all(rr < 0, axis=1))).flatten()))
         self._recipe = rr
+        self._recipe.flags.writeable = False # TODO: PropertyArray?
     
     @classmethod
     def _linear(cls, config, x_in, target):
@@ -334,20 +345,20 @@ class PolyModel(Surrogate):
     def _quadratic(cls, config, x_in, target):
         if target == 'fun':
             out_f = np.empty(config.output_size)
-            _quadratic_f(x_in, config._coef, out_f, config.output_size, 
+            _quadratic_f(x_in, config._coef, out_f, config.output_size,
                          config.input_size)
             return out_f
         elif target == 'jac':
             out_j = np.empty((config.output_size, config.input_size))
-            _quadratic_j(x_in, config._coef, out_j, config.output_size, 
+            _quadratic_j(x_in, config._coef, out_j, config.output_size,
                          config.input_size)
             return out_j
         elif target == 'fun_and_jac':
             out_f = np.empty(config.output_size)
-            _quadratic_f(x_in, config._coef, out_f, config.output_size, 
+            _quadratic_f(x_in, config._coef, out_f, config.output_size,
                          config.input_size)
             out_j = np.empty((config.output_size, config.input_size))
-            _quadratic_j(x_in, config._coef, out_j, config.output_size, 
+            _quadratic_j(x_in, config._coef, out_j, config.output_size,
                          config.input_size)
             return out_f, out_j
         else:
@@ -359,45 +370,45 @@ class PolyModel(Surrogate):
     def _cubic_2(cls, config, x_in, target):
         if target == 'fun':
             out_f = np.empty(config.output_size)
-            _cubic_2_f(x_in, config._coef, out_f, config.output_size, 
+            _cubic_2_f(x_in, config._coef, out_f, config.output_size,
                        config.input_size)
             return out_f
         elif target == 'jac':
             out_j = np.empty((config.output_size, config.input_size))
-            _cubic_2_j(x_in, config._coef, out_j, config.output_size, 
+            _cubic_2_j(x_in, config._coef, out_j, config.output_size,
                        config.input_size)
             return out_j
         elif target == 'fun_and_jac':
             out_f = np.empty(config.output_size)
-            _cubic_2_f(x_in, config._coef, out_f, config.output_size, 
+            _cubic_2_f(x_in, config._coef, out_f, config.output_size,
                        config.input_size)
             out_j = np.empty((config.output_size, config.input_size))
-            _cubic_2_j(x_in, config._coef, out_j, config.output_size, 
+            _cubic_2_j(x_in, config._coef, out_j, config.output_size,
                        config.input_size)
             return out_f, out_j
         else:
             raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-            
+    
     @classmethod
     def _cubic_3(cls, config, x_in, target):
         if target == 'fun':
             out_f = np.empty(config.output_size)
-            _cubic_3_f(x_in, config._coef, out_f, config.output_size, 
+            _cubic_3_f(x_in, config._coef, out_f, config.output_size,
                        config.input_size)
             return out_f
         elif target == 'jac':
             out_j = np.empty((config.output_size, config.input_size))
-            _cubic_3_j(x_in, config._coef, out_j, config.output_size, 
+            _cubic_3_j(x_in, config._coef, out_j, config.output_size,
                        config.input_size)
             return out_j
         elif target == 'fun_and_jac':
             out_f = np.empty(config.output_size)
-            _cubic_3_f(x_in, config._coef, out_f, config.output_size, 
+            _cubic_3_f(x_in, config._coef, out_f, config.output_size,
                        config.input_size)
             out_j = np.empty((config.output_size, config.input_size))
-            _cubic_3_j(x_in, config._coef, out_j, config.output_size, 
+            _cubic_3_j(x_in, config._coef, out_j, config.output_size,
                        config.input_size)
             return out_f, out_j
         else:
@@ -420,9 +431,6 @@ class PolyModel(Surrogate):
             raise RuntimeError('unexpected value of config.order.')
     
     def _fun(self, x):
-        if not x.shape == (self._input_size,):
-            raise ValueError('shape of x should be {}, instead of '
-                             '{}.'.format((self._input_size,), x.shape))
         if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
                                       x - self._mu)**0.5 > self._alpha:
             return self._fj_bound(x, 'fun')
@@ -433,9 +441,6 @@ class PolyModel(Surrogate):
             return ff
     
     def _jac(self, x):
-        if not x.shape == (self._input_size,):
-            raise ValueError('shape of x should be {}, instead of '
-                             '{}.'.format((self._input_size,), x.shape))
         if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
                                       x - self._mu)**0.5 > self._alpha:
             return self._fj_bound(x, 'jac')            
@@ -447,9 +452,6 @@ class PolyModel(Surrogate):
             return jj
     
     def _fun_and_jac(self, x):
-        if not x.shape == (self._input_size,):
-            raise ValueError('shape of x should be {}, instead of '
-                             '{}.'.format((self._input_size,), x.shape))
         ff = np.zeros(self._output_size)
         jj = np.zeros((self._output_size, self._input_size))
         if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
@@ -602,4 +604,3 @@ class PolyModel(Surrogate):
     @property
     def n_param(self):
         return np.sum([conf._a_shape[0] for conf in self._configs])
-    
