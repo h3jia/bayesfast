@@ -8,6 +8,7 @@ __all__ = ['Module', 'Surrogate']
 
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
+# TODO: check if Surrogate has been fitted?
 
 
 class Module:

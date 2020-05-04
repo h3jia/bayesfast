@@ -10,9 +10,12 @@ from ..transforms._constraint import *
 __all__ = ['Pipeline', 'Density', 'DensityLite']
 
 # TODO: add call counter?
-# TODO: review the interface of decay and bound
-# TODO: move fit to Pipeline?
 # TODO: review the behavior of out
+# TODO: do we need a weight option in fit?
+
+
+DecayOptions = namedtuple('DecayOptions', 
+                          ('use_dacay', 'alpha', 'alpha_p','gamma'))
 
 
 class _PipelineBase:
@@ -666,7 +669,29 @@ class Pipeline(_PipelineBase):
     
     @property
     def input_size(self):
-        return np.sum(self._input_dims) if self.input_dims is not None else None
+        return np.sum(self.input_dims) if self.input_dims is not None else None
+    
+    def fit(self, var_dicts):
+        if not (hasattr(var_dicts, '__iter__') and
+                all_isinstance(var_dicts, VariableDict)):
+            raise ValueError('var_dicts should consist of VariableDict(s).')
+        
+        # decay is defined only for Density, not for Pipeline
+        if isinstance(self, Density):
+            x = self._get_var(var_dicts, self._input_vars)
+            self.set_decay(x)
+        
+        for i, su in enumerate(self._surrogate_list):
+            x = self._get_var(var_dicts, su._input_vars)
+            if su._input_scales is not None:
+                x = (x - su._input_scales[:, 0]) / su._input_scales_diff
+            y = self._get_var(var_dicts, su._output_vars)
+            su.fit(x, y)
+    
+    @classmethod
+    def _get_var(cls, var_dicts, var_names):
+        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
+                         for vd in var_dicts])
 
 
 class Density(Pipeline, _DensityBase):
@@ -675,6 +700,9 @@ class Density(Pipeline, _DensityBase):
     
     Parameters
     ----------
+    decay_options : dict, optional
+        Keyword arguments to be passed to `self.set_decay_options`. Set to `{}`
+        by default.
     args : array_like, optional
         Arguments to be passed to `Pipeline.__init__`.
     kwargs : dict, optional
@@ -685,9 +713,9 @@ class Density(Pipeline, _DensityBase):
     See the docstring of `Pipeline`. Here the `output_vars` should be a str,
     and will be set to `'__var__'` by default.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, decay_options={}, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._use_decay = False
+        self.set_decay_options(**decay_options)
     
     # https://stackoverflow.com/questions/38301453/
     output_vars = property(Pipeline.output_vars.__get__)
@@ -710,7 +738,7 @@ class Density(Pipeline, _DensityBase):
                 x_o = x if original_space else self.to_original(x)
                 beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
                                   x_o - self._mu)
-                _logp -= self._gamma * np.clip(beta2 - self._alpha2, 0, np.inf)
+                _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
             if not original_space:
                 _logp += self._get_diff(x_trans=x)
         return _logp
@@ -725,7 +753,7 @@ class Density(Pipeline, _DensityBase):
                 beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
                                   x_o - self._mu)
                 _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
-                          (beta2 > self._alpha2)[..., np.newaxis])
+                          (beta2 > self._alpha_2)[..., np.newaxis])
             if not original_space:
                 _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _grad
@@ -739,155 +767,69 @@ class Density(Pipeline, _DensityBase):
                 x_o = x if original_space else self.to_original(x)
                 beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
                                   x_o - self._mu)
-                _logp -= self._gamma * np.clip(beta2 - self._alpha2, 0, np.inf)
+                _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
                 _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) *
-                          (beta2 > self._alpha2)[..., np.newaxis])
+                          (beta2 > self._alpha_2)[..., np.newaxis])
             if not original_space:
                 _logp += self._get_diff(x_trans=x)
                 _grad += self.to_original_grad2(x) / self.to_original_grad(x)
         return _logp, _grad
     
-    ############################################################################
-    
     @property
-    def alpha(self):
+    def decay_options(self):
+        return DecayOptions(self._use_decay, self._alpha, self._alpha_p,
+                            self._gamma)
+    
+    def set_decay_options(self, use_decay=False, alpha=None, alpha_p=150.,
+                          gamma=0.1):
+        use_decay = bool(use_decay)
+        self._use_decay = use_decay
+        if alpha is None:
+            self._alpha = None
+            self._alpha_2 = None
+        else:
+            try:
+                alpha = float(alpha)
+                assert alpha > 0
+                self._alpha = alpha
+                self._alpha_2 = alpha**2
+            except:
+                raise ValueError('invalid value for alpha.')
+        if alpha_p is None:
+            if alpha is None:
+                raise ValueError('alpha and alpha_p cannot both be None.')
+            self._alpha_p = None
+        else:
+            try:
+                alpha_p = float(alpha_p)
+                assert alpha_p > 0
+                self._alpha_p = alpha_p
+            except:
+                raise ValueError('invalid value for alpha_p.')
         try:
-            return self._alpha
+            gamma = float(gamma)
+            assert gamma > 0
+            self._gamma = gamma
         except:
-            return None
+            raise ValueError('invalid value for gamma.')
     
-    @alpha.setter
-    def alpha(self, a):
-        try:
-            a = float(a)
-            assert a > 0
-        except:
-            raise ValueError('alpha should be a positive float.')
-        self._alpha = a
-        self._alpha2 = a**2
-    
-    @property
-    def gamma(self):
-        try:
-            return self._gamma
-        except:
-            return None
-    
-    @gamma.setter
-    def gamma(self, g):
-        try:
-            g = float(g)
-            assert g > 0
-        except:
-            raise ValueError('gamma should be a positive float.')
-        self._gamma = g
-    
-    @property
-    def mu(self):
-        try:
-            return self._mu
-        except:
-            return None
-    
-    @property
-    def hess(self):
-        try:
-            return self._hess
-        except:
-            return None
-    
-    @property
-    def use_decay(self):
-        return self._use_decay
-    
-    @use_decay.setter
-    def use_decay(self, decay):
-        self._use_decay = bool(decay)
-    
-    def set_decay(self, x, original_space=True, alpha=None, alpha_p=150,
-                  gamma=None):
+    def _set_decay(self, x):
         try:
             x = np.ascontiguousarray(x)
+            x = np.atleast_2d(x)
+            assert x.ndim == 2
         except:
             raise ValueError('invalid value for x.')
-        x = x.reshape((-1, x.shape[-1]))
-        x_o = x if original_space else self.to_original(x)
-        self._mu = np.mean(x_o, axis=0)
-        self._hess = np.linalg.inv(np.cov(x_o, rowvar=False))
-        if alpha is None:
-            if (self.alpha is None) or (alpha_p is not None):
-                try:
-                    alpha_p = float(alpha_p)
-                    assert alpha_p > 0
-                except:
-                    raise ValueError('alpha_p should be a positive float.')
-                _beta = np.einsum('ij,jk,ik->i', x_o - self._mu, self._hess, 
-                                  x_o - self._mu)**0.5
-                if alpha_p < 100:
-                    self.alpha = np.percentile(_beta, alpha_p)
-                else:
-                    self.alpha = np.max(_beta) * alpha_p / 100
+        self._mu = np.mean(x, axis=0)
+        self._hess = np.linalg.inv(np.cov(x, rowvar=False))
+        if self._alpha_p is not None:
+            _beta = np.einsum('ij,jk,ik->i', x - self._mu, self._hess,
+                              x - self._mu)**0.5
+            if self._alpha_p < 100:
+                self._alpha = np.percentile(_beta, self._alpha_p)
             else:
-                pass
-        else:
-            self.alpha = alpha
-        if gamma is None:
-            if self.gamma is None:
-                self._gamma = 0.1
-            else:
-                pass
-        else:
-            self.gamma = gamma
-        self._use_decay = True
-    
-    def fit(self, var_dicts, use_decay=False, use_bound=None, use_mu_f=None,
-            decay_options={}, fit_options={}):
-        if not (hasattr(var_dicts, '__iter__') and
-                all_isinstance(var_dicts, VariableDict)):
-            raise ValueError('var_dicts should consist of VariableDict(s).')
-        
-        if not isinstance(decay_options, dict):
-            raise ValueError('decay_options should be a dict.')
-        
-        if isinstance(fit_options, dict):
-            fit_options = [fit_options for i in range(self.n_surrogate)]
-        elif (hasattr(fit_options, '__iter__') and
-              all_isinstance(fit_options, dict)):
-            fit_options = list(fit_options)
-            if len(fit_options) < self.n_surrogate:
-                fit_options.extend([{} for i in range(self.n_surrogate - 
-                                                      len(fit_options))])
-        else:
-            raise ValueError(
-                'fit_options should be a dict or consist of dict(s).')
-        
-        if use_decay:
-            x = self._fit_var(var_dicts, self._input_vars)
-            self.set_decay(x, **decay_options)
-        else:
-            self._use_decay = False
-        
-        for i, su in enumerate(self._surrogate_list):
-            x = self._fit_var(var_dicts, su._input_vars)
-            if su._input_scales is not None:
-                x = (x - su._input_scales[:, 0]) / su._input_scales_diff
-            y = self._fit_var(var_dicts, su._output_vars)
-            _logp = self._fit_var(var_dicts, [self._output_vars]).reshape(-1)
-            ##### ##### ##### ##### #####
-            fo = fit_options[i].copy()
-            if use_bound is not None:
-                fo['use_bound'] = use_bound
-            if use_mu_f is not None:
-                fo['use_mu_f'] = use_mu_f
-            ##### ##### ##### ##### #####
-            su.fit(x, y, logp=_logp, **fo)
-
-    @classmethod
-    def _fit_var(cls, var_dicts, var_names):
-        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
-                         for vd in var_dicts])
-    
-    ############################################################################
+                self._alpha = np.max(_beta) * self._alpha_p / 100
+            self._alpha_2 = self._alpha**2
 
 
 class DensityLite(_PipelineBase, _DensityBase):
@@ -984,7 +926,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         else:
             original_space = bool(original_space)
         x_o = x if original_space else self.to_original(x)
-        if self.vectorized:
+        if x_o.ndim == 1 or self.vectorized:
             _logp = self._logp(x_o, *self.logp_args, **self.logp_kwargs)
         else:
             _logp = np.apply_along_axis(self._logp, -1, x_o, *self.logp_args,
@@ -1025,7 +967,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         else:
             original_space = bool(original_space)
         x_o = x if original_space else self.to_original(x)
-        if self.vectorized:
+        if x_o.ndim == 1 or self.vectorized:
             _grad = self._grad(x_o, *self.grad_args, **self.grad_kwargs)
         else:
             _grad = np.apply_along_axis(self._grad, -1, x_o, *self.grad_args,
@@ -1067,7 +1009,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         else:
             original_space = bool(original_space)
         x_o = x if original_space else self.to_original(x)
-        if self.vectorized:
+        if x_o.ndim == 1 or self.vectorized:
             _logp, _grad = self._logp_and_grad(x_o, *self.logp_and_grad_args,
                                                **self.logp_and_grad_kwargs)
         else:

@@ -589,3 +589,15 @@ class TraceTuple:
             return samples
     
     __call__ = get
+    
+    def __getitem__(self, key):
+        return self._traces.__getitem__(key)
+
+    def __len__(self):
+        return self._traces.__len__()
+    
+    def __iter__(self):
+        return self._traces.__iter__()
+    
+    def __next__(self):
+        return self._traces.__next__()
