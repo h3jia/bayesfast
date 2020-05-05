@@ -11,7 +11,7 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 
 # TODO: add call counter?
 # TODO: review the behavior of out
-# TODO: do we need a weight option in fit?
+# TODO: do we need logq information in fit?
 
 
 DecayOptions = namedtuple('DecayOptions', 
@@ -680,18 +680,24 @@ class Pipeline(_PipelineBase):
         if isinstance(self, Density):
             x = self._get_var(var_dicts, self._input_vars)
             self.set_decay(x)
+        logp = self._get_logp(var_dicts)
         
         for i, su in enumerate(self._surrogate_list):
             x = self._get_var(var_dicts, su._input_vars)
             if su._input_scales is not None:
                 x = (x - su._input_scales[:, 0]) / su._input_scales_diff
             y = self._get_var(var_dicts, su._output_vars)
-            su.fit(x, y)
+            su.fit(x, y, logp)
     
     @classmethod
     def _get_var(cls, var_dicts, var_names):
         return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
                          for vd in var_dicts])
+    
+    @classmethod
+    def _get_logp(cls, var_dicts):
+        """This is defined only for density."""
+        return None
 
 
 class Density(Pipeline, _DensityBase):
@@ -782,8 +788,7 @@ class Density(Pipeline, _DensityBase):
     
     def set_decay_options(self, use_decay=False, alpha=None, alpha_p=150.,
                           gamma=0.1):
-        use_decay = bool(use_decay)
-        self._use_decay = use_decay
+        self._use_decay = bool(use_decay)
         if alpha is None:
             self._alpha = None
             self._alpha_2 = None
@@ -816,7 +821,6 @@ class Density(Pipeline, _DensityBase):
     def _set_decay(self, x):
         try:
             x = np.ascontiguousarray(x)
-            x = np.atleast_2d(x)
             assert x.ndim == 2
         except:
             raise ValueError('invalid value for x.')
@@ -830,6 +834,11 @@ class Density(Pipeline, _DensityBase):
             else:
                 self._alpha = np.max(_beta) * self._alpha_p / 100
             self._alpha_2 = self._alpha**2
+    
+    @classmethod
+    def _get_logp(cls, var_dicts):
+        """This is defined only for density."""
+        return self._get_var(var_dicts, self.output_vars)
 
 
 class DensityLite(_PipelineBase, _DensityBase):

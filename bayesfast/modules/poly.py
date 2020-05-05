@@ -4,10 +4,15 @@ from ..core.density import *
 from ._poly import *
 import numpy as np
 from scipy.linalg import lstsq
+from collections import namedtuple
 
 __all__ = ['PolyConfig', 'PolyModel']
 
 # TODO: check the fit mechanism
+
+
+BoundOptions = namedtuple('BoundOptions', 
+                          ('use_bound', 'alpha', 'alpha_p', 'center_max'))
 
 
 class PolyConfig:
@@ -35,12 +40,8 @@ class PolyConfig:
             raise ValueError(
                 'order should be one of ("linear", "quadratic", "cubic-2", '
                 '"cubic-3"), instead of "{}".'.format(order))
-        self._input_mask = None if (input_mask is None) else np.sort(
-            np.unique(np.asarray(input_mask, dtype=np.int)))
-        self._output_mask = None if (output_mask is None) else np.sort(
-            np.unique(np.asarray(output_mask, dtype=np.int)))
-        self._input_mask.flags.writeable = False # TODO: PropertyArray?
-        self._output_mask.flags.writeable = False # TODO: PropertyArray?
+        self._set_input_mask(input_mask)
+        self._set_output_mask(output_mask)
         self._coef = None
     
     @property
@@ -51,9 +52,23 @@ class PolyConfig:
     def input_mask(self):
         return self._input_mask
     
+    def _set_input_mask(self, im):
+        if im is None:
+            self._input_mask = None
+        else:
+            self._input_mask = np.sort(np.unique(np.asarray(im, dtype=np.int)))
+            self._input_mask.flags.writeable = False # TODO: PropertyArray?
+    
     @property
     def output_mask(self):
         return self._output_mask
+    
+    def _set_output_mask(self, om):
+        if om is None:
+            self._output_mask = None
+        else:
+            self._output_mask = np.sort(np.unique(np.asarray(om, dtype=np.int)))
+            self._output_mask.flags.writeable = False # TODO: PropertyArray?
     
     @property
     def input_size(self):
@@ -149,12 +164,15 @@ class PolyModel(Surrogate):
         ('linear', 'quadratic', 'cubic-2', 'cubic-3'). Note that 'quadratic'
         will be interpreted as ['linear', 'quadratic'], i.e. up to quadratic
         order; similar for `cubic-2` and `cubic-3`.
+    bound_options : dict, optional
+        Keyword arguments to be passed to `self.set_bound_options`. Set to `{}`
+        by default.
     args : array_like, optional
         Additional arguments to be passed to `Surrogate.__init__`.
     kwargs : dict, optional
         Additional keyword arguments to be passed to `Surrogate.__init__`.
     """
-    def __init__(self, configs, *args, **kwargs):
+    def __init__(self, configs, bound_options={}, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if isinstance(configs, str):
             if configs == 'linear':
@@ -177,9 +195,9 @@ class PolyModel(Surrogate):
                     conf = PolyConfig(conf)
                 if isinstance(conf, PolyConfig):
                     if conf._input_mask is None:
-                        conf._input_mask = np.arange(self._input_size)
+                        conf._set_input_mask(np.arange(self._input_size))
                     if conf._output_mask is None:
-                        conf._output_mask = np.arange(self._output_size)
+                        conf._set_output_mask(np.arange(self._output_size))
                     self._configs.append(conf)
                 else:
                     raise ValueError('invalid value for the #{} element of '
@@ -199,87 +217,60 @@ class PolyModel(Surrogate):
         return len(self._configs)
     
     @property
-    def alpha(self):
-        try:
-            return self._alpha
-        except:
-            return None
+    def bound_options(self):
+        return BoundOptions(self._use_bound, self._alpha, self._alpha_p,
+                            self._center_max)
     
-    @alpha.setter
-    def alpha(self, a):
-        try:
-            a = float(a)
-            assert a > 0
-            self._alpha = a
-        except:
-            raise ValueError('alpha should be a positive float.')
+    def set_bound_options(self, use_bound=True, alpha=None, alpha_p=95.,
+                          center_max=True):
+        self._use_bound = bool(use_bound)
+        if alpha is None:
+            self._alpha = None
+        else:
+            try:
+                alpha = float(alpha)
+                assert alpha > 0
+                self._alpha = alpha
+            except:
+                raise ValueError('invalid value for alpha.')
+        if alpha_p is None:
+            if alpha is None:
+                raise ValueError('alpha and alpha_p cannot both be None.')
+            self._alpha_p = None
+        else:
+            try:
+                alpha_p = float(alpha_p)
+                assert alpha_p > 0
+                self._alpha_p = alpha_p
+            except:
+                raise ValueError('invalid value for alpha_p.')
+        self._center_max = bool(center_max)
     
-    @property
-    def mu(self):
-        try:
-            return self._mu.copy()
-        except:
-            return None
-    
-    @property
-    def hess(self):
-        try:
-            return self._hess.copy()
-        except:
-            return None
-    
-    @property
-    def f_mu(self):
-        try:
-            return self._f_mu.copy()
-        except:
-            return None
-    
-    @property
-    def use_bound(self):
-        return self._use_bound
-    
-    @use_bound.setter
-    def use_bound(self, ub):
-        self._use_bound = bool(ub)
-    
-    def set_bound(self, x, alpha=None, alpha_p=95, mu_f=None):
+    def _set_bound(self, x, logp=None):
         try:
             x = np.ascontiguousarray(x)
-            assert x.shape[-1] == self._input_size
+            assert x.shape[-1] == self._input_size and x.ndim == 2
         except:
             raise ValueError('invalid value for x.')
-        x = x.reshape((-1, self._input_size))
         self._mu = np.mean(x, axis=0)
         self._hess = np.linalg.inv(np.cov(x, rowvar=False))
-        if alpha is None:
-            if (self.alpha is None) or (alpha_p is not None):
-                try:
-                    alpha_p = float(alpha_p)
-                    assert alpha_p > 0
-                except:
-                    raise ValueError('alpha_p should be a positive float.')
-                _beta = np.einsum('ij,jk,ik->i', x - self._mu, self._hess, 
-                                  x - self._mu)**0.5
-                if alpha_p < 100:
-                    self.alpha = np.percentile(_beta, alpha_p)
-                else:
-                    self.alpha = np.max(_beta) * alpha_p / 100
+        if self._alpha_p is not None:
+            _beta = np.einsum('ij,jk,ik->i', x - self._mu, self._hess,
+                              x - self._mu)**0.5
+            if self._alpha_p < 100:
+                self._alpha = np.percentile(_beta, self._alpha_p)
             else:
-                pass
+                self._alpha = np.max(_beta) * self._alpha_p / 100
+        if self._center_max:
+            try:
+                logp = np.asarray(logp)
+                assert x.shape[0] == logp.shape[0] and logp.ndim == 1:
+            except:
+                raise ValueError('invalid value for logp.')
+            mu_f = x[np.argmax(logp)]
         else:
-            self.alpha = alpha
-        if mu_f is None:
             mu_f = self._mu
-        else:
-            mu_f = np.asarray(mu_f)
-            if not mu_f.shape == (self._input_size,):
-                raise ValueError(
-                    'mu_f should be a 1-d array with shape ({},), or None if '
-                    'you want to use the sample mean, instead of '
-                    '{}.'.format(self._input_size, mu_f.shape))
         self._f_mu = self._fun(mu_f)
-        self._use_bound = True
     
     @property
     def recipe(self):
@@ -431,8 +422,8 @@ class PolyModel(Surrogate):
             raise RuntimeError('unexpected value of config.order.')
     
     def _fun(self, x):
-        if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
-                                      x - self._mu)**0.5 > self._alpha:
+        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x -
+            self._mu)**0.5 > self._alpha and not self._all_linear):
             return self._fj_bound(x, 'fun')
         else:
             ff = np.zeros(self._output_size)
@@ -441,8 +432,8 @@ class PolyModel(Surrogate):
             return ff
     
     def _jac(self, x):
-        if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
-                                      x - self._mu)**0.5 > self._alpha:
+        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x -
+            self._mu)**0.5 > self._alpha and not self._all_linear):
             return self._fj_bound(x, 'jac')            
         else:
             jj = np.zeros((self._output_size, self._input_size))
@@ -454,8 +445,8 @@ class PolyModel(Surrogate):
     def _fun_and_jac(self, x):
         ff = np.zeros(self._output_size)
         jj = np.zeros((self._output_size, self._input_size))
-        if self._use_bound and np.dot(np.dot(x - self._mu, self._hess), 
-                                      x - self._mu)**0.5 > self._alpha:
+        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x - 
+            self._mu)**0.5 > self._alpha and not self._all_linear):
             return self._fj_bound(x, 'fun_and_jac')
         else:
             for conf in self._configs:
@@ -489,9 +480,7 @@ class PolyModel(Surrogate):
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
     
-    def fit(self, x, y, w=None, use_bound=True, use_mu_f=False, 
-            bound_options={}, logp=None):
-        # w_min=None, w_max=None
+    def fit(self, x, y, logp=None):
         x = np.asarray(x)
         y = np.asarray(y)
         if not (x.ndim == 2 and x.shape[-1] == self._input_size):
@@ -507,37 +496,14 @@ class PolyModel(Surrogate):
         if x.shape[0] < self.n_param:
             raise ValueError('I need at least {} points, but you only gave me '
                              '{}.'.format(self.n_param, x.shape[0]))
-        if w is not None:
-            w = np.asarray(w).flatten()
-            if not w.shape[0] == x.shape[0]:
-                raise ValueError('x and w have different # of points.')
-            """if w_min is None:
-                w_min = 1 / w.shape[0]**0.5
-            elif w_min is False:
-                w_min = 0.
-            else:
-                try:
-                    w_min = float(w_min)
-                except:
-                    raise ValueError('invalid value for w_min.')
-            if w_max is None:
-                w_max = w.shape[0]**0.5
-            elif w_max is False:
-                w_max = np.inf
-            else:
-                try:
-                    w_max = float(w_max)
-                except:
-                    raise ValueError('invalid value for w_max.')
-            w = np.clip(w, w_min, w_max)"""
         for ii in range(self._output_size):
             A = np.empty((x.shape[0], 0))
             jj_l, jj_q, jj_c2, jj_c3 = self._recipe[ii]
             kk = [0]
             if jj_l >= 0:
                 _A = np.empty((x.shape[0], self._configs[jj_l]._a_shape[0]))
-                _x = np.ascontiguousarray(x[..., 
-                                              self._configs[jj_l]._input_mask])
+                _x = np.ascontiguousarray(x[...,
+                                            self._configs[jj_l]._input_mask])
                 _A[:, 0] = 1
                 _A[:, 1:] = _x
                 kk.append(kk[-1] + self._configs[jj_l]._a_shape[0])
@@ -552,24 +518,21 @@ class PolyModel(Surrogate):
                 A = np.concatenate((A, _A), axis=-1)
             if jj_c2 >= 0:
                 _A = np.empty((x.shape[0], self._configs[jj_c2]._a_shape[0]))
-                _x = np.ascontiguousarray(x[..., 
-                                              self._configs[jj_c2]._input_mask])
+                _x = np.ascontiguousarray(x[...,
+                                            self._configs[jj_c2]._input_mask])
                 _lsq_cubic_2(_x, _A, x.shape[0], 
                              self._configs[jj_c2].input_size)
                 kk.append(kk[-1] + self._configs[jj_c2]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
             if jj_c3 >= 0:
                 _A = np.empty((x.shape[0], self._configs[jj_c3]._a_shape[0]))
-                _x = np.ascontiguousarray(x[..., 
-                                              self._configs[jj_c3]._input_mask])
+                _x = np.ascontiguousarray(x[...,
+                                            self._configs[jj_c3]._input_mask])
                 _lsq_cubic_3(_x, _A, x.shape[0], 
                              self._configs[jj_c3].input_size)
                 kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
             b = np.copy(y[:, ii])
-            if w is not None:
-                b *= w
-                A *= w[:, np.newaxis]
             lsq = lstsq(A, b)[0]
             pp = 0
             if jj_l >= 0:
@@ -588,19 +551,13 @@ class PolyModel(Surrogate):
                 qq = int(np.argwhere(self._configs[jj_c3]._output_mask == ii))
                 self._configs[jj_c3]._set(lsq[kk[pp]:kk[pp + 1]], qq)
                 pp += 1
-        if (use_bound and not all(conf.order == 'linear' for conf in 
-            self._configs)):
-            bo = bound_options.copy()
-            ##### ##### ##### ##### #####
-            if use_mu_f:
-                logp = np.asarray(logp)
-                if not (x.shape[0] == logp.shape[0] and logp.ndim == 1):
-                    raise ValueError('the shape of x is inconsistent with the '
-                                     'shape of logp.')
-                bo['mu_f'] = x[np.argmax(logp)]
-            ##### ##### ##### ##### #####
-            self.set_bound(x, **bo)
+        if self._use_bound and not self._all_linear:
+            self._set_bound(x, logp)
     
     @property
     def n_param(self):
         return np.sum([conf._a_shape[0] for conf in self._configs])
+    
+    @property
+    def _all_linear(self):
+        return all(conf.order == 'linear' for conf in self._configs)
