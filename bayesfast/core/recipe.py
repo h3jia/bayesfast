@@ -26,25 +26,10 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2,
-                 prefit=False):
+    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False):
         self.surrogate_list = surrogate_list
-        
-        if isinstance(fit_options, dict):
-            self._fit_options = [
-                fit_options for i in range(max(1, self.n_surrogate))] ########################################################### ?
-        elif (hasattr(fit_options, '__iter__') and
-              all_isinstance(fit_options, dict)):
-            self._fit_options = list(fit_options)
-            if len(self._fit_options) < self.n_surrogate:
-                self._fit_options.extend([{} for i in range(
-                    self.n_surrogate - len(self._fit_options))])
-        else:
-            raise ValueError(
-                'fit_options should be a dict or consist of dict(s).')
-        
         self.alpha_n = alpha_n
-        self._prefit = bool(prefit)
+        self._fitted = bool(fitted)
     
     @property
     def surrogate_list(self):
@@ -72,18 +57,16 @@ class BaseStep:
         return self.n_surrogate > 0
     
     @property
-    def fit_options(self):
-        return tuple(self._fit_options)
-    
-    @property
     def alpha_n(self):
         return self._alpha_n
     
     @alpha_n.setter
     def alpha_n(self, a):
-        a = float(a)
-        if a <= 0:
-            raise ValueError('alpha_n should be positive.')
+        try:
+            a = float(a)
+            assert a <= 0
+        except:
+            raise ValueError('alpha_n should be a positive float.')
         self._alpha_n = a
     
     @property
@@ -92,17 +75,16 @@ class BaseStep:
                    max(su.n_param for su in self._surrogate_list))
     
     @property
-    def prefit(self):
-        return self._prefit
+    def fitted(self):
+        return self._fitted
 
 
 class OptimizeStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2.,
-                 sample_options={'beta': 0.01}, prefit=False, eps_pp=0.1,
+    def __init__(self, surrogate_list=[], alpha_n=2.,
+                 sample_options={'beta': 0.01}, fitted=False, eps_pp=0.1,
                  eps_pq=0.1, max_iter=10, run_hmc=False, hmc_options={}):
-        super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
-                         prefit)
+        super().__init__(surrogate_list, alpha_n, sample_options, fitted)
         self.eps_pp = eps_pp
         self.eps_pq = eps_pq
         self.max_iter = max_iter
@@ -163,12 +145,10 @@ class OptimizeStep(BaseStep):
 
 class SampleStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], fit_options={}, alpha_n=2.,
-                 sample_options={}, prefit=False, resample_options={},
-                 reuse_steps=0, logp_cutoff=True, alpha_min=1.5,
-                 alpha_supp=0.1, adapt_metric=False):
-        super().__init__(surrogate_list, fit_options, alpha_n, sample_options,
-                         prefit)
+    def __init__(self, surrogate_list=[], alpha_n=2., fitted=False,
+                 resample_options={}, reuse_steps=0, logp_cutoff=True,
+                 alpha_min=1.5, alpha_supp=0.1, adapt_metric=False):
+        super().__init__(surrogate_list, alpha_n, fitted)
         
         if not isinstance(resample_options, dict):
             raise ValueError('resample_options should be a dict.')
@@ -523,7 +503,7 @@ class Recipe:
                                    'of DensityLite, for surrogate modeling.')
             self._density.surrogate_list = steps._surrogate_list
             
-            if steps._prefit:
+            if steps._fitted:
                 x_0 = None
                 var_dicts = None
             else:
@@ -622,13 +602,13 @@ class Recipe:
             soi = {}
             if steps[i].has_surrogate:
                 self._density.surrogate_list = steps[i]._surrogate_list
-                if i == 0 and steps[i]._prefit:
+                if i == 0 and steps[i]._fitted:
                     var_dicts = None
                     x_0 = result._x_0
                 else:
                     if i == 0 and not result.n.optimize:
                         warnings.warn(
-                            'we find neither prefit surrogate models nor '
+                            'we find neither fitted surrogate models nor '
                             'optimize steps, so we have to fit the surrogate '
                             'model directly from x_0, which is however '
                             'depreciated.', RuntimeWarning)
