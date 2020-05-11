@@ -158,7 +158,7 @@ class _HTrace(_Trace):
     def chain_id(self):
         return self._chain_id
     
-    def _set_chain_id(self, i):
+    def _init_chain(self, i):
         if self._x_0 is None:
             raise RuntimeError('no valid x_0 is given.')
         if self._chain_id is not None:

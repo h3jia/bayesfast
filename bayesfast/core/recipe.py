@@ -2,6 +2,7 @@ from .module import Surrogate
 from .density import Density, DensityLite
 from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
+from ..samplers import _Trace, NTrace
 from ..utils import Laplace, threadpool_limits, check_client, all_isinstance
 from ..utils.random import check_state, resample, multivariate_normal
 from ..utils.collections import VariableDict, PropertyList
@@ -26,10 +27,11 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
-    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False):
+    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False, trace=None):
         self.surrogate_list = surrogate_list
         self.alpha_n = alpha_n
-        self._fitted = bool(fitted)
+        self.fitted = fitted
+        self.trace = trace
     
     @property
     def surrogate_list(self):
@@ -77,28 +79,62 @@ class BaseStep:
     @property
     def fitted(self):
         return self._fitted
+    
+    @fitted.setter
+    def fitted(self, f):
+        self._fitted = bool(f)
+    
+    @property
+    def trace(self):
+        return self._trace
+    
+    @trace.setter
+    def trace(self, t):
+        if t is None:
+            t = NTrace()
+        elif isinstance(t, _Trace):
+            pass
+        else:
+            raise ValueError('invalid value for trace.')
+        self._trace = t
 
 
 class OptimizeStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], alpha_n=2.,
-                 sample_options={'beta': 0.01}, fitted=False, eps_pp=0.1,
-                 eps_pq=0.1, max_iter=10, run_hmc=False, hmc_options={}):
-        super().__init__(surrogate_list, alpha_n, sample_options, fitted)
+    def __init__(self, surrogate_list=[], alpha_n=2., laplace=None, eps_pp=0.1,
+                 eps_pq=0.1, max_iter=10, fitted=False, run_sampling=False,
+                 trace=None):
+        super().__init__(surrogate_list, alpha_n, fitted, trace)
+        self.laplace = laplace
         self.eps_pp = eps_pp
         self.eps_pq = eps_pq
         self.max_iter = max_iter
-        self.run_hmc = run_hmc
-        self.hmc_options = hmc_options
-        
+        self.run_sampling = run_sampling
+    
+    @property
+    def laplace(self):
+        return self.laplace
+    
+    @laplace.setter
+    def laplace(self, laplace):
+        if laplace is None:
+            laplace = Laplace()
+        elif isinstance(laplace, Laplace):
+            pass
+        else:
+            raise ValueError('laplace should be a Laplace')
+        self._laplace = laplace
+    
     @property
     def eps_pp(self):
         return self._eps_pp
     
     @eps_pp.setter
     def eps_pp(self, eps):
-        eps = float(eps)
-        if eps <= 0:
+        try:
+            eps = float(eps)
+            assert eps > 0
+        except:
             raise ValueError('eps_pp should be a positive float.')
         self._eps_pp = eps
     
@@ -108,8 +144,10 @@ class OptimizeStep(BaseStep):
     
     @eps_pq.setter
     def eps_pq(self, eps):
-        eps = float(eps)
-        if eps <= 0:
+        try:
+            eps = float(eps)
+            assert eps > 0
+        except:
             raise ValueError('eps_pq should be a positive float.')
         self._eps_pq = eps
     
@@ -119,79 +157,107 @@ class OptimizeStep(BaseStep):
     
     @max_iter.setter
     def max_iter(self, mi):
-        mi = int(mi)
-        if mi < 2:
-            raise ValueError('max_iter should be larger than 1.')
+        try:
+            mi = int(mi)
+            assert mi > 0
+        except:
+            raise ValueError('max_iter should be a positive int.')
         self._max_iter = mi
     
     @property
-    def run_hmc(self):
-        return self._run_hmc
+    def run_sampling(self):
+        return self._run_sampling
     
-    @run_hmc.setter
-    def run_hmc(self, run):
-        self._run_hmc = bool(run)
-    
-    @property
-    def hmc_options(self):
-        return self._hmc_options
-    
-    @hmc_options.setter
-    def hmc_options(self, ho):
-        if not isinstance(ho, dict):
-            raise ValueError('hmc_options should be a dict.')
-        self._hmc_options = ho
+    @run_sampling.setter
+    def run_sampling(self, run):
+        self._run_sampling = bool(run)
 
 
 class SampleStep(BaseStep):
     
-    def __init__(self, surrogate_list=[], alpha_n=2., fitted=False,
-                 resample_options={}, reuse_steps=0, logp_cutoff=True,
-                 alpha_min=1.5, alpha_supp=0.1, adapt_metric=False):
-        super().__init__(surrogate_list, alpha_n, fitted)
-        
-        if not isinstance(resample_options, dict):
-            raise ValueError('resample_options should be a dict.')
-        self._resample_options = resample_options
-        
-        self._reuse_steps = int(reuse_steps)
-        self._logp_cutoff = bool(logp_cutoff)
-        
-        alpha_min = float(alpha_min)
-        if alpha_min <= 0:
-            raise ValueError('alpha_min should be a positive float.')
-        self._alpha_min = alpha_min
-        
-        alpha_supp = float(alpha_supp)
-        if alpha_supp <= 0:
-            raise ValueError('alpha_supp should be a positive float.')
-        self._alpha_supp = alpha_supp
-        
-        self._adapt_metric = bool(adapt_metric)
+    def __init__(self, surrogate_list=[], alpha_n=2., trace=None,
+                 resample_options={}, reuse_samples=0, reuse_step_size=True,
+                 reuse_metric=True, logp_cutoff=True, alpha_min=1.5,
+                 alpha_supp=0.1, fitted=False):
+        super().__init__(surrogate_list, alpha_n, fitted, trace)
+        self.resample_options = resample_options
+        self.reuse_samples = reuse_samples
+        self.reuse_step_size = reuse_step_size
+        self.reuse_metric = reuse_metric
+        self.logp_cutoff = logp_cutoff
+        self.alpha_min = alpha_min
+        self.alpha_supp = alpha_supp
         
     @property
     def resample_options(self):
         return self._resample_options
     
+    @resample_options.setter
+    def resample_options(self, ro):
+        if not isinstance(ro, dict):
+            raise ValueError('resample_options should be a dict.')
+        self._resample_options = ro
+    
     @property
-    def reuse_steps(self):
-        return self._reuse_steps
+    def reuse_samples(self):
+        return self._reuse_samples
+    
+    @reuse_samples.setter
+    def reuse_samples(self, rs):
+        try:
+            self._reuse_samples = int(rs)
+        except:
+            raise ValueError('invalid value for reuse_samples.')
+    
+    @property
+    def reuse_step_size(self):
+        return self._reuse_step_size
+    
+    @reuse_step_size.setter
+    def reuse_step_size(self, rss):
+        self._reuse_step_size = bool(rss)
+    
+    @property
+    def reuse_metric(self):
+        return self._reuse_metric
+    
+    @reuse_metric.setter
+    def reuse_metric(self, rm):
+        self._reuse_metric = bool(rm)
     
     @property
     def logp_cutoff(self):
         return self._logp_cutoff
     
+    @logp_cutoff.setter
+    def logp_cutoff(self, lc):
+        self._logp_cutoff = bool(lc)
+    
     @property
     def alpha_min(self):
         return self._alpha_min
+    
+    @alpha_min.setter
+    def alpha_min(self, am):
+        try:
+            am = float(am)
+            assert am > 0
+        except:
+            raise ValueError('alpha_min should be a positive float.')
+        self._alpha_min = am
     
     @property
     def alpha_supp(self):
         return self._alpha_supp
     
-    @property
-    def adapt_metric(self):
-        return self._adapt_metric
+    @alpha_supp.setter
+    def alpha_supp(self, asu):
+        try:
+            asu = float(asu)
+            assert asu > 0
+        except:
+            raise ValueError('alpha_supp should be a positive float.')
+        self._alpha_supp = asu
     
     @property
     def n_eval_min(self):
@@ -216,7 +282,14 @@ class PostStep:
     
     @n_is.setter
     def n_is(self, n):
-        self._n_is = 0 if (n is None) else int(n)
+        if n is None:
+            n = 0
+        else:
+            try:
+                n = int(n)
+            except:
+                raise ValueError('invalid value for n_is.')
+        self._n_is = n
     
     @property
     def k_trunc(self):
@@ -224,7 +297,14 @@ class PostStep:
     
     @k_trunc.setter
     def k_trunc(self, k):
-        self._k_trunc = 0.25 if (k is None) else float(k)
+        if k is None:
+            k = 0.25
+        else:
+            try:
+                k = float(k)
+            except:
+                raise ValueError('invalid value for k_trunc.')
+        self._k_trunc = k
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
@@ -571,7 +651,7 @@ class Recipe:
                 surrogate_list=[], hmc_samples=None, var_dicts=None, 
                 Laplace=lap_res, trace=None))
         
-        if steps._run_hmc:
+        if steps._run_sampling:
             self._opt_hmc()
         result._i_optimize = 1
         print('\n ***** OptimizeStep finished. ***** \n')
@@ -676,10 +756,10 @@ class Recipe:
                             [vd._fun[self._density._density_name] for vd in 
                             var_dicts])
                         _logp_all = _logp.copy()
-                        if steps[i].reuse_steps:
+                        if steps[i].reuse_samples:
                             for j in range(i):
-                                if (j + steps[i].reuse_steps >= i or 
-                                    steps[i].reuse_steps < 0):
+                                if (j + steps[i].reuse_samples >= i or 
+                                    steps[i].reuse_samples < 0):
                                     var_dictsall.extend(data[j].var_dicts)
                                     _logp_s = np.concatenate(
                                         [vd._fun[self._density._density_name] 

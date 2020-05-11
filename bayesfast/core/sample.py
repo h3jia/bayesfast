@@ -62,7 +62,7 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
             def nested_helper(trace, i):
                 """Without this, there will be an UnboundLocalError."""
                 if isinstance(trace, NTrace):
-                    trace._set_chain_id(i)
+                    trace._init_chain(i)
                 elif isinstance(trace, TraceTuple):
                     trace = trace.traces[i]
                 else:
