@@ -20,7 +20,7 @@ class _Trace:
         self.n_iter = n_iter
         self.n_warmup = n_warmup
         self._set_x_0(x_0)
-        self._random_state = check_state(random_state)
+        self._set_random_state(random_state)
         self._random_state_init = deepcopy(self._random_state)
     
     @property
@@ -122,6 +122,9 @@ class _Trace:
     def random_state(self):
         return self._random_state
     
+    def _set_random_state(self, state):
+        self._random_state = check_state(state)
+    
     @property
     def random_state_init(self):
         return deepcopy(self._random_state_init)
@@ -154,6 +157,12 @@ class _HTrace(_Trace):
                              'of {}.'.format(max_change))
         self._max_change = max_change
     
+    def _set_random_state(self, state):
+        if state is None:
+            self._random_state = None
+        else:
+            self._random_state = check_state(state)
+    
     @property
     def chain_id(self):
         return self._chain_id
@@ -172,6 +181,8 @@ class _HTrace(_Trace):
             raise ValueError(
                 'i should satisfy 0 <= i < n_chain, but you give {}.'.format(i))
         self._chain_id = i
+        if self.random_state is None:
+            self._random_state = check_state(None)
         self._random_state = split_state(self._random_state, self.n_chain)[i]
         self._x_0.reshape((-1, self._x_0.shape[-1]))
         self._x_0 = self._x_0[self._random_state.randint(0, self._x_0.shape[0])]

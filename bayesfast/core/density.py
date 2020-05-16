@@ -672,8 +672,7 @@ class Pipeline(_PipelineBase):
         return np.sum(self.input_dims) if self.input_dims is not None else None
     
     def fit(self, var_dicts):
-        if not (hasattr(var_dicts, '__iter__') and
-                all_isinstance(var_dicts, VariableDict)):
+        if not all_isinstance(var_dicts, VariableDict):
             raise ValueError('var_dicts should consist of VariableDict(s).')
         
         # decay is defined only for Density, not for Pipeline

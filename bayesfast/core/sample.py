@@ -2,7 +2,7 @@ from .density import *
 from distributed import Pub, Sub, Client, get_client, LocalCluster
 from ..utils import random as bfrandom
 from ..samplers import NUTS, NTrace, HTrace, ETrace, TraceTuple
-from ..utils import threadpool_limits, check_client, all_isinstance
+from ..utils import threadpool_limits, check_client
 import numpy as np
 import warnings
 from inspect import isclass
