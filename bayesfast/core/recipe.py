@@ -2,7 +2,7 @@ from .module import Surrogate
 from .density import Density, DensityLite
 from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
-from ..samplers import _Trace, NTrace, TraceTuple
+from ..samplers import SampleTrace, NTrace, TraceTuple
 from ..utils import Laplace, threadpool_limits, check_client, all_isinstance
 from ..utils.random import check_state, resample, multivariate_normal
 from ..utils.collections import VariableDict, PropertyList
@@ -29,15 +29,16 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
-    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False, trace=None,
-                 x_0=None, random_state=None):
+    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False,
+                 sample_trace=None, x_0=None, random_state=None,
+                 reuse_metric=True):
         self._set_surrogate_list(surrogate_list)
         self._set_alpha_n(alpha_n)
         self._set_fitted(fitted)
-        self._set_trace(trace)
+        self._set_sample_trace(sample_trace)
         self._set_x_0(x_0)
         self._set_random_state(random_state)
-        self._random_state_init = deepcopy(self._random_state)
+        self._set_reuse_metric(reuse_metric)
     
     @property
     def surrogate_list(self):
@@ -88,17 +89,17 @@ class BaseStep:
         self._fitted = bool(f)
     
     @property
-    def trace(self):
-        return self._trace
+    def sample_trace(self):
+        return self._sample_trace
     
-    def _set_trace(self, t):
+    def _set_sample_trace(self, t):
         if t is None:
             t = NTrace()
-        elif isinstance(t, (_Trace, TraceTuple)):
+        elif isinstance(t, (SampleTrace, TraceTuple)):
             pass
         else:
-            raise ValueError('invalid value for trace.')
-        self._trace = t
+            raise ValueError('invalid value for sample_trace.')
+        self._sample_trace = t
     
     @property
     def x_0(self):
@@ -109,7 +110,7 @@ class BaseStep:
             self._x_0 = None
         else:
             try:
-                self._x_0 = np.atleast_1d(x).copy()
+                self._x_0 = np.atleast_2d(x).copy()
             except:
                 raise ValueError('invalid value for x_0.')
     
@@ -122,19 +123,28 @@ class BaseStep:
             self._random_state = None
         else:
             self._random_state = check_state(state)
+        self._random_state_init = deepcopy(self._random_state)
     
     @property
     def random_state_init(self):
         return deepcopy(self._random_state_init)
+    
+    @property
+    def reuse_metric(self):
+        return self._reuse_metric
+    
+    def _set_reuse_metric(self, rm):
+        self._reuse_metric = bool(rm)
 
 
 class OptimizeStep(BaseStep):
-    
+    """Configuring a step for optimization."""
     def __init__(self, surrogate_list=[], alpha_n=2., laplace=None, eps_pp=0.1,
                  eps_pq=0.1, max_iter=10, x_0=None, random_state=None,
-                 fitted=False, run_sampling=False, trace=None):
-        super().__init__(surrogate_list, alpha_n, fitted, trace, x_0,
-                         random_state)
+                 fitted=False, run_sampling=False, sample_trace=None,
+                 reuse_metric=True):
+        super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
+                         random_state, reuse_metric)
         self._set_laplace(laplace)
         self._set_eps_pp(eps_pp)
         self._set_eps_pq(eps_pq)
@@ -199,17 +209,16 @@ class OptimizeStep(BaseStep):
 
 
 class SampleStep(BaseStep):
-    
-    def __init__(self, surrogate_list=[], alpha_n=2., trace=None,
+    """Configuring a step for sampling."""
+    def __init__(self, surrogate_list=[], alpha_n=2., sample_trace=None,
                  resample_options={}, reuse_samples=0, reuse_step_size=True,
                  reuse_metric=True, x_0=None, random_state=None,
                  logp_cutoff=True, alpha_min=1.5, alpha_supp=0.1, fitted=False):
-        super().__init__(surrogate_list, alpha_n, fitted, trace, x_0,
-                         random_state)
+        super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
+                         random_state, reuse_metric)
         self._set_resample_options(resample_options)
         self._set_reuse_samples(reuse_samples)
         self._set_reuse_step_size(reuse_step_size)
-        self._set_reuse_metric(reuse_metric)
         self._set_logp_cutoff(logp_cutoff)
         self._set_alpha_min(alpha_min)
         self._set_alpha_supp(alpha_supp)
@@ -239,13 +248,6 @@ class SampleStep(BaseStep):
     
     def _set_reuse_step_size(self, rss):
         self._reuse_step_size = bool(rss)
-    
-    @property
-    def reuse_metric(self):
-        return self._reuse_metric
-    
-    def _set_reuse_metric(self, rm):
-        self._reuse_metric = bool(rm)
     
     @property
     def logp_cutoff(self):
@@ -290,7 +292,7 @@ class SampleStep(BaseStep):
 
 
 class PostStep:
-    
+    """Configuring a step for post-processing."""
     def __init__(self, n_is=0, k_trunc=0.25):
         self._set_n_is(n_is)
         self._set_k_trunc(k_trunc)
@@ -320,7 +322,7 @@ RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
 
 
 class RecipeTrace:
-    
+    """Recording the process of running a Recipe."""
     def __init__(self, optimize=None, sample=[], post=None):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = optimize
@@ -340,7 +342,7 @@ class RecipeTrace:
         else:
             raise ValueError('post should be a PostStep or None.')
         
-        self._r_optimize = None
+        self._r_optimize = []
         self._r_sample = []
         self._r_post = None
         
@@ -354,7 +356,8 @@ class RecipeTrace:
     
     @property
     def result(self):
-        return RecipePhases(self._r_optimize, self._r_sample, self._r_post)
+        return RecipePhases(tuple(self._r_optimize), tuple(self._r_sample),
+                            self._r_post)
     
     @property
     def steps(self):
@@ -372,18 +375,17 @@ class RecipeTrace:
     @property
     def n_call(self):
         _n_call = 0
-        _opt = self.result.optimize
-        if _opt is not None:
+        for _opt in self._r_optimize:
             if len(_opt.surrogate_list) > 0:
                 _n_call += len(_opt.var_dicts)
             else:
                 raise NotImplementedError
-        for _sam in self.result.sample:
+        for _sam in self._r_sample:
             if len(_sam.surrogate_list) > 0:
                 _n_call += len(_sam.var_dicts)
             else:
                 raise NotImplementedError
-        _pos = self.result.post
+        _pos = self._r_post
         if _pos is not None and _pos.weights is not None:
             _n_call += len(_pos.weights)
         return _n_call
@@ -395,17 +397,20 @@ class RecipeTrace:
                             self._i_post == self._n_post)
 
 
+PointDoublet = namedtuple('PointDoublet', 'x, x_trans')
+
+
 DensityQuartet = namedtuple('DensityQuartet', 
                             'logp, logq, logp_trans, logq_trans')
-    
 
-OptimizeResult = namedtuple('OptimizeResult', 'x_max, f_max, samples, '
-                            'surrogate_list, hmc_samples, var_dicts, '
-                            'Laplace, trace')
+
+OptimizeResult = namedtuple('OptimizeResult', 'x_max, f_max, surrogate_list, '
+                            'var_dicts, laplace_samples, laplace_result, '
+                            'samples, sample_trace')
 
 
 SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
-                          'var_dicts, trace')
+                          'var_dicts, sample_trace')
 
 
 PostResult = namedtuple('PostResult', 'samples, weights, logp, logq, '
@@ -414,22 +419,22 @@ PostResult = namedtuple('PostResult', 'samples, weights, logp, logq, '
 
 class Recipe:
     
-    def __init__(self, density, client=None, trace=None, optimize=None, 
-                 sample=[], post=None, x_0=None, random_state=None):
+    def __init__(self, density, client=None, recipe_trace=None, optimize=None, 
+                 sample=[], post=None, copy_density=True):
         if isinstance(density, (Density, DensityLite)):
-            self._density = density
+            self._density = deepcopy(density) if copy_density else density
         else:
             raise ValueError('density should be a Density or DensityLite.')
         
-        self.client = client
+        self._client = client
         
-        if trace is None:
-            trace = RecipeTrace(optimize, sample, post)
-        elif isinstance(result, RecipeTrace):
+        if recipe_trace is None:
+            recipe_trace = RecipeTrace(optimize, sample, post)
+        elif isinstance(recipe_trace, RecipeTrace):
             pass
         else:
-            raise ValueError('result should be a RecipeTrace or None.')
-        self._trace = trace
+            raise ValueError('recipe_trace should be a RecipeTrace or None.')
+        self._recipe_trace = recipe_trace
     
     @property
     def density(self):
@@ -439,206 +444,173 @@ class Recipe:
     def client(self):
         return self._client
     
-    @client.setter
-    def client(self, clt):
-        self._client = clt
-    
     @property
-    def input_size(self):
-        return self._density.input_size
-    
-    @property
-    def trace(self):
-        return self._trace
-    
-    @property
-    def n_call(self):
-        return self._result.n_call
+    def recipe_trace(self):
+        return self._recipe_trace
     
     @classmethod
     def _map_fun(cls, client, density, x):
         foo = client.map(density.fun, x)
         return client.gather(foo)
     
-    @property
-    def logp(self):
-        return self._density.logp
-    
-    @property
-    def grad(self):
-        return self._density.grad
-    
-    @property
-    def logp_and_grad(self):
-        return self._density.logp_and_grad
-    
-    @property
-    def to_original(self):
-        return self._density.to_original
-    
-    @property
-    def to_original_grad(self):
-        return self._density.to_original_grad
-    
-    @property
-    def to_original_grad2(self):
-        return self._density.to_original_grad2
-    
-    @property
-    def to_original_density(self):
-        return self._density.to_original_density
-    
-    @property
-    def from_original(self):
-        return self._density.from_original
-    
-    @property
-    def from_original_grad(self):
-        return self._density.from_original_grad
-    
-    @property
-    def from_original_grad2(self):
-        return self._density.from_original_grad2
-        
-    @property
-    def from_original_density(self):
-        return self._density.from_original_density
-    
     def _opt_surro(self, x_0, var_dicts):
-        steps = self.result.steps.optimize
-        result = self.result.result.optimize
+        step = self.recipe_trace._s_optimize
+        result = self.recipe_trace._r_optimize
         
-        _logp = lambda x: self.logp(x, use_surrogate=True, original_space=False)
-        _grad = lambda x: self.grad(x, use_surrogate=True, original_space=False)
-        x_0 = self.from_original(x_0[0])
-        laplace = Laplace(_logp, x_0, grad=_grad)
-        lap_res = laplace.run(**steps._sample_options)
+        _logp = lambda x: self.density.logp(x, original_space=False,
+                                            use_surrogate=True)
+        _grad = lambda x: self.density.grad(x, original_space=False,
+                                            use_surrogate=True)
+        x_0 = self.density.from_original(x_0[0])
+        laplace_result = step.laplace.run(logp=_logp, x_0=x_0, grad=_grad)
         
-        x_max = self.to_original(lap_res.x_max)
-        logp = self.logp(x_max, use_surrogate=False, original_space=True)
-        logq_trans = lap_res.f_max
-        logp_trans = self.from_original_density(density=logp, x=x_max)
-        logq = self.to_original_density(density=logq_trans, x=x_max)
+        x_trans = laplace_result.x_max
+        x = self.density.to_original(x_trans)
+        x_max = PointDoublet(x, x_trans)
+        
+        logp = self.density.logp(x, original_space=True, use_surrogate=False)
+        logp_trans = self.density.from_original_density(density=logp, x=x)
+        logq_trans = laplace_result.f_max
+        logq = self.density.to_original_density(density=logq_trans, x=x)
         f_max = DensityQuartet(float(logp), float(logq), float(logp_trans), 
                                float(logq_trans))
-        samples = self.to_original(lap_res.samples)
         
-        surrogate_list = deepcopy(self._density._surrogate_list)
+        laplace_samples = self.density.to_original(laplace_result.samples)
+        surrogate_list = deepcopy(self.density._surrogate_list)
         result.append(
-            OptimizeResult(x_max=x_max, f_max=f_max, samples=samples, 
-            surrogate_list=surrogate_list, hmc_samples=None, 
-            var_dicts=var_dicts, Laplace=lap_res, trace=None))
+            OptimizeResult(x_max=x_max, f_max=f_max,
+            surrogate_list=surrogate_list, var_dicts=var_dicts,
+            laplace_samples=laplace_samples, laplace_result=laplace_result,
+            samples=None, sample_trace=None))
     
     def _opt_step(self):
         # DEVELOPMENT NOTES
         # if has surrogate, iterate until convergence
         # if no surrogate, just run on true model
-        # in the end, optionally run hmc
-        result = self.result
-        steps = self.result.steps.optimize
-        result = self.result.result.optimize
-        result.clear()
+        # in the end, optionally run sampling
+        step = self.recipe_trace._s_optimize
+        result = self.recipe_trace._r_optimize
+        if step._random_state is None:
+            step._set_random_state(check_state(None))
         
-        if steps.has_surrogate:
+        if step.has_surrogate:
             if isinstance(self._density, DensityLite):
                 raise RuntimeError('self.density should be a Density, instead '
                                    'of DensityLite, for surrogate modeling.')
-            self._density.surrogate_list = steps._surrogate_list
+            self._density.surrogate_list = step._surrogate_list
             
-            if steps._fitted:
+            if step.fitted:
                 x_0 = None
                 var_dicts = None
             else:
-                if result._x_0 is None:
-                    x_0 = multivariate_normal(np.zeros(self.input_size), 
-                                              np.eye(self.input_size), 
-                                              steps.n_eval)
+                if step.x_0 is None:
+                    dim = self.density.input_size
+                    x_0 = multivariate_normal(np.zeros(dim), np.eye(dim),
+                                              step.n_eval)
                 else:
-                    if result._x_0.shape[0] < steps.n_eval:
+                    if step.x_0.shape[0] < step.n_eval:
                         raise RuntimeError(
                             'I need {} points to fit the surrogate model, but '
                             'you only gave me enough {} points in x_0.'.format(
-                            steps.n_eval, result._x_0.shape[0]))
-                    x_0 = result._x_0[:steps.n_eval].copy()
+                            step.n_eval, step.x_0.shape[0]))
+                    x_0 = step.x_0[:step.n_eval].copy()
                 var_dicts = self._map_fun(self._client, self._density, x_0)
-                self._density.fit(var_dicts, **steps._fit_options[0])
+                self._density.fit(var_dicts)
             self._opt_surro(x_0, var_dicts)
             print(' OptimizeStep proceeding: iter #0 finished.')
             
-            for i in range(1, steps._max_iter):
-                x_0 = result[-1].samples
-                if x_0.shape[0] < steps.n_eval:
+            for i in range(1, step._max_iter):
+                x_0 = result[-1].laplace_samples
+                if x_0.shape[0] < step.n_eval:
                     raise RuntimeError(
                         'I need {} points to fit the surrogate model, but I '
                         'can only get {} points from the previous '
-                        'iteration.'.format(steps.n_eval, x_0.shape[0]))
-                x_0 = x_0[:steps.n_eval].copy()
+                        'iteration.'.format(step.n_eval, x_0.shape[0]))
+                x_0 = x_0[:step.n_eval].copy()
                 var_dicts = self._map_fun(self._client, self._density, x_0)
-                self._density.fit(var_dicts, **steps._fit_options[0])
+                self._density.fit(var_dicts)
                 self._opt_surro(x_0, var_dicts)
                 _a = result[-1].f_max
                 _b = result[-2].f_max
-                _pp = _a[2] - _b[2]
-                _pq = _a[2] - _a[3]
+                _pp = _a.logp_trans - _b.logp_trans
+                _pq = _a.logp_trans - _a.logq_trans
                 print(' OptimizeStep proceeding: iter #{} finished, while '
                       'delta_pp = {:.3f}, delta_pq = {:.3f}.'.format(i, _pp, 
                       _pq))
-                if (abs(_pp) < steps._eps_pp) and (abs(_pq) < steps._eps_pq):
+                if (abs(_pp) < step._eps_pp) and (abs(_pq) < step._eps_pq):
                     break
-            if i == steps._max_iter - 1:
+            if i == step._max_iter - 1:
                 warnings.warn('Optimization did not converge within the max '
                               'number of iterations.', RuntimeWarning)
 
         else:
-            if self._x_0 is None:
-                x_0 = np.zeros(self.input_size)
+            if step.x_0 is None:
+                input_size = self.density.input_size
+                if input_size is None:
+                    raise RuntimeError('Neither OptimizeStep.x_0 nor Density'
+                                       '/DensityLite.input_size is defined.')
+                x_0 = np.zeros(input_size)
             else:
-                x_0 = self.from_original(self._x_0[0])
-            logp = lambda x: self.logp(x, original_space=False)
-            if self._density.has_true_jac:
-                grad = lambda x: self.grad(x, original_space=False)
-            else:
-                grad = None
-            laplace = Laplace(logp, x_0, grad=grad)
-            lap_res = laplace.run(**steps._sample_options)
+                x_0 = self.density.from_original(step.x_0[0])
+            _logp = lambda x: self.density.logp(x, original_space=False)
+            # if self.density.grad is well-defined, we will use it
+            # otherwise, we will use finite-difference gradient
+            try:
+                _grad_0 = self.density.grad(x_0, original_space=False)
+                assert np.all(np.isfinite(_grad_0))
+                _grad = lambda x: self.density.grad(x, original_space=False)
+            except:
+                _grad = None
+            # TODO: allow user-defined hessian for optimizer?
+            laplace_result = step.laplace.run(logp=_logp, x_0=x_0, grad=_grad)
             
-            x_max = self.to_original(lap_res.x_max)
-            logp_trans = lap_res.f_max
-            logp = self.to_original_density(density=logp_trans, x_trans=x_max)
+            x_trans = laplace_result.x_max
+            x = self.density.to_original(x_trans)
+            x_max = PointDoublet(x, x_trans)
+            
+            logp_trans = laplace_result.f_max
+            logp = self.density.to_original_density(density=logp_trans, x=x_max)
             f_max = DensityQuartet(float(logp), None, float(logp_trans), None)
-            samples = self.to_original(lap_res.samples)
             
+            laplace_samples = self.density.to_original(laplace_result.samples)
             result.append(
-                OptimizeResult(x_max=x_max, f_max=f_max, samples=samples,
-                surrogate_list=[], hmc_samples=None, var_dicts=None, 
-                Laplace=lap_res, trace=None))
+                OptimizeResult(x_max=x_max, f_max=f_max, surrogate_list=[],
+                var_dicts=None, laplace_samples=laplace_samples,
+                laplace_result=laplace_result, samples=None, sample_trace=None))
         
-        if steps._run_sampling:
-            self._opt_hmc()
+        if step.has_surrogate and step.sample_trace is not None:
+            self._opt_sample()
         result._i_optimize = 1
         print('\n ***** OptimizeStep finished. ***** \n')
     
-    def _opt_hmc(self):
-        result = self.result
-        steps = self.result.steps.optimize
-        result = self.result.result.optimize
+    def _opt_sample(self):
+        step = self.recipe_trace._s_optimize
+        result = self.recipe_trace._r_optimize
+        sample_trace = step.sample_trace
+        
+        if sample_trace._x_0 is None:
+            sample_trace._set_x_0(result[-1].laplace_samples)
+        if sample_trace._random_state is None:
+            sample_trace._set_random_state(step._random_state)
+        if step.reuse_metric:
+            cov = result[-1].laplace_result.cov.copy()
+            if sample_trace._metric == 'diag':
+                sample_trace._metric = np.diag(cov)
+            elif sample_trace._metric == 'full':
+                sample_trace._metric = cov
         
         old_list = self._density.surrogate_list
         self._density.surrogate_list = result[-1].surrogate_list
-        ho = {'sampler_options': {'metric': np.diag(result[-1].Laplace.cov)}}
-        ho.update(steps.hmc_options)
-        x, t = sample(
-            self._density, self._client, random_state=result._random_state, 
-            x_0=result[-1].samples, return_trace=True, **ho)
-        result[-1] = result[-1]._replace(hmc_samples=x, trace=t)
+        x, t = sample(self._density, sample_trace=sample_trace,
+                      client=self._client)
+        result[-1] = result[-1]._replace(samples=x, sample_trace=t)
         self._density.surrogate_list = old_list
-        print('\n *** Finished sampling the density defined by the last '
-              'OptimizeStep. *** \n')
+        print('\n *** Finished sampling the surrogate density defined by the '
+              'last OptimizeStep. *** \n')
     
     def _sam_step(self):
-        result = self.result
-        steps = self.result.steps.sample
-        result = self.result.result.sample
+        step = self.recipe_trace._s_sample
+        result = self.recipe_trace._r_sample
         
         for i in range(result.i.sample, result.n.sample):
             soi = {}
@@ -656,8 +628,8 @@ class Recipe:
                             'depreciated.', RuntimeWarning)
                         if result._x_0 is None:
                             x_0 = multivariate_normal(
-                                np.zeros(self.input_size), 
-                                np.eye(self.input_size), steps.n_eval)
+                                np.zeros(self.density.input_size), 
+                                np.eye(self.density.input_size), steps.n_eval)
                         else:
                             if result._x_0.shape[0] < steps.n_eval:
                                 raise RuntimeError(
@@ -673,14 +645,14 @@ class Recipe:
                     else:
                         if i == 0 and result.n.optimize:
                             if result.result.optimize[-1].hmc_samples is None:
-                                self._opt_hmc()
+                                self._opt_sample()
                             _x_0 = result.result.optimize[-1].hmc_samples
-                            _logq = np.array([self.to_original_density(
+                            _logq = np.array([self.density.to_original_density(
                                 *t.get(return_logp=True)[::-1]) for t in 
                                 result.result.optimize[-1].trace])
                         else:
                             _x_0 = result[-1].samples
-                            _logq = np.array([self.to_original_density(
+                            _logq = np.array([self.density.to_original_density(
                                 *t.get(return_logp=True)[::-1]) for t in 
                                 result.result.sample[-1].trace])
                         _x_0 = _x_0.reshape((-1, _x_0.shape[-1]))
@@ -688,7 +660,8 @@ class Recipe:
                         _logq_min = np.min(_logq)
                         
                         if not steps[i].adapt_metric:
-                            cov = np.cov(self.from_original(_x_0), rowvar=False)
+                            cov = np.cov(self.density.from_original(_x_0),
+                                         rowvar=False)
                             soi.update({'sampler_options': 
                                         {'metric': cov, 'adapt_metric': False}})
                             #soi['sampler_options'] = {'metric': np.diag(cov)}
@@ -789,16 +762,15 @@ class Recipe:
         print(' ***** SampleStep finished. ***** \n')
     
     def _pos_step(self):
-        result = self.result
-        steps = self.result.steps.post
-        result = self.result.result.post
+        step = self.recipe_trace._s_post
+        result = self.recipe_trace._r_post
         
         if result.n.sample:
             _samples = result.result.sample[-1].samples
             samples = _samples.reshape((-1, _samples.shape[-1]))
-            _logq = np.array(
-                [self.to_original_density(*t.get(return_logp=True)[::-1]) for t 
-                in result.result.sample[-1].trace])
+            _logq = np.array([self.density.to_original_density(
+                             *t.get(return_logp=True)[::-1]) for t in 
+                             result.result.sample[-1].trace])
             logq = _logq.reshape(-1)
             if steps.n_is == 0:
                 result.append(

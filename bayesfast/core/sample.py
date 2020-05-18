@@ -16,7 +16,7 @@ __all__ = ['sample']
 # TODO: fix pub/sub key
 
 
-def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
+def sample(density, sample_trace=None, sampler='NUTS', n_run=None, client=None,
            verbose=True):
     # DEVELOPMENT NOTES
     # if use_surrogate is not specified in density_options
@@ -24,32 +24,32 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
     # otherwise, x_0 is understood as in the specified space
     if not isinstance(density, (Density, DensityLite)):
         raise ValueError('density should be a Density or DensityLite.')
-    if isinstance(trace, NTrace):
+    if isinstance(sample_trace, NTrace):
         sampler = 'NUTS'
-    elif isinstance(trace, (HTrace, ETrace)):
+    elif isinstance(sample_trace, (HTrace, ETrace)):
         raise NotImplementedError
-    elif trace is None:
+    elif sample_trace is None:
         if sampler == 'NUTS':
-            trace = NTrace()
+            sample_trace = NTrace()
         elif sampler == 'HMC' or sampler == 'Ensemble':
             raise NotImplementedError
         else:
             raise ValueError('unexpected value for sampler.')
-    elif isinstance(trace, TraceTuple):
-        sampler = trace.sampler
+    elif isinstance(sample_trace, TraceTuple):
+        sampler = sample_trace.sampler
         if sampler == 'NUTS':
             pass
         elif sampler == 'HMC' or sampler == 'Ensemble':
             raise NotImplementedError
         else:
-            raise ValueError('unexpected value for trace.sampler.')
+            raise ValueError('unexpected value for sample_trace.sampler.')
     else:
-        raise ValueError('unexpected value for trace.')
+        raise ValueError('unexpected value for sample_trace.')
     
-    if isinstance(trace, NTrace) and trace.x_0 is None:
+    if isinstance(sample_trace, NTrace) and sample_trace.x_0 is None:
         dim = density.input_size
-        trace._x_0 = bfrandom.multivariate_normal(np.zeros(dim), np.eye(dim),
-                                                  trace.n_chain)
+        sample_trace._x_0 = bfrandom.multivariate_normal(
+            np.zeros(dim), np.eye(dim), sample_trace.n_chain)
     
     try:
         client, new_client = check_client(client)
@@ -59,23 +59,24 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
         finished = 0
         
         if sampler == 'NUTS':
-            def nested_helper(trace, i):
+            def nested_helper(sample_trace, i):
                 """Without this, there will be an UnboundLocalError."""
-                if isinstance(trace, NTrace):
-                    trace._init_chain(i)
-                elif isinstance(trace, TraceTuple):
-                    trace = trace.traces[i]
+                if isinstance(sample_trace, NTrace):
+                    sample_trace._init_chain(i)
+                elif isinstance(sample_trace, TraceTuple):
+                    sample_trace = sample_trace.sample_traces[i]
                 else:
-                    raise RuntimeError('unexpected type for trace.')
-                return trace
+                    raise RuntimeError('unexpected type for sample_trace.')
+                return sample_trace
             def nuts_worker(i):
                 try:
                     with threadpool_limits(1):
-                        _trace = nested_helper(trace, i)
+                        _sample_trace = nested_helper(sample_trace, i)
                         def logp_and_grad(x):
                             return density.logp_and_grad(
-                                x, original_space=not _trace.transform_x)
-                        nuts = NUTS(logp_and_grad=logp_and_grad, trace=_trace, 
+                                x, original_space=not _sample_trace.transform_x)
+                        nuts = NUTS(logp_and_grad=logp_and_grad,
+                                    sample_trace=_sample_trace, 
                                     dask_key=dask_key)
                         t = nuts.run(n_run, verbose)
                         if t.transform_x:
@@ -88,7 +89,7 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
                     pub.put(['Error', i])
                     raise
             
-            foo = client.map(nuts_worker, range(trace.n_chain))
+            foo = client.map(nuts_worker, range(sample_trace.n_chain))
             for msg in sub:
                 if not hasattr(msg, '__iter__'):
                     warnings.warn('unexpected message: {}.'.format(msg),
@@ -105,7 +106,7 @@ def sample(density, trace=None, sampler='NUTS', n_run=None, client=None,
                 else:
                     warnings.warn('unexpected message: {}.'.format(msg),
                                   RuntimeWarning)
-                if finished == trace.n_chain:
+                if finished == sample_trace.n_chain:
                     break
             tt = client.gather(foo)
             return TraceTuple(tt)

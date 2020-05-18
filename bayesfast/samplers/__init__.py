@@ -1,4 +1,4 @@
 from .hmc import HMC
 from .nuts import NUTS
 from .ensemble import EnsembleSampler
-from .trace import *
+from .sample_trace import *

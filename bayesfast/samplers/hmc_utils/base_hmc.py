@@ -1,6 +1,6 @@
 import numpy as np
 from collections import namedtuple
-from ..trace import _HTrace
+from ..sample_trace import _HTrace
 from .integration import CpuLeapfrogIntegrator
 from .stats import NStepStats
 from ...utils import random as bfrandom
@@ -23,19 +23,19 @@ DivergenceInfo = namedtuple("DivergenceInfo", "message, exec_info, state")
 
 class BaseHMC:
     """Superclass to implement Hamiltonian/hybrid monte carlo."""
-    def __init__(self, logp_and_grad, trace, dask_key=None):
+    def __init__(self, logp_and_grad, sample_trace, dask_key=None):
         self._logp_and_grad = logp_and_grad
         self.dask_key = dask_key
-        if isinstance(trace, self._expected_trace):
-            self._trace = trace
+        if isinstance(sample_trace, self._expected_trace):
+            self._sample_trace = sample_trace
         else:
-            raise ValueError('trace should be a HTrace or NTrace.')
-        self._chain_id = trace.chain_id
+            raise ValueError('invalid type for sample_trace.')
+        self._chain_id = sample_trace.chain_id
         self._prefix = ' CHAIN #' + str(self._chain_id) + ' : '
-        self.integrator = CpuLeapfrogIntegrator(self._trace.metric,
+        self.integrator = CpuLeapfrogIntegrator(self._sample_trace.metric,
                                                 logp_and_grad)
         try:
-            logp_0, grad_0 = logp_and_grad(trace.x_0)
+            logp_0, grad_0 = logp_and_grad(self._sample_trace.x_0)
             assert np.isfinite(logp_0).all() and np.isfinite(grad_0).all()
         except:
             raise ValueError('failed to get finite logp and/or grad at x_0.')
@@ -52,28 +52,28 @@ class BaseHMC:
     def astep(self):
         """Perform a single HMC iteration."""
         try:
-            q0 = self._trace._samples[-1]
+            q0 = self._sample_trace._samples[-1]
         except:
-            q0 = self._trace.x_0
+            q0 = self._sample_trace.x_0
             assert q0.ndim == 1
-        p0 = self._trace.metric.random(self._trace.random_state)
+        p0 = self._sample_trace.metric.random(self._sample_trace.random_state)
         start = self.integrator.compute_state(q0, p0)
 
         if not np.isfinite(start.energy):
-            self._trace.metric.raise_ok()
+            self._sample_trace.metric.raise_ok()
             raise RuntimeError(
                 "Bad initial energy, please check the Hamiltonian at p = {}, "
                 "q = {}.".format(p0, q0))
             
-        step_size = self._trace.step_size.current(self.warmup)
+        step_size = self._sample_trace.step_size.current(self.warmup)
         hmc_step = self._hamiltonian_step(start, p0, step_size)
-        self._trace.step_size.update(hmc_step.accept_stat, self.warmup)
-        self._trace.metric.update(hmc_step.end.q, self.warmup)
+        self._sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)
+        self._sample_trace.metric.update(hmc_step.end.q, self.warmup)
         step_stats = NStepStats(**hmc_step.stats, 
-                                **self._trace.step_size.sizes(), 
+                                **self._sample_trace.step_size.sizes(), 
                                 warmup=self.warmup, 
                                 diverging=bool(hmc_step.divergence_info))
-        self._trace.update(hmc_step.end.q, step_stats)
+        self._sample_trace.update(hmc_step.end.q, step_stats)
     
     def run(self, n_run=None, verbose=True, n_update=None):
         if self._dask_key is not None:
@@ -82,9 +82,9 @@ class BaseHMC:
                 pub.put([category, self._prefix + str(message)])
             warnings.showwarning = sw
         try:            
-            i_iter = self.trace.i_iter
-            n_iter = self.trace.n_iter
-            n_warmup = self.trace.n_warmup
+            i_iter = self._sample_trace.i_iter
+            n_iter = self._sample_trace.n_iter
+            n_warmup = self._sample_trace.n_warmup
             if n_run is None:
                 n_run = n_iter - i_iter
             else:
@@ -117,7 +117,8 @@ class BaseHMC:
                     if i > i_iter and not i % n_update:
                         t_d = time.time() - t_i
                         t_i = time.time()
-                        n_div = np.sum(self.trace.stats._diverging[-n_update:])
+                        n_div = np.sum(
+                            self._sample_trace.stats._diverging[-n_update:])
                         msg_0 = (
                             self._prefix +  'sampling proceeding [ {} / {} ], '
                             'last {} samples used {:.2f} seconds'.format(i, 
@@ -147,13 +148,13 @@ class BaseHMC:
                     print(msg)
                 else:
                     pub.put(['SamplingFinished', msg])
-            return self.trace
+            return self._sample_trace
         finally:
             warnings.showwarning = warnings._showwarning_orig
     
     @property
-    def trace(self):
-        return self._trace
+    def sample_trace(self):
+        return self._sample_trace
     
     @property
     def dask_key(self):

@@ -12,8 +12,8 @@ __all__ = ['NTrace', 'HTrace', 'ETrace', 'TraceTuple']
 # TODO: StatsTuple?
 
 
-class _Trace:
-    """Utilities shared by all different Trace classes."""
+class SampleTrace:
+    """Utilities shared by all different types of SampleTrace classes."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
                  random_state=None):
         self._set_n_chain(n_chain)
@@ -21,7 +21,6 @@ class _Trace:
         self.n_warmup = n_warmup
         self._set_x_0(x_0)
         self._set_random_state(random_state)
-        self._random_state_init = deepcopy(self._random_state)
     
     @property
     def n_chain(self):
@@ -123,17 +122,21 @@ class _Trace:
         return self._random_state
     
     def _set_random_state(self, state):
-        self._random_state = check_state(state)
+        if state is None:
+            self._random_state = None
+        else:
+            self._random_state = check_state(state)
+        self._random_state_init = deepcopy(self._random_state)
     
     @property
     def random_state_init(self):
         return deepcopy(self._random_state_init)
 
 
-class _HTrace(_Trace):
+class _HTrace(SampleTrace):
     """Utilities shared by HTrace and NTrace."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
-                 random_state=None, step_size=1., adapt_step_size=True,
+                 random_state=None, step_size=None, adapt_step_size=True,
                  metric='diag', adapt_metric=True, max_change=1000.,
                  target_accept=0.8, gamma=0.05, k=0.75, t_0=10.,
                  initial_mean=None, initial_weight=10., adapt_window=60,
@@ -181,8 +184,8 @@ class _HTrace(_Trace):
             raise ValueError(
                 'i should satisfy 0 <= i < n_chain, but you give {}.'.format(i))
         self._chain_id = i
-        if self.random_state is None:
-            self._random_state = check_state(None)
+        if self._random_state is None:
+            self._set_random_state(check_state(None))
         self._random_state = split_state(self._random_state, self.n_chain)[i]
         self._x_0.reshape((-1, self._x_0.shape[-1]))
         self._x_0 = self._x_0[self._random_state.randint(0, self._x_0.shape[0])]
@@ -245,7 +248,8 @@ class _HTrace(_Trace):
         try:
             return self._stats
         except:
-            raise NotImplementedError('stats is not defined for this trace.')
+            raise NotImplementedError('stats is not defined for this '
+                                      'SampleTrace.')
     
     @property
     def transform_x(self):
@@ -288,11 +292,14 @@ class _HTrace(_Trace):
         if isinstance(step_size, DualAverageAdaptation):
             self._step_size = step_size
         else:
-            try:
-                step_size = float(step_size)
-                assert step_size > 0
-            except:
-                raise ValueError('invalid value for step_size.')
+            if step_size is None:
+                pass
+            else:
+                try:
+                    step_size = float(step_size)
+                    assert step_size > 0
+                except:
+                    raise ValueError('invalid value for step_size.')
             self._step_size = step_size
             self._adapt_step_size = bool(adapt_step_size)
             
@@ -327,6 +334,8 @@ class _HTrace(_Trace):
         if isinstance(self.step_size, DualAverageAdaptation):
             pass
         else:
+            if step_size is None:
+                step_size = 1.
             self._step_size = DualAverageAdaptation(
                 self._step_size / self.input_size**0.25, self._target_accept,
                 self._gamma, self._k, self._t_0, self._adapt_step_size)
@@ -459,7 +468,7 @@ class NTrace(_HTrace):
         """
 
 
-class ETrace(_Trace):
+class ETrace(SampleTrace):
     """Trace class for the ensemble sampler from emcee."""
     def __init__(*args, **kwargs):
         raise NotImplementedError
@@ -467,27 +476,27 @@ class ETrace(_Trace):
 
 class TraceTuple:
     """Collection of multiple NTrace/HTrace from different chains."""
-    def __init__(self, traces):
+    def __init__(self, sample_traces):
         try:
-            traces = tuple(traces)
-            if isinstance(traces[0], NTrace):
+            sample_traces = tuple(sample_traces)
+            if isinstance(sample_traces[0], NTrace):
                 self._sampler = 'NUTS'
-            elif isinstance(traces[0], HTrace):
+            elif isinstance(sample_traces[0], HTrace):
                 self._sampler = 'HMC'
             else:
-                raise ValueError('traces[0] is neither NTrace nor '
+                raise ValueError('sample_traces[0] is neither NTrace nor '
                                  'HTrace.')
-            _type = type(traces[0])
-            for i, t in enumerate(traces):
+            _type = type(sample_traces[0])
+            for i, t in enumerate(sample_traces):
                 assert type(t) == _type
                 assert t.chain_id == i
-            self._traces = traces
+            self._sample_traces = sample_traces
         except:
-            raise ValueError('invalid value for traces.')
+            raise ValueError('invalid value for sample_traces.')
     
     @property
-    def traces(self):
-        return self._traces
+    def sample_traces(self):
+        return self._sample_traces
     
     @property
     def sampler(self):
@@ -495,45 +504,45 @@ class TraceTuple:
     
     @property
     def n_chain(self):
-        return self.traces[0].n_chain
+        return self.sample_traces[0].n_chain
     
     @property
     def n_iter(self):
-        return self.traces[0].n_iter
+        return self.sample_traces[0].n_iter
     
     @n_iter.setter
     def n_iter(self, n):
         tmp = self.n_iter
         try:
-            for t in self.traces:
+            for t in self.sample_traces:
                 t.n_iter = n
         except:
-            for t in self.traces:
+            for t in self.sample_traces:
                 t._n_iter = tmp
             raise
     
     @property
     def i_iter(self):
-        return self.traces[0].i_iter
+        return self.sample_traces[0].i_iter
     
     @property
     def n_warmup(self):
-        return self.traces[0].n_warmup
+        return self.sample_traces[0].n_warmup
     
     @n_warmup.setter
     def n_warmup(self, n):
         tmp = self.n_warmup
         try:
-            for t in self.traces:
+            for t in self.sample_traces:
                 t.n_warmup = n
         except:
-            for t in self.traces:
+            for t in self.sample_traces:
                 t._n_warmup = tmp
             raise
     
     @property
     def samples(self):
-        s = np.array([t.samples for t in self.traces])
+        s = np.array([t.samples for t in self.sample_traces])
         if s.dtype.kind != 'f':
             warnings.warn('the array of samples does not has dtype of float, '
                           'presumably because different chains have run for '
@@ -542,7 +551,7 @@ class TraceTuple:
     
     @property
     def samples_original(self):
-        s = np.array([t.samples_original for t in self.traces])
+        s = np.array([t.samples_original for t in self.sample_traces])
         if s.dtype.kind != 'f':
             warnings.warn('the array of samples_original does not has dtype of '
                           'float, presumably because different chains have run '
@@ -551,7 +560,7 @@ class TraceTuple:
     
     @property
     def logp(self):
-        l = np.array([t.logp for t in self.traces])
+        l = np.array([t.logp for t in self.sample_traces])
         if l.dtype.kind != 'f':
             warnings.warn('the array of logp does not has dtype of float, '
                           'presumably because different chains have run for '
@@ -560,7 +569,7 @@ class TraceTuple:
     
     @property
     def logp_original(self):
-        l = np.array([t.logp_original for t in self.traces])
+        l = np.array([t.logp_original for t in self.sample_traces])
         if l.dtype.kind != 'f':
             warnings.warn('the array of logp_original does not has dtype of '
                           'float, presumably because different chains have run '
@@ -573,11 +582,11 @@ class TraceTuple:
     
     @property
     def finished(self):
-        return self.traces[0].finished
+        return self.sample_traces[0].finished
     
     @property
     def stats(self):
-        return [t.stats for t in self.traces] # add StatsTuple?
+        return [t.stats for t in self.sample_traces] # add StatsTuple?
     
     def get(self, since_iter=None, include_warmup=False, original_space=True,
             return_logp=False, flatten=False):
@@ -602,13 +611,13 @@ class TraceTuple:
     __call__ = get
     
     def __getitem__(self, key):
-        return self._traces.__getitem__(key)
+        return self._sample_traces.__getitem__(key)
 
     def __len__(self):
-        return self._traces.__len__()
+        return self._sample_traces.__len__()
     
     def __iter__(self):
-        return self._traces.__iter__()
+        return self._sample_traces.__iter__()
     
     def __next__(self):
-        return self._traces.__next__()
+        return self._sample_traces.__next__()

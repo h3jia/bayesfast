@@ -157,6 +157,17 @@ class _PipelineBase:
     
     def print_summary(self):
         raise NotImplementedError
+    
+    def _check_os_us(self, original_space, use_surrogate):
+        if original_space is None:
+            original_space = self.original_space
+        else:
+            original_space = bool(original_space)
+        if use_surrogate is None:
+            use_surrogate = self.use_surrogate
+        else:
+            use_surrogate = bool(use_surrogate)
+        return original_space, use_surrogate
 
 
 class _DensityBase:
@@ -396,14 +407,8 @@ class Pipeline(_PipelineBase):
         self._use_surrogate = bool(us)
     
     def fun(self, x, original_space=None, use_surrogate=None):
-        if original_space is None:
-            original_space = self.original_space
-        else:
-            original_space = bool(original_space)
-        if use_surrogate is None:
-            use_surrogate = self.use_surrogate
-        else:
-            use_surrogate = bool(use_surrogate)
+        original_space, use_surrogate = self._check_os_us(original_space,
+                                                          use_surrogate)
         # vectorization using recursions
         # TODO: review this
         if isinstance(x, VariableDict):
@@ -496,14 +501,8 @@ class Pipeline(_PipelineBase):
             return _faj # _faj: VariableDict
     
     def fun_and_jac(self, x, original_space=None, use_surrogate=None):
-        if original_space is None:
-            original_space = self.original_space
-        else:
-            original_space = bool(original_space)
-        if use_surrogate is None:
-            use_surrogate = self.use_surrogate
-        else:
-            use_surrogate = bool(use_surrogate)
+        original_space, use_surrogate = self._check_os_us(original_space,
+                                                          use_surrogate)
         # since in certain cases we need to return (vec of fun, vec of jac)
         # seems that we cannot directly use recursions to vectorize here
         # TODO: review this
@@ -736,7 +735,8 @@ class Density(Pipeline, _DensityBase):
                 'output_vars should be a str, instead of {}.'.format(name))
     
     def logp(self, x, original_space=None, use_surrogate=None):
-        x = np.asarray(x)
+        original_space, use_surrogate = self._check_os_us(original_space,
+                                                          use_surrogate)
         _logp = self.fun(x, original_space, use_surrogate)[..., 0]
         if x.dtype.kind == 'f':
             if self._use_decay and use_surrogate:
@@ -751,6 +751,8 @@ class Density(Pipeline, _DensityBase):
     __call__ = logp
     
     def grad(self, x, original_space=None, use_surrogate=None):
+        original_space, use_surrogate = self._check_os_us(original_space,
+                                                          use_surrogate)
         _grad = self.jac(x, original_space, use_surrogate)[..., 0, :]
         if x.dtype.kind == 'f':
             if self._use_decay and use_surrogate:
@@ -764,6 +766,8 @@ class Density(Pipeline, _DensityBase):
         return _grad
     
     def logp_and_grad(self, x, original_space=None, use_surrogate=None):
+        original_space, use_surrogate = self._check_os_us(original_space,
+                                                          use_surrogate)
         _logp_and_grad = self.fun_and_jac(x, original_space, use_surrogate)
         _logp = _logp_and_grad[0][..., 0]
         _grad = _logp_and_grad[1][..., 0, :]
