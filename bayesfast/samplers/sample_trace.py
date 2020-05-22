@@ -21,6 +21,7 @@ class SampleTrace:
         self.n_warmup = n_warmup
         self._set_x_0(x_0)
         self._set_random_state(random_state)
+        self._x_0_transformed = False
     
     @property
     def n_chain(self):
@@ -97,6 +98,11 @@ class SampleTrace:
     def x_0(self):
         return self._x_0
     
+    # TODO: maybe we can have a better name for this?
+    @property
+    def x_0_transformed(self):
+        return self._x_0_transformed
+    
     def _set_x_0(self, x):
         if x is None:
             self._x_0 = None
@@ -140,12 +146,11 @@ class _HTrace(SampleTrace):
                  metric='diag', adapt_metric=True, max_change=1000.,
                  target_accept=0.8, gamma=0.05, k=0.75, t_0=10.,
                  initial_mean=None, initial_weight=10., adapt_window=60,
-                 update_window=1, doubling=True, transform_x=True):
+                 update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_state)
         self._samples = []
         self._chain_id = None
         self._set_max_change(max_change)
-        self._transform_x = bool(transform_x)
         self._set_step_size(step_size, adapt_step_size, target_accept, gamma, k,
                             t_0)
         self._set_metric(metric, adapt_metric, initial_mean, initial_weight,
@@ -206,14 +211,11 @@ class _HTrace(SampleTrace):
     
     @property
     def samples(self):
-        return np.array(self._samples)
+        return np.asarray(self._samples)
     
     @property
     def samples_original(self):
-        try:
-            return self._samples_original
-        except:
-            return self.samples
+        return np.asarray(self._samples_original)
     
     @property
     def i_iter(self):
@@ -234,14 +236,11 @@ class _HTrace(SampleTrace):
     
     @property
     def logp(self):
-        return np.array(self.stats._logp)
+        return np.asarray(self.stats._logp)
     
     @property
     def logp_original(self):
-        try:
-            return self._logp_original
-        except:
-            return self.logp
+        return np.asarray(self._logp_original)
     
     @property
     def stats(self):
@@ -251,15 +250,15 @@ class _HTrace(SampleTrace):
             raise NotImplementedError('stats is not defined for this '
                                       'SampleTrace.')
     
-    @property
-    def transform_x(self):
-        return self._transform_x
-    
     def update(self, point, stats):
         self._samples.append(point)
         self._stats.update(stats)
     
-    def get(self, since_iter=None, include_warmup=False, return_logp=False):
+    def get(self, since_iter=None, include_warmup=False, original_space=True,
+            return_logp=False, flatten=True):
+        if flatten is not True:
+            warnings.warn('the argument flatten is not used here.',
+                          RuntimeWarning)
         if since_iter is None:
             since_iter = 0 if include_warmup else self.n_warmup
         else:
@@ -268,10 +267,13 @@ class _HTrace(SampleTrace):
             except:
                 raise ValueError('invalid value for since_iter.')
         if return_logp:
-            return (self.samples[since_iter:],
-                    np.array(self.stats._logp[since_iter:]))
+            logp = self.logp_original if original_space else self.logp
+            logp = logp[since_iter:]
+            return samples, logp
         else:
-            return self.samples[since_iter:]
+            samples = self.samples_original if original_space else self.samples
+            samples = samples[since_iter:]
+            return samples
     
     __call__ = get
     
@@ -334,8 +336,8 @@ class _HTrace(SampleTrace):
         if isinstance(self.step_size, DualAverageAdaptation):
             pass
         else:
-            if step_size is None:
-                step_size = 1.
+            if self._step_size is None:
+                self._step_size = 1.
             self._step_size = DualAverageAdaptation(
                 self._step_size / self.input_size**0.25, self._target_accept,
                 self._gamma, self._k, self._t_0, self._adapt_step_size)
@@ -436,13 +438,11 @@ class NTrace(_HTrace):
                  metric='diag', adapt_metric=True, max_change=1000.,
                  max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
                  t_0=10., initial_mean=None, initial_weight=10.,
-                 adapt_window=60, update_window=1, doubling=True,
-                 transform_x=True):
+                 adapt_window=60, update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
-                         initial_weight, adapt_window, update_window, doubling,
-                         transform_x)
+                         initial_weight, adapt_window, update_window, doubling)
         try:
             max_treedepth = int(max_treedepth)
             assert max_treedepth > 0
@@ -588,24 +588,20 @@ class TraceTuple:
     def stats(self):
         return [t.stats for t in self.sample_traces] # add StatsTuple?
     
+    # TODO: the default value for flatten?
     def get(self, since_iter=None, include_warmup=False, original_space=True,
-            return_logp=False, flatten=False):
-        if since_iter is None:
-            since_iter = 0 if include_warmup else self.n_warmup
-        else:
-            try:
-                since_iter = int(since_iter)
-            except:
-                raise ValueError('invalid value for since_iter.')
-        samples = self.samples_original if original_space else self.samples
-        samples = samples[:, since_iter:]
-        samples = samples.reshape((-1, self.input_size)) if flatten else samples
+            return_logp=False, flatten=True):
+        tget = [t.get(since_iter, include_warmup, original_space, return_logp)
+                for t in self.sample_traces]
         if return_logp:
-            logp = self.logp_original if original_space else self.logp
-            logp = logp[:, since_iter:]
-            logp = logp.flatten() if flatten else logp
-            return samples, logp
+            logp = np.asarray(tget)
+            if flatten:
+                logp = logp.flatten()
+            return logp
         else:
+            samples = np.asarray(tget)
+            if flatten:
+                samples = samples.reshape((-1, self.input_size))
             return samples
     
     __call__ = get
@@ -621,3 +617,49 @@ class TraceTuple:
     
     def __next__(self):
         return self._sample_traces.__next__()
+
+
+def _get_step_size(sample_trace):
+    if isinstance(sample_trace, _HTrace):
+        step_size = sample_trace.step_size
+        dim = sample_trace.input_size
+        if not isinstance(step_size, DualAverageAdaptation):
+            raise RuntimeError('sample_trace.step_size should be a '
+                               'DualAverageAdaptation.')
+        if not isinstance(dim, int):
+            raise RuntimeError('sample_trace.input_size is not defined.')
+        return step_size.current(False) * dim**0.25
+    elif isinstance(sample_trace, TraceTuple):
+        return np.mean([_get_step_size(sti) for sti in sample_trace])
+    else:
+        raise ValueError('invalid value for sample_trace.')
+
+
+def _get_metric(sample_trace, target, from_samples=True):
+    if from_samples:
+        if isinstance(sample_trace, (_HTrace, TraceTuple)):
+            samples = sample_trace.get(original_space=False, flatten=True)
+            cov = np.cov(samples, rowvar=False)
+        else:
+            raise ValueError('invalid value for sample_trace.')
+    else:
+        if isinstance(sample_trace, _HTrace):
+            metric = sample_trace.metric
+            if isinstance(metric, QuadMetricDiag):
+                cov = np.diag(metric._var)
+            elif isinstance(metric, QuadMetricFull):
+                cov = np.copy(metric._cov)
+            else:
+                raise RuntimeError('sample_trace.metric is not a QuadMetric.')
+        elif isinstance(sample_trace, TraceTuple):
+            return np.mean([_get_metric(sti, target, from_samples) for sti in
+                            sample_trace], axis=0)
+        else:
+            raise ValueError('invalid value for sample_trace.')
+    
+    if target == 'diag':
+        return np.diag(cov)
+    elif target == 'full':
+        return cov
+    else:
+        raise ValueError('unexpected value for target.')

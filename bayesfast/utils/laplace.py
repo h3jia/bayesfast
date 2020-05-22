@@ -4,22 +4,14 @@ from collections import namedtuple
 from numdifftools import Gradient, Hessian, Jacobian
 from scipy.optimize import minimize
 from scipy.linalg import sqrtm
-from ..utils.random import multivariate_normal
+from .random import multivariate_normal
+from .misc import make_positive
 
-__all__ = ['Laplace']
+__all__ = ['Laplace', 'untemper_laplace_samples']
 
 
 LaplaceResult = namedtuple("LaplaceResult", 
-                           "x_max, f_max, samples, cov, opt_result")
-
-
-def make_positive(A, max_cond=1e5):
-    a, w = np.linalg.eigh(A) # a: all the eigenvalues, in ascending order
-    if a[-1] <= 0:
-        raise ValueError('all the eigenvalues are non-positive.')
-    i = np.argmax(a > a[-1] / max_cond)
-    a[:i] = a[i]
-    return w @ np.diag(a) @ w.T
+                           "x_max, f_max, samples, cov, beta, opt_result")
 
 
 class Laplace:
@@ -148,4 +140,13 @@ class Laplace:
         cov = np.linalg.inv(make_positive(-hess(x_max), self._max_cond))
         samples = multivariate_normal(x_max, cov / self._beta, n_sample,
                                       **self._random_options)
-        return LaplaceResult(x_max, f_max, samples, cov, opt)
+        return LaplaceResult(x_max, f_max, samples, cov, self._beta, opt)
+
+
+def untemper_laplace_samples(laplace_result):
+    if isinstance(laplace_result, LaplaceResult):
+        delta = laplace_result.samples - laplace_result.x_max
+        delta *= laplace_result.beta**0.5
+        return laplace_result.x_max + delta
+    else:
+        raise ValueError('laplace_result should be a LaplaceResult.')

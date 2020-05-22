@@ -12,6 +12,8 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: add call counter?
 # TODO: review the behavior of out
 # TODO: do we need logq information in fit?
+# TODO: use jacobian information to fit
+# TODO: return -inf when outside the bound
 
 
 DecayOptions = namedtuple('DecayOptions', 

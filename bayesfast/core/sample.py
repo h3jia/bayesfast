@@ -1,7 +1,7 @@
 from .density import *
 from distributed import Pub, Sub, Client, get_client, LocalCluster
 from ..utils import random as bfrandom
-from ..samplers import NUTS, NTrace, HTrace, ETrace, TraceTuple
+from ..samplers import NUTS, SampleTrace, NTrace, HTrace, ETrace, TraceTuple
 from ..utils import threadpool_limits, check_client
 import numpy as np
 import warnings
@@ -18,10 +18,6 @@ __all__ = ['sample']
 
 def sample(density, sample_trace=None, sampler='NUTS', n_run=None, client=None,
            verbose=True):
-    # DEVELOPMENT NOTES
-    # if use_surrogate is not specified in density_options
-    # x_0 is interpreted as in original space and will be transformed
-    # otherwise, x_0 is understood as in the specified space
     if not isinstance(density, (Density, DensityLite)):
         raise ValueError('density should be a Density or DensityLite.')
     if isinstance(sample_trace, NTrace):
@@ -46,10 +42,18 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None, client=None,
     else:
         raise ValueError('unexpected value for sample_trace.')
     
-    if isinstance(sample_trace, NTrace) and sample_trace.x_0 is None:
-        dim = density.input_size
-        sample_trace._x_0 = bfrandom.multivariate_normal(
-            np.zeros(dim), np.eye(dim), sample_trace.n_chain)
+    if isinstance(sample_trace, SampleTrace):
+        if sample_trace.x_0 is None:
+            dim = density.input_size
+            if dim is None:
+                raise RuntimeError('Neither SampleTrace.x_0 nor Density'
+                                   '/DensityLite.input_size is defined.')
+            sample_trace._x_0 = bfrandom.multivariate_normal(
+                np.zeros(dim), np.eye(dim), sample_trace.n_chain)
+            sample_trace._x_0_transformed = True
+        elif not sample_trace.x_0_transformed:
+            sample_trace._x_0 = density.from_original(sample_trace._x_0)
+            sample_trace._x_0_transformed = True
     
     try:
         client, new_client = check_client(client)
@@ -73,16 +77,15 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None, client=None,
                     with threadpool_limits(1):
                         _sample_trace = nested_helper(sample_trace, i)
                         def logp_and_grad(x):
-                            return density.logp_and_grad(
-                                x, original_space=not _sample_trace.transform_x)
+                            return density.logp_and_grad(x,
+                                                         original_space=False)
                         nuts = NUTS(logp_and_grad=logp_and_grad,
                                     sample_trace=_sample_trace, 
                                     dask_key=dask_key)
                         t = nuts.run(n_run, verbose)
-                        if t.transform_x:
-                            t._samples_original = density.to_original(t.samples)
-                            t._logp_original = density.to_original_density(
-                                t.logp, x_trans=t.samples)
+                        t._samples_original = density.to_original(t.samples)
+                        t._logp_original = density.to_original_density(
+                            t.logp, x_trans=t.samples)
                     return t
                 except:
                     pub = Pub(dask_key)
