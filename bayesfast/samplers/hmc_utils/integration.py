@@ -146,6 +146,62 @@ class TLeapfrogIntegrator(CpuLeapfrogIntegrator):
         logp = -phi
         return TState(u, q, v, p, V, d_pot_du, d_pot_dq, energy, logp)
         
+#     def _step(self, epsilon, state):
+#         """Perform one step of the leapfrog integration scheme on Hamilton's equations for the THMC Hamiltonian."""
+#         axpy = linalg.blas.get_blas_funcs('axpy')
+#         kin = self._kinetic 
+
+#         u_new = state.u.copy()
+#         q_new = state.q.copy()
+#         v_new = state.v.copy()
+#         p_new = state.p.copy()
+#         V_new = np.empty_like(q_new)
+        
+#         # half step
+#         dt = 0.5 * epsilon
+
+#         # advance momentum one half-step
+#         # p is already stored in p_new
+#         # v_new = v - dt * d_pot_du8
+#         axpy(-state.d_pot_du, v_new, a=dt)
+#         # p_new = p - dt * d_pot_dq
+#         axpy(-state.d_pot_dq, p_new, a=dt)
+
+#         # advance position one full step
+#         kin.velocity(p_new, out=V_new)
+#         # q is already stored in q_new
+#         # u_new = u + epsilon * v_new (mass for tempering variable taken to be 1 here)
+#         axpy(v_new, u_new, a=epsilon)
+#         # q_new = q + epsilon * V_new
+#         axpy(V_new, q_new, a=epsilon)
+
+#         # update derivatives of the potential for second momentum half-step
+#         phi, dphi = [-x for x in self._logp_and_grad(q_new)]
+#         psi, dpsi = [-x for x in self._logprior_and_grad(q_new)]
+#         beta = self.beta_fun(u_new)
+#         d_beta = self.d_beta_fun(u_new)
+#         dU = self.d_temp_potential(u_new)
+#         d_pot_du_new = d_beta*(phi-psi) + dU
+#         d_pot_dq_new = beta*dphi + (1-beta)*dpsi
+
+#         # advance momentum another half-step
+#         # p is already stored in p_new
+#         # v_new = v - dt * d_pot_du
+#         axpy(-d_pot_du_new, v_new, a=dt)
+#         # p_new = p - dt * d_pot_dq
+#         axpy(-d_pot_dq_new, p_new, a=dt)
+
+#         # compute new energy
+#         kinetic = self._kinetic.energy(p_new, velocity=V_new) + v_new*v_new/2 # mass for tempering variable taken to be 1 for now
+#         U = self.temp_potential(u_new)
+#         potential = beta*phi + (1-beta)*psi + U
+#         energy = kinetic + potential
+        
+#         # compute log likelihood
+#         logp = -phi
+
+#         return TState(u_new, q_new, v_new, p_new, V_new, d_pot_du_new, d_pot_dq_new, energy, logp)
+    
     def _step(self, epsilon, state):
         """Perform one step of the leapfrog integration scheme on Hamilton's equations for the THMC Hamiltonian."""
         axpy = linalg.blas.get_blas_funcs('axpy')
@@ -156,26 +212,19 @@ class TLeapfrogIntegrator(CpuLeapfrogIntegrator):
         v_new = state.v.copy()
         p_new = state.p.copy()
         V_new = np.empty_like(q_new)
+        kin.velocity(p_new, out=V_new)
         
         # half step
         dt = 0.5 * epsilon
 
-        # advance momentum one half-step
-        # p is already stored in p_new
-        # v_new = v - dt * d_pot_du8
-        axpy(-state.d_pot_du, v_new, a=dt)
-        # p_new = p - dt * d_pot_dq
-        axpy(-state.d_pot_dq, p_new, a=dt)
-
-        # advance position one full step
-        kin.velocity(p_new, out=V_new)
+        # advance position one half-step
         # q is already stored in q_new
         # u_new = u + epsilon * v_new (mass for tempering variable taken to be 1 here)
-        axpy(v_new, u_new, a=epsilon)
+        axpy(v_new, u_new, a=dt)
         # q_new = q + epsilon * V_new
-        axpy(V_new, q_new, a=epsilon)
-
-        # update derivatives of the potential for second momentum half-step
+        axpy(V_new, q_new, a=dt)
+        
+        # update derivatives of the potential for momentum full-step and second position half-step
         phi, dphi = [-x for x in self._logp_and_grad(q_new)]
         psi, dpsi = [-x for x in self._logprior_and_grad(q_new)]
         beta = self.beta_fun(u_new)
@@ -183,19 +232,27 @@ class TLeapfrogIntegrator(CpuLeapfrogIntegrator):
         dU = self.d_temp_potential(u_new)
         d_pot_du_new = d_beta*(phi-psi) + dU
         d_pot_dq_new = beta*dphi + (1-beta)*dpsi
-
-        # advance momentum another half-step
-        # p is already stored in p_new
+        
+        # advance momentum one full step
         # v_new = v - dt * d_pot_du
-        axpy(-d_pot_du_new, v_new, a=dt)
+        axpy(-d_pot_du_new, v_new, a=epsilon)
         # p_new = p - dt * d_pot_dq
-        axpy(-d_pot_dq_new, p_new, a=dt)
+        axpy(-d_pot_dq_new, p_new, a=epsilon)
+
+        # advance position another half-step
+        # u_new = u + epsilon * v_new (mass for tempering variable taken to be 1 here)
+        axpy(v_new, u_new, a=dt)
+        # q_new = q + epsilon * V_new
+        axpy(V_new, q_new, a=dt)
 
         # compute new energy
         kinetic = self._kinetic.energy(p_new, velocity=V_new) + v_new*v_new/2 # mass for tempering variable taken to be 1 for now
+        phi, dphi = [-x for x in self._logp_and_grad(q_new)]
+        psi, dpsi = [-x for x in self._logprior_and_grad(q_new)]
+        beta = self.beta_fun(u_new)
         U = self.temp_potential(u_new)
         potential = beta*phi + (1-beta)*psi + U
-        energy = kinetic + potential
+        energy = potential
         
         # compute log likelihood
         logp = -phi

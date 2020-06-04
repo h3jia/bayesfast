@@ -2,7 +2,7 @@ import numpy as np
 from .hmc_utils.step_size import DualAverageAdaptation
 from .hmc_utils.metrics import QuadMetric, QuadMetricDiag, QuadMetricFull
 from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
-from .hmc_utils.stats import NStepStats, NStats
+from .hmc_utils.stats import NStepStats, NStats, HStats
 from ..utils.random import check_state, split_state
 from copy import deepcopy
 import warnings
@@ -404,9 +404,19 @@ class _HTrace(_Trace):
 
 class HTrace(_HTrace):
     """Trace class for the (vanilla) HMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
-
+    def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
+                 random_state=None, step_size=1., adapt_step_size=True,
+                 metric='diag', adapt_metric=True, max_change=1000.,
+                 max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
+                 t_0=10., initial_mean=None, initial_weight=10.,
+                 adapt_window=60, update_window=1, doubling=True,
+                 transform_x=True):
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
+                         step_size, adapt_step_size, metric, adapt_metric, 
+                         max_change, target_accept, gamma, k, t_0, initial_mean,
+                         initial_weight, adapt_window, update_window, doubling,
+                         transform_x)
+        self._stats = HStats()
 
 class NTrace(_HTrace):
     """Trace class for the NUTS sampler."""
@@ -450,11 +460,11 @@ class TTrace(_HTrace):
     """Trace class for the THMC sampler."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
                  random_state=None, step_size=1., adapt_step_size=True,
-                 metric='diag', adapt_metric=True, max_change=1000.,
+                 metric='diag', adapt_metric=False, max_change=1000.,
                  max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True,
-                 transform_x=True):
+                 transform_x=True, use_nuts=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
@@ -467,7 +477,10 @@ class TTrace(_HTrace):
             raise ValueError('max_treedepth should be a postive int, instead '
                              'of {}.'.format(max_treedepth))
         self._max_treedepth = max_treedepth
-        self._stats = NStats()
+        if use_nuts:
+            self._stats = NStats()
+        else:
+            self._stats = HStats()
         self._final_u = None
     
     @property

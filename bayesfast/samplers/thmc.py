@@ -12,10 +12,11 @@ __all__ = ['THMC']
 
 class THMC(BaseHMC):
     
-    def __init__(self, logp_and_grad, logprior_and_grad, trace, dask_key=None):
+    def __init__(self, logp_and_grad, logprior_and_grad, trace, n_steps, dask_key=None):
         super().__init__(logp_and_grad, trace, dask_key=dask_key)
         self._logprior_and_grad = logprior_and_grad
         self.integrator = TLeapfrogIntegrator(self._trace.metric, logp_and_grad, logprior_and_grad)
+        self.n_steps = n_steps
     
     _expected_trace = TTrace
     
@@ -54,25 +55,42 @@ class THMC(BaseHMC):
         self._trace.step_size.update(hmc_step.accept_stat, self.warmup)
         # see step_size.py
         self._trace.metric.update(hmc_step.end.q, self.warmup)
-        step_stats = NStepStats(**hmc_step.stats, 
+        step_stats = self.trace._stats.make_stats(**hmc_step.stats, 
                                 **self._trace.step_size.sizes(), 
                                 warmup=self.warmup, 
                                 diverging=bool(hmc_step.divergence_info))
         self._trace.update(hmc_step.end.q, hmc_step.end.u, step_stats)
     
     def _hamiltonian_step(self, start, p0, step_size):
-        tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self._trace.max_change, self.logbern)
+        if self.n_steps == None:
+            # Use NUTS for each HMC iteration
+            tree = _Tree(len(p0), self.integrator, start, step_size, 
+                         self._trace.max_change, self.logbern)
 
-        for _ in range(self._trace._max_treedepth):
-            direction = self.logbern(np.log(0.5)) * 2 - 1
-            divergence_info, turning = tree.extend(direction)
-            if divergence_info or turning:
-                break
+            for _ in range(self._trace._max_treedepth):
+                direction = self.logbern(np.log(0.5)) * 2 - 1
+                divergence_info, turning = tree.extend(direction)
+                if divergence_info or turning:
+                    break
 
-        stats = tree.stats()
-        accept_stat = stats['mean_tree_accept']
-        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
+            stats = tree.stats()
+            accept_stat = stats['mean_tree_accept']
+            return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
+        else:
+            # Use regular HMC with n_steps steps:
+            prev_state = start
+            for _ in range(self.n_steps):
+                next_state = self.integrator.step(step_size, prev_state)
+            init_energy = start.energy
+            prop_energy = next_state.energy
+            accept = self.logbern(init_energy-prop_energy)
+            divergent = np.isnan(prop_energy)
+            if accept and not divergent:
+                proposal = next_state
+            else:
+                proposal = start
+            stats = {'logp': proposal.logp, 'energy': prop_energy}
+            return HMCStepData(proposal, None, divergent, stats)
 
 
 # A proposal for the next position
