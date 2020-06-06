@@ -94,10 +94,8 @@ class BaseHMC:
                 except:
                     raise ValueError(self._prefix + 'invalid value for n_run.')
                 if n_run > n_iter - i_iter:
-                    warnings.warn(
-                        self._prefix + 'n_run is larger than n_iter-i_iter. '
-                        'Set n_run=n_iter-i_iter for now.', RuntimeWarning)
-                    n_run = n_iter - i_iter
+                    self._sample_trace.n_iter = i_iter + n_run
+                    n_iter = self._sample_trace.n_iter
             if verbose:
                 if n_update is None:
                     n_update = n_run // 5

@@ -29,6 +29,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: monitor the progress of IS
 # TODO: improve optimization with trust region?
 #       https://arxiv.org/pdf/1804.00154.pdf
+# TODO: add checkpoint facility
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
@@ -39,7 +40,6 @@ class BaseStep:
         self._set_alpha_n(alpha_n)
         self._set_fitted(fitted)
         self._set_sample_trace(sample_trace)
-        
         self._set_random_state(random_state)
         self._set_reuse_metric(reuse_metric)
     
@@ -126,11 +126,6 @@ class BaseStep:
             self._random_state = None
         else:
             self._random_state = check_state(state)
-        self._random_state_init = deepcopy(self._random_state)
-    
-    @property
-    def random_state_init(self):
-        return deepcopy(self._random_state_init)
     
     @property
     def reuse_metric(self):
@@ -405,6 +400,7 @@ class RecipeTrace:
                             self._i_post == self._n_post)
 
 
+# I'm not good at naming things...
 PointDoublet = namedtuple('PointDoublet', 'x, x_trans')
 
 
@@ -434,7 +430,7 @@ class Recipe:
         else:
             raise ValueError('density should be a Density or DensityLite.')
         
-        self._client = client
+        self.client = client
         
         if recipe_trace is None:
             recipe_trace = RecipeTrace(optimize, sample, post)
@@ -451,6 +447,13 @@ class Recipe:
     @property
     def client(self):
         return self._client
+    
+    @client.setter
+    def client(self, clt):
+        if isinstance(clt, (int, Client)) or clt is None:
+            self._client = clt
+        else:
+            raise ValueError('invalid value for client.')
     
     @property
     def recipe_trace(self):
@@ -869,10 +872,8 @@ class Recipe:
         
         print(' ***** PostStep finished. ***** \n')
     
-    def run(self, client=None, steps=-1):
+    def run(self):
         try:
-            if client is not None:
-                self._client = client
             old_client = self._client
             self._client, _new_client = check_client(client)
             f_opt, f_sam, f_pos = self._result.finished
@@ -888,7 +889,7 @@ class Recipe:
                 self._client.cluster.close()
                 self._client.close()
                 self._client = old_client
-
+    
     def get(self):
         try:
             return self._result.result.post[0]

@@ -48,7 +48,7 @@ def split_state(state, n):
     return [np.random.RandomState(a) for a in foo]
 
 
-def uniform(low, high, size, method='auto', skip=1, dir_file=df, 
+def uniform(low, high, size, method='auto', skip=1, dir_file=df,
             random_state=None):
     low = np.asarray(low)
     high = np.asarray(high)
@@ -77,7 +77,7 @@ def uniform(low, high, size, method='auto', skip=1, dir_file=df,
         raise ValueError('invalid value for method.')
 
 
-def multivariate_normal(mean, cov, size, method='auto', skip=1, dir_file=df, 
+def multivariate_normal(mean, cov, size, method='auto', skip=1, dir_file=df,
                         random_state=None):
     if method == 'auto':
         try:

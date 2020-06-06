@@ -132,11 +132,6 @@ class SampleTrace:
             self._random_state = None
         else:
             self._random_state = check_state(state)
-        self._random_state_init = deepcopy(self._random_state)
-    
-    @property
-    def random_state_init(self):
-        return deepcopy(self._random_state_init)
 
 
 class _HTrace(SampleTrace):
