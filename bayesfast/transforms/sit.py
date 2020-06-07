@@ -26,10 +26,31 @@ class SIT:
     
     Parameters
     ----------
-    
+    n_iter : positive int, optional
+        Number of iterations to perform. Set to 10 by default.
+    client : Client, int or None, optional
+        Dask Client used to parallelize. Set to None by default.
+    bw_factor : positive float, optional
+        Multiplicative factor for the kde bandwidth. Set to 1. by default.
+    m_ica : positive int, optional
+        Max number of points used to compute FastICA. Set to 20000 by default.
+    random_state : RandomState, int or None, optional
+        RandomState for the numpy random number generator. Set to None by
+        default.
+    m_plot : int, optional
+        Max number of dims for triangle_plot. If non-positive, will be
+        interpreted as no limits. Set to 8 by default.
+    cubic_options ：dict, optional
+        Additional keyword arguments for the cubic spline. Set to {} by default.
+    ica_options : dict, optional
+        Additional keyword arguments for FastICA. Set to {'max_iter': 80} by
+        default.
+    random_options : dict, optional
+        Additional keyword arguments for `bf.utils.random.multivariate_normal`.
+        Set to {} by default.
     """
     def __init__(self, n_iter=10, client=None, bw_factor=1., m_ica=20000,
-                 random_state=None, cubic_options={},
+                 random_state=None, m_plot=8, cubic_options={},
                  ica_options={'max_iter': 80}, random_options={}):
         self._data = None
         self._cubic = []
@@ -38,6 +59,7 @@ class SIT:
         self.bw_factor = bw_factor
         self.m_ica = m_ica
         self.random_state = random_state
+        self.m_plot = m_plot
         self.cubic_options = cubic_options
         self.ica_options = ica_options
         self.random_options = random_options
@@ -50,11 +72,11 @@ class SIT:
     
     @property
     def data(self):
-        return self._data.copy()
+        return self._data
     
     @property
     def data_init(self):
-        return self._data_init.copy()
+        return self._data_init
     
     @property
     def dim(self):
@@ -62,7 +84,7 @@ class SIT:
     
     @property
     def weights(self):
-        return self._weights.copy()
+        return self._weights
     
     @property
     def n_iter(self):
@@ -133,6 +155,18 @@ class SIT:
             self._random_state = check_state(state)
     
     @property
+    def m_plot(self):
+        return self._m_plot
+    
+    @m_plot.setter
+    def m_plot(self, m):
+        try:
+            m = int(m)
+        except:
+            raise ValueError('m_plot should be an int.')
+        self._m_plot = m
+    
+    @property
     def cubic_options(self):
         return self._cubic_options
     
@@ -152,7 +186,7 @@ class SIT:
         try:
             self._ica_options = dict(io) 
         except:
-            raise ValueError('ica_optionss should be a dict.')
+            raise ValueError('ica_options should be a dict.')
     
     @property
     def random_options(self):
@@ -161,9 +195,9 @@ class SIT:
     @random_options.setter
     def random_options(self, ro):
         try:
-            self._random_method = dict(ro)
+            self._random_options = dict(ro)
         except:
-            raise ValueError('random_optipms should be a dict.')
+            raise ValueError('random_options should be a dict.')
     
     def _gaussianize_1d(self, x):
         k = kde(x, bw_factor=self._bw_factor, weights=self._weights)
@@ -261,6 +295,8 @@ class SIT:
             old_client = self._client
             self._client, _new_client = check_client(self._client)
             for i in range(n_run):
+                if plot != 0 and self.i_iter == 0:
+                    self.triangle_plot()
                 try:
                     y, A, B, m = self._ica(self._data)
                 except:
@@ -281,7 +317,8 @@ class SIT:
                         'inf encountered for some data points. We will remove '
                         'these inf points for now.', RuntimeWarning)
                 self._data = self._data[finite_index, :]
-                if (plot > 0) and (not i % plot):
+                self._weights = self._weights[finite_index]
+                if (plot > 0) and (not (self.i_iter + 1) % plot):
                     self.triangle_plot()
             if plot < 0:
                 self.triangle_plot()
@@ -295,18 +332,28 @@ class SIT:
         if not HAS_GETDIST:
             raise RuntimeError(
                 'you need to install getdist to get the triangle plot.')
-        samples = MCSamples(samples=self._data)
+        if 0 < self.m_plot < self.dim:
+            plot_data = self._data[:, :self.m_plot]
+        else:
+            plot_data = self._data
+        samples = MCSamples(samples=plot_data)
         g = plots.getSubplotPlotter()
         g.triangle_plot([samples,], filled=True, contour_args={'alpha':0.8},
                         diag1d_kwargs={'normalized':True})
+        if self.i_iter:
+            plt.suptitle("triangle plot after iteration " + str(self.i_iter),
+                         fontsize=plot_data.shape[-1] * 4, ha='left')
+        else:
+            plt.suptitle('triangle plot for the initial data',
+                         fontsize=plot_data.shape[-1] * 4, ha='left')
         plt.show()
-        print("triangle plot at iteration " + str(iteration))
-        print("\n---------- ---------- ---------- ---------- ----------\n")
         
     def sample(self, n, use_client=False):
-        n = int(n)
-        if n <= 0:
-            raise ValueError('n should be positive.')
+        try:
+            n = int(n)
+            assert n > 0
+        except:
+            raise ValueError('n should be a positive int.')
         ro = self._random_options.copy()
         if not 'random_state' in ro:
             ro['random_state'] = self._random_state
@@ -333,14 +380,17 @@ class SIT:
                 y = y[:, np.newaxis]
             else:
                 y = y[np.newaxis, :]
-        if not (y.ndim == 2 and y.shape[-1] == self.dim):
+        if y.shape[-1] != self.dim:
             raise ValueError('invalid shape for x.')
+        _original_shape = y.shape
+        y = y.reshape((-1, _original_shape[-1]))
         log_j = np.zeros(y.shape[0])
         
         try:
             if use_client:
                 old_client = self._client
                 self._client, _new_client = check_client(self._client)
+            
             for i in range(self.i_iter):
                 y = (y - self._m[i]) @ self._A[i].T
                 if use_client:
@@ -360,7 +410,11 @@ class SIT:
                                               zip(self._cubic[i], y.T)))
                 y = np.array(map_result).T
             log_j += np.sum(self._logdetA)
+            
+            y = y.reshape(_original_shape)
+            log_j = log_j.reshape(_original_shape[:-1])
             return y, log_j
+        
         finally:
             if use_client and _new_client:
                 self._client.cluster.close()
@@ -377,14 +431,17 @@ class SIT:
                 x = x[:, np.newaxis]
             else:
                 x = x[np.newaxis, :]
-        if not (x.ndim == 2 and x.shape[-1] == self.dim):
+        if x.shape[-1] != self.dim:
             raise ValueError('invalid shape for y.')
+        _original_shape = x.shape
+        x = x.reshape((-1, _original_shape[-1]))
         log_j = np.zeros(x.shape[0])
         
         try:
             if use_client:
                 old_client = self._client
                 self._client, _new_client = check_client(self._client)
+            
             for i in reversed(range(self.i_iter)):
                 if use_client:
                     foo = self._client.map(self._do_solve, self._cubic[i], x.T)
@@ -403,7 +460,11 @@ class SIT:
                 log_j += np.sum(np.log(map_result), axis=0)
                 x = x @ self._B[i].T + self._m[i]
             log_j += np.sum(self._logdetA)
+            
+            x = x.reshape(_original_shape)
+            log_j = log_j.reshape(_original_shape[:-1])
             return x, log_j
+        
         finally:
             if use_client and _new_client:
                 self._client.cluster.close()

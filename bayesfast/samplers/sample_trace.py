@@ -7,7 +7,8 @@ from ..utils.random import check_state, split_state
 from copy import deepcopy
 import warnings
 
-__all__ = ['NTrace', 'HTrace', 'ETrace', 'TraceTuple']
+__all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TraceTuple',
+           '_get_step_size', '_get_metric']
 
 # TODO: StatsTuple?
 

@@ -32,7 +32,7 @@ class _PipelineBase:
             self._input_scales = None
         else:
             self._input_scales = self._scale_check(scales)
-            self._input_scales.flags.writeable = False # TODO: PropertyArray?
+            # self._input_scales.flags.writeable = False # TODO: PropertyArray?
     
     @staticmethod
     def _scale_check(scales):
@@ -57,7 +57,7 @@ class _PipelineBase:
             self._hard_bounds = bounds
         else:
             self._hard_bounds = self._bound_check(bounds)
-            self._hard_bounds.flags.writeable = False # TODO: PropertyArray?
+            # self._hard_bounds.flags.writeable = False # TODO: PropertyArray?
     
     @staticmethod
     def _bound_check(bounds):
@@ -654,6 +654,8 @@ class Pipeline(_PipelineBase):
             self._input_cum = None
         else:
             self._input_dims = self._dim_check(dims)
+            # we do not allow directly modify the elements of input_dims here
+            # as it cannot trigger the update of input_cum
             self._input_dims.flags.writeable = False # TODO: PropertyArray?
     
     def _dim_check(self, dims):

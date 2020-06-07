@@ -1,8 +1,7 @@
 import numpy as np
 import warnings
 
-__all__ = ['all_isinstance', 'make_positive', 'SystematicResampler',
-           'GetFirstResampler']
+__all__ = ['all_isinstance', 'make_positive', 'SystematicResampler']
 
 
 def all_isinstance(iterable, class_or_tuple):
@@ -70,9 +69,9 @@ class SystematicResampler:
                 100, n_w[j], ep)
             i_all[n_c[j]:n_c[j + 1]] = i_j.astype(np.int)
         if np.unique(i_all).size < i_all.size:
-            message = '{:.1f}% of the resampled points are not unique. Please '
-                      'consider giving me more points.'.format(100 - 
-                      np.unique(i_all).size / i_all.size * 100)
+            message = ('{:.1f}% of the resampled points are not unique. Please '
+                       'consider giving me more points.'.format(100 - 
+                       np.unique(i_all).size / i_all.size * 100))
             if self._require_unique:
                 raise RuntimeError(message)
             else:

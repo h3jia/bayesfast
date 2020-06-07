@@ -412,6 +412,8 @@ class Module:
             self._input_scales_diff = 1.
         else:
             self._input_scales = self._scale_check(scales)
+            # we do not allow directly modify the elements of input_scales here
+            # as it cannot trigger the update of input_scales_diff
             self._input_scales.flags.writeable = False # TODO: PropertyArray?
     
     @property

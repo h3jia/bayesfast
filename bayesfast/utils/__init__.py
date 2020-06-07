@@ -7,4 +7,4 @@ from . import random
 from . import sobol
 from .threadpoolctl import threadpool_limits, threadpool_info
 from .client import check_client
-from .misc import all_isinstance, make_positive
+from .misc import all_isinstance, make_positive, SystematicResampler

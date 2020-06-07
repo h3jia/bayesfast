@@ -57,6 +57,8 @@ class PolyConfig:
             self._input_mask = None
         else:
             self._input_mask = np.sort(np.unique(np.asarray(im, dtype=np.int)))
+            # we do not allow directly modify the elements of input_mask here
+            # as it cannot trigger the unique/sort check
             self._input_mask.flags.writeable = False # TODO: PropertyArray?
     
     @property
@@ -68,6 +70,8 @@ class PolyConfig:
             self._output_mask = None
         else:
             self._output_mask = np.sort(np.unique(np.asarray(om, dtype=np.int)))
+            # we do not allow directly modify the elements of output_mask here
+            # as it cannot trigger the unique/sort check
             self._output_mask.flags.writeable = False # TODO: PropertyArray?
     
     @property
@@ -264,7 +268,7 @@ class PolyModel(Surrogate):
         if self._center_max:
             try:
                 logp = np.asarray(logp)
-                assert x.shape[0] == logp.shape[0] and logp.ndim == 1:
+                assert x.shape[0] == logp.shape[0] and logp.ndim == 1
             except:
                 raise ValueError('invalid value for logp.')
             mu_f = x[np.argmax(logp)]
