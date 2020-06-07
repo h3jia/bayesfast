@@ -1,9 +1,6 @@
-import setuptools
-from distutils.core import setup
-from distutils.extension import Extension
+from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 import numpy as np
-
 
 ext_modules = [
     Extension(
@@ -51,7 +48,8 @@ setup(
     url='https://github.com/HerculesJack/bayesfast',
     license='Apache License, Version 2.0',
     python_requires=">=3",
-    install_requires=['cython', 'dask', 'distributed', 'numdifftools', 'numpy', 
+    install_requires=['cython', 'dask', 'distributed', 'numdifftools', 'numpy',
                       'scikit-learn', 'scipy'],
+    packages=find_packages(),
     ext_modules=cythonize(ext_modules, language_level="3"),
 )
