@@ -246,6 +246,10 @@ class _HTrace(SampleTrace):
             raise NotImplementedError('stats is not defined for this '
                                       'SampleTrace.')
     
+    @property
+    def n_call(self):
+        raise NotImplementedError('abstract property.')
+    
     def update(self, point, stats):
         self._samples.append(point)
         self._stats.update(stats)
@@ -535,6 +539,10 @@ class TraceTuple:
             for t in self.sample_traces:
                 t._n_warmup = tmp
             raise
+    
+    @property
+    def n_call(self):
+        return sum([t.n_call for t in self.sample_traces])
     
     @property
     def samples(self):
