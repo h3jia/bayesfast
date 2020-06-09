@@ -238,17 +238,19 @@ class SIT:
         else:
             try:
                 data = np.array(data)
+                assert data.size > 0
             except:
                 raise ValueError('invalid value for data.')
-            if data.ndim == 1:
-                self._data = data[:, np.newaxis]
-            elif data.ndim == 2:
+            if data.ndim == 2:
                 self._data = data
             elif data.ndim >= 3:
                 self._data = data.reshape((-1, data.shape[-1]))
             else:
-                raise ValueError('invalid value for data.ndim.')
+                raise ValueError('invalid shape for data.ndim.')
             self._data_init = self._data.copy()
+            
+            if self.dim == 1:
+                raise ValueError('I cannot do rotations for only one variable.')
             
             _n = self._data.shape[0]
             if weights is not None:
@@ -293,6 +295,7 @@ class SIT:
         
         try:
             old_client = self._client
+            _new_client = False
             self._client, _new_client = check_client(self._client)
             for i in range(n_run):
                 if plot != 0 and self.i_iter == 0:
@@ -376,10 +379,7 @@ class SIT:
         except:
             raise ValueError('invalid value for x.')
         if y.ndim == 1:
-            if self.dim == 1:
-                y = y[:, np.newaxis]
-            else:
-                y = y[np.newaxis, :]
+            y = y[np.newaxis, :]
         if y.shape[-1] != self.dim:
             raise ValueError('invalid shape for x.')
         _original_shape = y.shape
@@ -389,6 +389,7 @@ class SIT:
         try:
             if use_client:
                 old_client = self._client
+                _new_client = False
                 self._client, _new_client = check_client(self._client)
             
             for i in range(self.i_iter):
@@ -427,10 +428,7 @@ class SIT:
         except:
             raise ValueError('invalid value for y.')
         if x.ndim == 1:
-            if self.dim == 1:
-                x = x[:, np.newaxis]
-            else:
-                x = x[np.newaxis, :]
+            x = x[np.newaxis, :]
         if x.shape[-1] != self.dim:
             raise ValueError('invalid shape for y.')
         _original_shape = x.shape
@@ -440,6 +438,7 @@ class SIT:
         try:
             if use_client:
                 old_client = self._client
+                _new_client = False
                 self._client, _new_client = check_client(self._client)
             
             for i in reversed(range(self.i_iter)):

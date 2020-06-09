@@ -1,4 +1,5 @@
 from distributed import Client, LocalCluster, get_client
+import warnings
 
 __all__ = ['check_client']
 
@@ -21,8 +22,10 @@ def check_client(client):
                 client = int(client)
                 assert client > 0
             except:
-                raise ValueError(
-                    'I do not know how to get a client from what you gave me.')
+                warnings.warn('I do not know how to get a client from what you '
+                              'gave me. Falling back to client=None for now.',
+                              RuntimeWarning)
+                client = None
         cluster = LocalCluster(n_workers=client, threads_per_worker=1)
         client = Client(cluster)
         return client, True

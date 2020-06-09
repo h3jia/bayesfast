@@ -5,19 +5,19 @@ import warnings
 __all__ = ['importance']
 
 
-def importance(logp_xq, logq_xq):
+def importance(logp_q, logq_q):
     try:
-        lpq = np.asarray(logp_xq)
-        lqq = np.asarray(logq_xq)
+        lpq = np.asarray(logp_q)
+        lqq = np.asarray(logq_q)
     except:
-        raise ValueError('invalid value for the input.')
+        raise ValueError('invalid value for the inputs.')
     
     if (lqq.ndim != 1) and (lqq.ndim != 2):
         raise ValueError(
-            'dim of logq_xq should be 1 or 2, instead of {}.'.format(lqq.ndim))
+            'dim of logq_q should be 1 or 2, instead of {}.'.format(lqq.ndim))
     if lpq.shape != lqq.shape:
-        raise ValueError('shape of logp_xq, {}, is different from shape of '
-                         'logq_xq, {}.'.format(lpq.shape, lqq.shape))
+        raise ValueError('shape of logp_q, {}, is different from shape of '
+                         'logq_q, {}.'.format(lpq.shape, lqq.shape))
     
     n_q = lqq.size
     lpqf = lpq.flatten()

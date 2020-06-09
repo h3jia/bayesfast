@@ -7,27 +7,27 @@ import warnings
 __all__ = ['bridge']
 
 
-def bridge(logp_xp, logp_xq, logq_xp, logq_xq):
+def bridge(logp_p, logp_q, logq_p, logq_q):
     try:
-        lpp = np.asarray(logp_xp)
-        lpq = np.asarray(logp_xq)
-        lqp = np.asarray(logq_xp)
-        lqq = np.asarray(logq_xq)
+        lpp = np.asarray(logp_p)
+        lpq = np.asarray(logp_q)
+        lqp = np.asarray(logq_p)
+        lqq = np.asarray(logq_q)
     except:
-        raise ValueError('invalid value for the input.')
+        raise ValueError('invalid value for the inputs.')
     
     if (lqq.ndim != 1) and (lqq.ndim != 2):
         raise ValueError(
-            'dim of logq_xq should be 1 or 2, instead of {}.'.format(lqq.ndim))
+            'dim of logq_q should be 1 or 2, instead of {}.'.format(lqq.ndim))
     if (lpp.ndim != 1) and (lpp.ndim != 2):
         raise ValueError(
-            'dim of logp_xp should be 1 or 2, instead of {}.'.format(lpp.ndim))
+            'dim of logp_p should be 1 or 2, instead of {}.'.format(lpp.ndim))
     if lpp.shape != lqp.shape:
-        raise ValueError('shape of logp_xp, {}, is different from shape of '
-                         'logq_xp, {}.'.format(lpp.shape, lqp.shape))
+        raise ValueError('shape of logp_p, {}, is different from shape of '
+                         'logq_p, {}.'.format(lpp.shape, lqp.shape))
     if lpq.shape != lqq.shape:
-        raise ValueError('shape of logp_xq, {}, is different from shape of '
-                         'logq_xq, {}.'.format(lpq.shape, lqq.shape))
+        raise ValueError('shape of logp_q, {}, is different from shape of '
+                         'logq_q, {}.'.format(lpq.shape, lqq.shape))
     
     n_p = lpp.size
     n_q = lqq.size

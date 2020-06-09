@@ -161,12 +161,6 @@ class _HTrace(SampleTrace):
                              'of {}.'.format(max_change))
         self._max_change = max_change
     
-    def _set_random_state(self, state):
-        if state is None:
-            self._random_state = None
-        else:
-            self._random_state = check_state(state)
-    
     @property
     def chain_id(self):
         return self._chain_id
@@ -266,6 +260,8 @@ class _HTrace(SampleTrace):
                 since_iter = int(since_iter)
             except:
                 raise ValueError('invalid value for since_iter.')
+        if since_iter >= self.i_iter - 1:
+            raise ValueError('since_iter is too large. Nothing to return.')
         if return_logp:
             logp = self.logp_original if original_space else self.logp
             logp = logp[since_iter:]

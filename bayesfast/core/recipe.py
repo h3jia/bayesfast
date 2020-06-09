@@ -25,11 +25,11 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: use tqdm to add progress bar for _map_fun
 # TODO: better control when we don't have enough points before resampling
 # TODO: allow IS over hmc_samples in OptimizeStep
-# TODO: review the choice of x_0 for SampleStep
 # TODO: monitor the progress of IS
 # TODO: improve optimization with trust region?
 #       https://arxiv.org/pdf/1804.00154.pdf
 # TODO: add checkpoint facility
+# TODO: review the hierarchical structure of random_state and client
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
@@ -875,6 +875,7 @@ class Recipe:
     def run(self):
         try:
             old_client = self._client
+            _new_client = False
             self._client, _new_client = check_client(client)
             f_opt, f_sam, f_pos = self._result.finished
             if not f_opt:
