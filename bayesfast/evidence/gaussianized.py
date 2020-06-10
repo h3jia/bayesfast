@@ -183,17 +183,20 @@ class GBS(_GBase):
     def _compute_evidence(self, logp, x_p, logp_p, n_q):
         n_half = x_p.shape[0] // 2
         self.sit.fit(data=x_p[:n_half])
-        x_p = x_p[n_half:]
-        x_q = self.sit.sample(n_q)[0]
         
         if logp_p is not None:
             try:
                 logp_p = np.asarray(logp_p)
                 assert logp_p.shape == x_p.shape[:-1]
+                logp_p = logp_p[n_half:]
             except:
                 warnings.warn('the logp_p you gave me seems not correct. Will '
                               'recompute it from logp and x_p.', RuntimeWarning)
                 logp_p = None
+        
+        x_p = x_p[n_half:]
+        x_q = self.sit.sample(n_q)[0]
+        
         if logp_p is None:
             logp_p = self._map(logp, x_p)
             if logp_p.shape != x_p.shape[:-1]:
