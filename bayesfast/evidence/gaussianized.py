@@ -159,9 +159,11 @@ class _GBase:
             old_client = self._client
             _new_client = False
             self._client, _new_client = check_client(self.client)
+            x_shape = x.shape
+            x = x.reshape((-1, x_shape[-1]))
             foo = self._client.map(logp, x)
-            map_result = self._client.gather(foo)
-            return np.asarray(map_result)
+            logp_x = np.asarray(self._client.gather(foo)).reshape(x_shape[:-1])
+            return logp_x
             
         finally:
             if _new_client:
