@@ -17,8 +17,6 @@ from copy import deepcopy
 
 __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
-
-# TODO: property.setter?
 # TODO: RecipeTrace.n_call
 # TODO: early stop in pipeline evaluation
 # TODO: early stop by comparing KL
@@ -30,24 +28,28 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #       https://arxiv.org/pdf/1804.00154.pdf
 # TODO: add checkpoint facility
 # TODO: review the hierarchical structure of random_state and client
+# TODO: chunk size for client.map
+
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
     def __init__(self, surrogate_list=[], alpha_n=2, fitted=False,
                  sample_trace=None, x_0=None, random_state=None,
                  reuse_metric=True):
-        self._set_surrogate_list(surrogate_list)
-        self._set_alpha_n(alpha_n)
-        self._set_fitted(fitted)
-        self._set_sample_trace(sample_trace)
-        self._set_random_state(random_state)
-        self._set_reuse_metric(reuse_metric)
+        self.surrogate_list = surrogate_list
+        self.alpha_n = alpha_n
+        self.fitted = fitted
+        self.sample_trace = sample_trace
+        self.x_0 = x_0
+        self.random_state = random_state
+        self.reuse_metric = reuse_metric
     
     @property
     def surrogate_list(self):
         return self._surrogate_list
     
-    def _set_surrogate_list(self, sl):
+    @surrogate_list.setter
+    def surrogate_list(self, sl):
         if isinstance(sl, Surrogate):
             sl = [sl]
         self._surrogate_list = PropertyList(sl, self._sl_check)
@@ -71,7 +73,8 @@ class BaseStep:
     def alpha_n(self):
         return self._alpha_n
     
-    def _set_alpha_n(self, a):
+    @alpha_n.setter
+    def alpha_n(self, a):
         try:
             a = float(a)
             assert a <= 0
@@ -88,7 +91,8 @@ class BaseStep:
     def x_0(self):
         return self._x_0
     
-    def _set_x_0(self, x):
+    @x_0.setter
+    def x_0(self, x):
         if x is None:
             self._x_0 = None
         else:
@@ -101,14 +105,16 @@ class BaseStep:
     def fitted(self):
         return self._fitted
     
-    def _set_fitted(self, f):
+    @fitted.setter
+    def fitted(self, f):
         self._fitted = bool(f)
     
     @property
     def sample_trace(self):
         return self._sample_trace
     
-    def _set_sample_trace(self, t):
+    @sample_trace.setter
+    def sample_trace(self, t):
         if t is None:
             t = NTrace()
         elif isinstance(t, (SampleTrace, TraceTuple)):
@@ -121,7 +127,8 @@ class BaseStep:
     def random_state(self):
         return self._random_state
     
-    def _set_random_state(self, state):
+    @random_state.setter
+    def random_state(self, state):
         if state is None:
             self._random_state = None
         else:
@@ -131,7 +138,8 @@ class BaseStep:
     def reuse_metric(self):
         return self._reuse_metric
     
-    def _set_reuse_metric(self, rm):
+    @reuse_metric.setter
+    def reuse_metric(self, rm):
         self._reuse_metric = bool(rm)
 
 
@@ -143,31 +151,32 @@ class OptimizeStep(BaseStep):
                  reuse_metric=True):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
                          random_state, reuse_metric)
-        self._set_laplace(laplace)
-        self._set_eps_pp(eps_pp)
-        self._set_eps_pq(eps_pq)
-        self._set_max_iter(max_iter)
-        self._set_x_0(x_0)
-        self._set_run_sampling(run_sampling)
+        self.laplace = laplace
+        self.eps_pp = eps_pp
+        self.eps_pq = eps_pq
+        self.max_iter = max_iter
+        self.run_sampling = run_sampling
     
     @property
     def laplace(self):
         return self._laplace
     
-    def _set_laplace(self, laplace):
-        if laplace is None:
-            laplace = Laplace(beta=100.)
-        elif isinstance(laplace, Laplace):
+    @laplace.setter
+    def laplace(self, lap):
+        if lap is None:
+            lap = Laplace(beta=100.)
+        elif isinstance(lap, Laplace):
             pass
         else:
             raise ValueError('laplace should be a Laplace')
-        self._laplace = laplace
+        self._laplace = lap
     
     @property
     def eps_pp(self):
         return self._eps_pp
     
-    def _set_eps_pp(self, eps):
+    @eps_pp.setter
+    def eps_pp(self, eps):
         try:
             eps = float(eps)
             assert eps > 0
@@ -179,7 +188,8 @@ class OptimizeStep(BaseStep):
     def eps_pq(self):
         return self._eps_pq
     
-    def _set_eps_pq(self, eps):
+    @eps_pq.setter
+    def eps_pq(self, eps):
         try:
             eps = float(eps)
             assert eps > 0
@@ -191,7 +201,8 @@ class OptimizeStep(BaseStep):
     def max_iter(self):
         return self._max_iter
     
-    def _set_max_iter(self, mi):
+    @max_iter.setter
+    def max_iter(self, mi):
         try:
             mi = int(mi)
             assert mi > 0
@@ -203,7 +214,8 @@ class OptimizeStep(BaseStep):
     def run_sampling(self):
         return self._run_sampling
     
-    def _set_run_sampling(self, run):
+    @run_sampling.setter
+    def run_sampling(self, run):
         self._run_sampling = bool(run)
 
 
@@ -215,18 +227,19 @@ class SampleStep(BaseStep):
                  alpha_min=1.5, alpha_supp=0.1, x_0=None, fitted=False):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
                          random_state, reuse_metric)
-        self._set_resampler(resampler)
-        self._set_reuse_samples(reuse_samples)
-        self._set_reuse_step_size(reuse_step_size)
-        self._set_logp_cutoff(logp_cutoff)
-        self._set_alpha_min(alpha_min)
-        self._set_alpha_supp(alpha_supp)
+        self.resampler = resampler
+        self.reuse_samples = reuse_samples
+        self.reuse_step_size = reuse_step_size
+        self.logp_cutoff = logp_cutoff
+        self.alpha_min = alpha_min
+        self.alpha_supp = alpha_supp
     
     @property
     def resampler(self):
         return self._resampler
     
-    def _set_resampler(self, rs):
+    @resampler.setter
+    def resampler(self, rs):
         if isinstance(rs, dict):
             rs = SystematicResampler(**rs)
         elif rs is None or callable(rs):
@@ -239,7 +252,8 @@ class SampleStep(BaseStep):
     def reuse_samples(self):
         return self._reuse_samples
     
-    def _set_reuse_samples(self, rs):
+    @reuse_samples.setter
+    def reuse_samples(self, rs):
         try:
             self._reuse_samples = int(rs)
         except:
@@ -249,21 +263,24 @@ class SampleStep(BaseStep):
     def reuse_step_size(self):
         return self._reuse_step_size
     
-    def _set_reuse_step_size(self, rss):
+    @reuse_step_size.setter
+    def reuse_step_size(self, rss):
         self._reuse_step_size = bool(rss)
     
     @property
     def logp_cutoff(self):
         return self._logp_cutoff
     
-    def _set_logp_cutoff(self, lc):
+    @logp_cutoff.setter
+    def logp_cutoff(self, lc):
         self._logp_cutoff = bool(lc)
     
     @property
     def alpha_min(self):
         return self._alpha_min
     
-    def _set_alpha_min(self, am):
+    @alpha_min.setter
+    def alpha_min(self, am):
         try:
             am = float(am)
             assert am > 0 and am < self._alpha_n
@@ -275,7 +292,8 @@ class SampleStep(BaseStep):
     def alpha_supp(self):
         return self._alpha_supp
     
-    def _set_alpha_supp(self, asu):
+    @alpha_supp.setter
+    def alpha_supp(self, asu):
         try:
             asu = float(asu)
             assert asu > 0
@@ -297,14 +315,15 @@ class SampleStep(BaseStep):
 class PostStep:
     """Configuring a step for post-processing."""
     def __init__(self, n_is=0, k_trunc=0.25):
-        self._set_n_is(n_is)
-        self._set_k_trunc(k_trunc)
+        self.n_is = n_is
+        self.k_trunc = k_trunc
     
     @property
     def n_is(self):
         return self._n_is
     
-    def _set_n_is(self, n):
+    @n_is.setter
+    def n_is(self, n):
         try:
             self._n_is = int(n)
         except:
@@ -314,7 +333,8 @@ class PostStep:
     def k_trunc(self):
         return self._k_trunc
     
-    def _set_k_trunc(self, k):
+    @k_trunc.setter
+    def k_trunc(self, k):
         try:
             self._k_trunc = float(k)
         except:
@@ -501,8 +521,8 @@ class Recipe:
         # in the end, optionally run sampling
         step = self.recipe_trace._s_optimize
         result = self.recipe_trace._r_optimize
-        if step._random_state is None:
-            step._set_random_state(check_state(None))
+        if step.random_state is None:
+            step.random_state = check_state(None)
         
         if step.has_surrogate:
             if isinstance(self._density, DensityLite):
@@ -662,12 +682,11 @@ class Recipe:
                 prev_density = prev_result.sample_trace.get(return_logp=True,
                                                             flatten=True)
             
-            if this_step._random_state is None:
+            if this_step.random_state is None:
                 if has_prev_step:
-                    this_step._set_random_state(
-                        deepcopy(prev_step._random_state))
+                    this_step.random_state = deepcopy(prev_step._random_state)
                 else:
-                    this_step._set_random_state(check_state(None))
+                    this_step.random_state = check_state(None)
             
             if isinstance(sample_trace, _HTrace):
                 if sample_trace._x_0 is None and has_prev_samples:

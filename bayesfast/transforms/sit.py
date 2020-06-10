@@ -20,6 +20,8 @@ except:
 __all__ = ['SIT']
 
 
+# TODO: vectorize this
+
 class SIT:
     """
     Sliced Iterative Transform.

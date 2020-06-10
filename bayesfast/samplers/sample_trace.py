@@ -10,8 +10,8 @@ import warnings
 __all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TraceTuple',
            '_get_step_size', '_get_metric']
 
+# TODO: property.setter?
 # TODO: StatsTuple?
-
 
 class SampleTrace:
     """Utilities shared by all different types of SampleTrace classes."""
