@@ -460,7 +460,7 @@ class TTrace(_HTrace):
     """Trace class for the THMC sampler."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
                  random_state=None, step_size=1., adapt_step_size=True,
-                 metric='diag', adapt_metric=False, max_change=1000.,
+                 metric='diag', adapt_metric=True, max_change=1000.,
                  max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True,
@@ -482,6 +482,7 @@ class TTrace(_HTrace):
         else:
             self._stats = HStats()
         self._final_u = None
+        self._pbeta1 = []
     
     @property
     def max_treedepth(self):
@@ -498,10 +499,16 @@ class TTrace(_HTrace):
         We add another 1 for the test during initialization.
         """
 
-    def update(self, point, u, stats):
-        """Update the trace to add the resulting final point (q) and temperature variable (u) from a HMC step."""
+    @property
+    def pbeta1(self):
+        return np.array(self._pbeta1)
+        
+    def update(self, point, u, pbeta1, stats):
+        """Update the trace to add the resulting final point (q), temperature variable (u), and probability of beta=1 given the point q (pbeta1) from a HMC step."""
         super().update(point, stats)
         self._final_u = u
+        self._pbeta1.append(pbeta1)
+        
         
 class ETrace(_Trace):
     """Trace class for the ensemble sampler from emcee."""
@@ -510,7 +517,7 @@ class ETrace(_Trace):
 
 
 class TraceTuple:
-    """Collection of multiple NTrace/HTrace from different chains."""
+    """Collection of multiple NTrace/HTrace/TTrace from different chains."""
     def __init__(self, traces):
         try:
             traces = tuple(traces)
@@ -594,6 +601,17 @@ class TraceTuple:
                           'float, presumably because different chains have run '
                           'for different lengths.', RuntimeWarning)
         return s
+    
+    @property
+    def pbeta1(self):
+        if not np.all(t._sampler == 'THMC' for t in self.traces):
+            raise ValueError('Only tempered HMC traces have pbeta1.')
+        p = np.array([t.pbeta1 for t in self.traces])
+        if p.dtype.kind != 'f':
+            warnings.warn('the array of pbeta1 does not has dtype of float, '
+                          'presumably because different chains have run for '
+                          'different lengths.', RuntimeWarning)
+        return p
     
     @property
     def logp(self):

@@ -31,9 +31,11 @@ def sample(density, prior=None, trace=None, sampler='NUTS', n_run=None, client=N
         raise ValueError('density should be a Density or DensityLite.')
     if isinstance(trace, NTrace):
         sampler = 'NUTS'
-    if isinstance(trace, TTrace):
+    elif isinstance(trace, TTrace):
         sampler = 'THMC'
-    elif isinstance(trace, (HTrace, ETrace)):
+    elif isinstance(trace, HTrace):
+        sampler = 'HMC'
+    elif isinstance(trace, ETrace):
         raise NotImplementedError
     elif trace is None:
         if adapt_dt:
@@ -63,7 +65,6 @@ def sample(density, prior=None, trace=None, sampler='NUTS', n_run=None, client=N
         dim = density.input_size
         trace._x_0 = bfrandom.multivariate_normal(np.zeros(dim), np.eye(dim),
                                                   trace.n_chain)
-    
     try:
         client, new_client = check_client(client)
         # dask_key = bfrandom.string()

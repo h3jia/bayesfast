@@ -27,14 +27,19 @@ class THMC(BaseHMC):
         
     def astep(self):
         """Perform a single HMC iteration."""
-        try:
+        try: 
             q0 = self._trace._samples[-1]
-            u0 = self._final_u
+            u0 = self._trace._final_u
             Q0 = np.append(u0, q0)
+            p0 = self._trace.metric.random(self._trace.random_state)
+            v0 = np.random.normal(0,1) # initialize each step
         except:
             q0 = self._trace.x_0
+#             u0 = -1.19097569
             u0 = np.random.normal(0,1) # initialize the first time
             Q0 = np.append(u0, q0)
+#             p0 = 1.43270697
+#             v0 = -0.3126519
             assert Q0.ndim == 1
         p0 = self._trace.metric.random(self._trace.random_state)
         v0 = np.random.normal(0,1) # initialize each step
@@ -59,7 +64,7 @@ class THMC(BaseHMC):
                                 **self._trace.step_size.sizes(), 
                                 warmup=self.warmup, 
                                 diverging=bool(hmc_step.divergence_info))
-        self._trace.update(hmc_step.end.q, hmc_step.end.u, step_stats)
+        self._trace.update(hmc_step.end.q, hmc_step.end.u, hmc_step.end.pbeta1, step_stats)
     
     def _hamiltonian_step(self, start, p0, step_size):
         if self.n_steps == None:
@@ -78,15 +83,16 @@ class THMC(BaseHMC):
             return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
         else:
             # Use regular HMC with n_steps steps:
-            prev_state = start
+            new_state = start
             for _ in range(self.n_steps):
-                next_state = self.integrator.step(step_size, prev_state)
+                prev_state = new_state
+                new_state = self.integrator.step(step_size, prev_state)
             init_energy = start.energy
-            prop_energy = next_state.energy
+            prop_energy = new_state.energy
             accept = self.logbern(init_energy-prop_energy)
             divergent = np.isnan(prop_energy)
             if accept and not divergent:
-                proposal = next_state
+                proposal = new_state
             else:
                 proposal = start
             stats = {'logp': proposal.logp, 'energy': prop_energy}
