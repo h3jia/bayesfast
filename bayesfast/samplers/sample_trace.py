@@ -27,7 +27,7 @@ class SampleTrace:
     
     @property
     def chain_initialized(self):
-        retrun self._chain_initialized
+        return self._chain_initialized
     
     @property
     def n_chain(self):

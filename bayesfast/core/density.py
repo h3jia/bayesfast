@@ -14,6 +14,7 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: do we need logq information in fit?
 # TODO: use jacobian information to fit
 # TODO: return -inf when outside the bound
+# TODO: implement decay and logp transform for VariableDict
 
 
 DecayOptions = namedtuple('DecayOptions', 
@@ -750,6 +751,11 @@ class Density(Pipeline, _DensityBase):
                 _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
             if not original_space:
                 _logp += self._get_diff(x_trans=x)
+        else:
+            if (self._use_decay and use_surrogate) or (not original_space):
+                raise NotImplementedError(
+                    'decay and logp transform have not been implemented when '
+                    'x is VariableDict.')
         return _logp
     
     __call__ = logp
@@ -767,6 +773,11 @@ class Density(Pipeline, _DensityBase):
                           (beta2 > self._alpha_2)[..., np.newaxis])
             if not original_space:
                 _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+        else:
+            if (self._use_decay and use_surrogate) or (not original_space):
+                raise NotImplementedError(
+                    'decay and logp transform have not been implemented when '
+                    'x is VariableDict.')
         return _grad
     
     def logp_and_grad(self, x, original_space=None, use_surrogate=None):
@@ -786,6 +797,11 @@ class Density(Pipeline, _DensityBase):
             if not original_space:
                 _logp += self._get_diff(x_trans=x)
                 _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+        else:
+            if (self._use_decay and use_surrogate) or (not original_space):
+                raise NotImplementedError(
+                    'decay and logp transform have not been implemented when '
+                    'x is VariableDict.')
         return _logp, _grad
     
     @property

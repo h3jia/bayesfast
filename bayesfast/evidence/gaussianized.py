@@ -80,6 +80,8 @@ class _GBase:
     
     def run(self, x_p, logp, logp_p=None):
         raise NotImplementedError('abstrace method.')
+    
+    __call__ = run
 
 
 class _GBaseQ(_GBase):
@@ -204,8 +206,9 @@ class GBS(_GBaseQ):
                 assert logp_p.shape == x_p.shape[:-1]
                 logp_p = logp_p[n_half:]
             except:
-                warnings.warn('the logp_p you gave me seems not correct. Will '
-                              'recompute it from logp and x_p.', RuntimeWarning)
+                warnings.warn(
+                    'the logp_p you gave me seems not correct. Will recompute '
+                    'it from logp and x_p.', RuntimeWarning)
                 logp_p = None
         
         x_q = self.sit.sample(n_q)[0]
@@ -277,8 +280,9 @@ class GHM(_GBase):
                 assert logp_p.shape == x_p.shape[:-1]
                 logp_p = logp_p[n_half:]
             except:
-                warnings.warn('the logp_p you gave me seems not correct. Will '
-                              'recompute it from logp and x_p.', RuntimeWarning)
+                warnings.warn(
+                    'the logp_p you gave me seems not correct. Will recompute '
+                    'it from logp and x_p.', RuntimeWarning)
                 logp_p = None
         
         if logp_p is None:
