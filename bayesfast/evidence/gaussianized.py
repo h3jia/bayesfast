@@ -11,6 +11,8 @@ import warnings
 
 __all__ = ['GBS', 'GIS', 'GHM']
 
+# TODO: directly get logp_p from TraceTuple
+
 
 a = """
     Gaussianized {} for normalizing constant estimation.

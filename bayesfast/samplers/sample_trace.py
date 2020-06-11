@@ -10,25 +10,34 @@ import warnings
 __all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TraceTuple',
            '_get_step_size', '_get_metric']
 
-# TODO: property.setter?
 # TODO: StatsTuple?
+
 
 class SampleTrace:
     """Utilities shared by all different types of SampleTrace classes."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
                  random_state=None):
-        self._set_n_chain(n_chain)
+        self._chain_initialized = False
+        self.n_chain = n_chain
         self.n_iter = n_iter
         self.n_warmup = n_warmup
-        self._set_x_0(x_0)
-        self._set_random_state(random_state)
+        self.x_0 = x_0
+        self.random_state = random_state
         self._x_0_transformed = False
+    
+    @property
+    def chain_initialized(self):
+        retrun self._chain_initialized
     
     @property
     def n_chain(self):
         return self._n_chain
     
-    def _set_n_chain(self, n):
+    @n_chain.setter
+    def n_chain(self, n):
+        if self._chain_initialized:
+            raise RuntimeError('you should not change n_chain once the chain '
+                               'is initialized.')
         try:
             n = int(n)
             assert n > 0
@@ -99,12 +108,11 @@ class SampleTrace:
     def x_0(self):
         return self._x_0
     
-    # TODO: maybe we can have a better name for this?
-    @property
-    def x_0_transformed(self):
-        return self._x_0_transformed
-    
-    def _set_x_0(self, x):
+    @x_0.setter
+    def x_0(self, x):
+        if self._chain_initialized:
+            raise RuntimeError('you should not change x_0 once the chain '
+                               'is initialized.')
         if x is None:
             self._x_0 = None
         else:
@@ -112,6 +120,11 @@ class SampleTrace:
                 self._x_0 = np.atleast_1d(x).copy()
             except:
                 raise ValueError('invalid value for x_0.')
+    
+    # TODO: maybe we can have a better name for this?
+    @property
+    def x_0_transformed(self):
+        return self._x_0_transformed
     
     @property
     def samples(self):
@@ -128,7 +141,8 @@ class SampleTrace:
     def random_state(self):
         return self._random_state
     
-    def _set_random_state(self, state):
+    @random_state.setter
+    def random_state(self, state):
         if state is None:
             self._random_state = None
         else:
@@ -146,20 +160,11 @@ class _HTrace(SampleTrace):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_state)
         self._samples = []
         self._chain_id = None
-        self._set_max_change(max_change)
+        self.max_change = max_change
         self._set_step_size(step_size, adapt_step_size, target_accept, gamma, k,
                             t_0)
         self._set_metric(metric, adapt_metric, initial_mean, initial_weight,
                          adapt_window, update_window, doubling)
-    
-    def _set_max_change(self, max_change):
-        try:
-            max_change = float(max_change)
-            assert max_change > 0
-        except:
-            raise ValueError('max_change should be a positive float, instead '
-                             'of {}.'.format(max_change))
-        self._max_change = max_change
     
     @property
     def chain_id(self):
@@ -179,13 +184,14 @@ class _HTrace(SampleTrace):
             raise ValueError(
                 'i should satisfy 0 <= i < n_chain, but you give {}.'.format(i))
         self._chain_id = i
-        if self._random_state is None:
-            self._set_random_state(check_state(None))
+        if self.random_state is None:
+            self.random_state = check_state(None)
         self._random_state = split_state(self._random_state, self.n_chain)[i]
         self._x_0.reshape((-1, self._x_0.shape[-1]))
         self._x_0 = self._x_0[self._random_state.randint(0, self._x_0.shape[0])]
         self._set_step_size_2()
         self._set_metric_2()
+        self._chain_initialized = True
     
     @property
     def step_size(self):
@@ -198,6 +204,16 @@ class _HTrace(SampleTrace):
     @property
     def max_change(self):
         return self._max_change
+    
+    @max_change.setter
+    def max_change(self, max_change):
+        try:
+            max_change = float(max_change)
+            assert max_change > 0
+        except:
+            raise ValueError('max_change should be a positive float, instead '
+                             'of {}.'.format(max_change))
+        self._max_change = max_change
     
     @property
     def samples(self):
@@ -439,18 +455,23 @@ class NTrace(_HTrace):
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
-        try:
-            max_treedepth = int(max_treedepth)
-            assert max_treedepth > 0
-        except:
-            raise ValueError('max_treedepth should be a postive int, instead '
-                             'of {}.'.format(max_treedepth))
-        self._max_treedepth = max_treedepth
+        
+        self.max_treedepth = max_treedepth
         self._stats = NStats()
     
     @property
     def max_treedepth(self):
         return self._max_treedepth
+    
+    @max_treedepth.setter
+    def max_treedepth(self, mt):
+        try:
+            mt = int(mt)
+            assert mt > 0
+        except:
+            raise ValueError('max_treedepth should be a postive int, instead '
+                             'of {}.'.format(mt))
+        self._max_treedepth = mt
     
     @property
     def n_call(self):

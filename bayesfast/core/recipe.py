@@ -621,11 +621,11 @@ class Recipe:
         result = self.recipe_trace._r_optimize
         sample_trace = step.sample_trace
         
-        if sample_trace._x_0 is None:
-            sample_trace._set_x_0(result[-1].laplace_samples)
+        if sample_trace.x_0 is None:
+            sample_trace.x_0 = result[-1].laplace_samples
             sample_trace._x_0_transformed = False
-        if sample_trace._random_state is None:
-            sample_trace._set_random_state(step._random_state)
+        if sample_trace.random_state is None:
+            sample_trace.random_state = step.random_state
         if step.reuse_metric:
             cov = result[-1].laplace_result.cov.copy()
             if sample_trace._metric == 'diag':
@@ -689,14 +689,14 @@ class Recipe:
                     this_step.random_state = check_state(None)
             
             if isinstance(sample_trace, _HTrace):
-                if sample_trace._x_0 is None and has_prev_samples:
-                    sample_trace._set_x_0(prev_samples)
+                if sample_trace.x_0 is None and has_prev_samples:
+                    sample_trace.x_0 = prev_samples
                     sample_trace._x_0_transformed = prev_transformed
                 
-                if sample_trace._random_state is None:
-                    _1, _2 = split_state(this_step._random_state)
-                    this_step._random_state = _1
-                    sample_trace._set_random_state(_2)
+                if sample_trace.random_state is None:
+                    _1, _2 = split_state(this_step.random_state)
+                    this_step.random_state = _1
+                    sample_trace.random_state = _2
                 
                 if has_prev_step:
                     if sample_trace._step_size is None:
