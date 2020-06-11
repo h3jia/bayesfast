@@ -7,10 +7,9 @@ from ..utils.random import check_state, split_state
 from copy import deepcopy
 import warnings
 
-__all__ = ['NTrace', 'HTrace', 'ETrace', 'TraceTuple']
+__all__ = ['NTrace', 'TTrace', 'HTrace', 'ETrace', 'TraceTuple']
 
 # TODO: StatsTuple?
-
 
 class _Trace:
     """Utilities shared by all different Trace classes."""
@@ -447,7 +446,50 @@ class NTrace(_HTrace):
         We add another 1 for the test during initialization.
         """
 
+class TTrace(_HTrace):
+    """Trace class for the THMC sampler."""
+    def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
+                 random_state=None, step_size=1., adapt_step_size=True,
+                 metric='diag', adapt_metric=True, max_change=1000.,
+                 max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
+                 t_0=10., initial_mean=None, initial_weight=10.,
+                 adapt_window=60, update_window=1, doubling=True,
+                 transform_x=True):
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
+                         step_size, adapt_step_size, metric, adapt_metric, 
+                         max_change, target_accept, gamma, k, t_0, initial_mean,
+                         initial_weight, adapt_window, update_window, doubling,
+                         transform_x)
+        try:
+            max_treedepth = int(max_treedepth)
+            assert max_treedepth > 0
+        except:
+            raise ValueError('max_treedepth should be a postive int, instead '
+                             'of {}.'.format(max_treedepth))
+        self._max_treedepth = max_treedepth
+        self._stats = NStats()
+        self._final_u = None
+    
+    @property
+    def max_treedepth(self):
+        return self._max_treedepth
+    
+    @property
+    def n_call(self):
+        return sum(self._stats._tree_size[1:]) + self.n_iter + 1
+        """
+        Here we add n_iter because at the beginning of each iteration, 
+        We recompute logp_and_grad at the starting point.
+        In principle this can be avoided by reusing the old values,
+        But the current implementation doesn't do it in this way.
+        We add another 1 for the test during initialization.
+        """
 
+    def update(self, point, u, stats):
+        """Update the trace to add the resulting final point (q) and temperature variable (u) from a HMC step."""
+        super().update(point, stats)
+        self._final_u = u
+        
 class ETrace(_Trace):
     """Trace class for the ensemble sampler from emcee."""
     def __init__(*args, **kwargs):
@@ -461,10 +503,12 @@ class TraceTuple:
             traces = tuple(traces)
             if isinstance(traces[0], NTrace):
                 self._sampler = 'NUTS'
+            elif isinstance(traces[0], TTrace):
+                self._sampler = 'THMC'
             elif isinstance(traces[0], HTrace):
                 self._sampler = 'HMC'
             else:
-                raise ValueError('traces[0] is neither NTrace nor '
+                raise ValueError('traces[0] is neither NTrace, TTrace, nor '
                                  'HTrace.')
             _type = type(traces[0])
             for i, t in enumerate(traces):
