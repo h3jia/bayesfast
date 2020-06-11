@@ -68,7 +68,7 @@ def bridge(logp_p, logp_q, logq_p, logq_q):
     
     if diff_err > 0.25:
         warnings.warn('the estimated error for logr may be unreliable, '
-                      'since flattening f2 before estimating tau makes the '
+                      'since flattening before estimating tau makes the '
                       'result differ by more than 25%.', RuntimeWarning)
     if logr_err > 0.25:
         warnings.warn('the estimated error for logr may be unreliable, '
