@@ -176,7 +176,7 @@ class _PipelineBase:
 class _DensityBase:
     """Utilities shared by `Density` and `DensityLite`."""
     def _get_diff(self, x=None, x_trans=None):
-        # Returning |dx / dx_trans|.
+        # Returning log |dx / dx_trans|.
         if x is not None:
             return -np.sum(np.log(np.abs(self.from_original_grad(x))), axis=-1)
         elif x_trans is not None:
@@ -256,7 +256,7 @@ class Pipeline(_PipelineBase):
     """
     def __init__(self, module_list=[], surrogate_list=[],
                  input_vars=['__var__'], output_vars=None, input_dims=None,
-                 input_scales=None, hard_bounds=False, copy_input=False,
+                 input_scales=None, hard_bounds=True, copy_input=False,
                  module_start=None, module_stop=None, original_space=True,
                  use_surrogate=False):
         self.module_list = module_list
@@ -772,7 +772,9 @@ class Density(Pipeline, _DensityBase):
                 _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
                           (beta2 > self._alpha_2)[..., np.newaxis])
             if not original_space:
-                _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+                _tog = self.to_original_grad(x)
+                _grad *= _tog
+                _grad += self.to_original_grad2(x) / _tog
         else:
             if (self._use_decay and use_surrogate) or (not original_space):
                 raise NotImplementedError(
@@ -796,7 +798,9 @@ class Density(Pipeline, _DensityBase):
                           (beta2 > self._alpha_2)[..., np.newaxis])
             if not original_space:
                 _logp += self._get_diff(x_trans=x)
-                _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+                _tog = self.to_original_grad(x)
+                _grad *= _tog
+                _grad += self.to_original_grad2(x) / _tog
         else:
             if (self._use_decay and use_surrogate) or (not original_space):
                 raise NotImplementedError(
@@ -906,7 +910,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         `logp_and_grad`.
     """
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
-                 input_size=None, input_scales=None, hard_bounds=False,
+                 input_size=None, input_scales=None, hard_bounds=True,
                  copy_input=False, vectorized=False, original_space=True,
                  logp_args=(), logp_kwargs={}, grad_args=(), grad_kwargs={},
                  logp_and_grad_args=(), logp_and_grad_kwargs={}):
@@ -941,7 +945,7 @@ class DensityLite(_PipelineBase, _DensityBase):
     def logp(self, lp):
         if callable(lp):
             self._logp = lp
-        elif logp_ is None:
+        elif lp is None:
             self._logp = None
         else:
             raise ValueError('logp should be callable, or None if you want to '
@@ -962,7 +966,7 @@ class DensityLite(_PipelineBase, _DensityBase):
             _logp = self._logp(x_o, *self.logp_args, **self.logp_kwargs)
         else:
             _logp = np.apply_along_axis(self._logp, -1, x_o, *self.logp_args,
-                                        **self.logp_kwargs)
+                                        **self.logp_kwargs).astype(np.float)
         if not original_space:
             _logp += self._get_diff(x_trans=x)
         return _logp
@@ -984,7 +988,7 @@ class DensityLite(_PipelineBase, _DensityBase):
     def grad(self, gd):
         if callable(gd):
             self._grad = gd
-        elif grad_ is None:
+        elif gd is None:
             self._grad = None
         else:
             raise ValueError('grad should be callable, or None if you want to '
@@ -1003,9 +1007,11 @@ class DensityLite(_PipelineBase, _DensityBase):
             _grad = self._grad(x_o, *self.grad_args, **self.grad_kwargs)
         else:
             _grad = np.apply_along_axis(self._grad, -1, x_o, *self.grad_args,
-                                        **self.grad_kwargs)
+                                        **self.grad_kwargs).astype(np.float)
         if not original_space:
-            _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+            _tog = self.to_original_grad(x)
+            _grad *= _tog
+            _grad += self.to_original_grad2(x) / _tog
         return _grad
     
     @property
@@ -1049,12 +1055,15 @@ class DensityLite(_PipelineBase, _DensityBase):
             _lag = np.apply_along_axis(
                 self._logp_and_grad, -1, x_o, *self.logp_and_grad_args,
                 **self.logp_and_grad_kwargs)
-            _logp = _lag[..., 0]
-            _grad = np.apply_along_axis(lambda x: list(x), -1, _lag[..., 1])
+            _logp = _lag[..., 0].astype(np.float)
+            _grad = np.apply_along_axis(
+                lambda x: list(x), -1, _lag[..., 1]).astype(np.float)
             # otherwise, it will be an object array
         if not original_space:
             _logp += self._get_diff(x_trans=x)
-            _grad += self.to_original_grad2(x) / self.to_original_grad(x)
+            _tog = self.to_original_grad(x)
+            _grad *= _tog
+            _grad += self.to_original_grad2(x) / _tog
         return _logp, _grad
     
     @property
