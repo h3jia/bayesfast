@@ -31,6 +31,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: add checkpoint facility
 # TODO: review the hierarchical structure of random_state and client
 # TODO: chunk size for client.map
+# TODO: review Recipe.__getstate__
 
 
 class BaseStep:
@@ -79,7 +80,7 @@ class BaseStep:
     def alpha_n(self, a):
         try:
             a = float(a)
-            assert a <= 0
+            assert a > 0
         except:
             raise ValueError('alpha_n should be a positive float.')
         self._alpha_n = a
@@ -118,7 +119,9 @@ class BaseStep:
     @sample_trace.setter
     def sample_trace(self, t):
         if t is None:
-            t = NTrace()
+            t = {}
+        if isinstance(t, dict):
+            t = NTrace(**t)
         elif isinstance(t, (SampleTrace, TraceTuple)):
             pass
         else:
@@ -166,7 +169,9 @@ class OptimizeStep(BaseStep):
     @laplace.setter
     def laplace(self, lap):
         if lap is None:
-            lap = Laplace(beta=100.)
+            lap = {'beta': 100.}
+        if isinstance(lap, dict):
+            lap = Laplace(**lap)
         elif isinstance(lap, Laplace):
             pass
         else:
@@ -357,10 +362,13 @@ class PostStep:
             em = GIS()
         elif em == 'GHM':
             em = GHM()
+        elif isinstance(em, dict):
+            em = GBS(**em)
         elif hasattr(em, 'run'):
             pass
         else:
             raise ValueError('invalid value for evidence_method.')
+        self._evidence_method = em
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
@@ -371,21 +379,31 @@ class RecipeTrace:
     def __init__(self, optimize=None, sample=[], post=None):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = optimize
+        elif isinstance(optimize, dict):
+            self._s_optimize = OptimizeStep(**optimize)
         else:
-            raise ValueError('optimize should be an OptimizeStep or None.')
+            raise ValueError('invalid value for optimize.')
         
         if isinstance(sample, SampleStep):
             self._s_sample = [sample]
-        elif all_isinstance(sam, SampleStep):
-            self._s_sample = tuple(sample)
+        elif isinstance(sample, dict):
+            self._s_sample = [SampleStep(**sample)]
+        elif all_isinstance(sam, (SampleStep, dict)):
+            self._s_sample = list(sample)
+            for i, s in enumerate(self._s_sample):
+                if isinstance(s, dict):
+                    self._s_sample[i] = SampleStep(**s)
+            self._s_sample = tuple(self._s_sample)
         else:
             raise ValueError('sample should be a SampleStep, or consists of '
                              'SampleStep(s).')
         
         if isinstance(post, PostStep) or post is None:
             self._s_post = post
+        elif isinstance(post, dict):
+            self._s_post = PostStep(**post)
         else:
-            raise ValueError('post should be a PostStep or None.')
+            raise ValueError('invalid value for post.')
         
         self._r_optimize = []
         self._r_sample = []
@@ -464,7 +482,7 @@ PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
 
 class Recipe:
     
-    def __init__(self, density, client=None, recipe_trace=None, optimize=None, 
+    def __init__(self, density, client=None, recipe_trace=None, optimize=None,
                  sample=[], post=None, copy_density=True):
         if isinstance(density, (Density, DensityLite)):
             self._density = deepcopy(density) if copy_density else density
@@ -477,9 +495,22 @@ class Recipe:
             recipe_trace = RecipeTrace(optimize, sample, post)
         elif isinstance(recipe_trace, RecipeTrace):
             pass
+        elif isinstance(recipe_trace, dict):
+            recipe_trace = RecipeTrace(**recipe_trace)
         else:
             raise ValueError('recipe_trace should be a RecipeTrace or None.')
         self._recipe_trace = recipe_trace
+    
+    def __getstate__(self):
+        """We need this to make self._client work correctly."""
+        self_dict = self.__dict__.copy()
+        del self_dict['_client'], self_dict['_recipe_trace']
+        # TODO: review this
+        #       we remove recipe_trace because it contains a PropertyList
+        #       that is not pickle-able
+        #       however, this may lead to unexpected bahaviors
+        #       if one wants to pickle this Recipe object
+        return self_dict
     
     @property
     def density(self):
@@ -715,7 +746,7 @@ class Recipe:
                     sample_trace._x_0_transformed = prev_transformed
                 
                 if sample_trace.random_state is None:
-                    _1, _2 = split_state(this_step.random_state)
+                    _1, _2 = split_state(this_step.random_state, 2)
                     this_step.random_state = _1
                     sample_trace.random_state = _2
                 
@@ -851,8 +882,8 @@ class Recipe:
                 result.append(SampleResult(samples=x, surrogate_list=[], 
                                            var_dicts=None, sample_trace=t))
             
-            result._i_sample += 1
-            step._random_state = deepcopy(t[0]._random_state)
+            recipe_trace._i_sample += 1
+            this_step._random_state = deepcopy(t[0]._random_state)
             print('\n *** SampleStep proceeding: iter #{} finished. *** '
                   '\n'.format(i))
         print(' ***** SampleStep finished. ***** \n')
@@ -901,16 +932,12 @@ class Recipe:
                 logq_q = prev_result.sample_trace.get(return_logp=True,
                                                       flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
-                f_logq = lambda x: self.density.logp(x, original_space=True,
-                                                     use_surrogate=True) 
             
             else:
                 x_p = prev_result.sample_trace.get(return_logp=False,
                                                    flatten=False)
                 logp_p = prev_result.sample_trace.get(return_logp=True,
                                                       flatten=False)
-                f_logp = lambda x: self.density.logp(x, original_space=True,
-                                                     use_surrogate=False)
         
         elif recipe_trace._i_optimize:
             prev_step = recipe_trace._s_optimize
@@ -922,12 +949,10 @@ class Recipe:
                 logq_q = prev_result.sample_trace.get(return_logp=True,
                                                       flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
-                f_logq = lambda x: self.density.logp(x, original_space=True,
-                                                     use_surrogate=True) 
             
             else:
                 warnings.warn('no existing samples found.', RuntimeWarning)
-
+        
         else:
             raise RuntimeError('you have run neither OptimizeStep nor '
                                'SampleStep before the PostStep.')
@@ -939,8 +964,8 @@ class Recipe:
             logp = logp_p.reshape(-1)
             
             if step.evidence_method is not None:
-                logz, logz_err = step.evidence_method(x_p=x_p, logp=f_logp,
-                                                      logp_p=logp_p)
+                logz, logz_err = step.evidence_method(
+                    x_p=x_p, logp=self._f_logp, logp_p=logp_p)
             if step.n_is > 0:
                 warnings.warn('n_is will not be used when we already have exact'
                               ' samples from logp.', RuntimeWarning)
@@ -971,7 +996,7 @@ class Recipe:
                 
                 if step.evidence_method is not None:
                     logz_q, logz_err_q = step.evidence_method(
-                        x_p=x_q, logp=f_logq, logp_p=logq_q)
+                        x_p=x_q, logp=self._f_logq, logp_p=logq_q)
                     logz_pq = logsumexp(logp - logq, b=1 / logp.size)
                     foo = np.exp(logp - logq - logz_pq)
                     tau = integrated_time(foo)
@@ -988,8 +1013,8 @@ class Recipe:
                     warnings.warn('since n_is is 0, we are computing the '
                                   'evidence of logq, which may differ from the '
                                   'evidence of logp.', RuntimeWarning)
-                    logz, logz_err = step.evidence_method(x_p=x_q, log=f_logq,
-                                                          logp_p=logq_q)
+                    logz, logz_err = step.evidence_method(
+                        x_p=x_q, log=self._f_logq, logp_p=logq_q)
         
         else:
             if (step.n_is is not None) or (step.evidence_method is not None):
@@ -1001,12 +1026,18 @@ class Recipe:
             x_q, logp_p, logq_q)
         print(' ***** PostStep finished. ***** \n')        
     
+    def _f_logp(self, x):
+        return self.density.logp(x, original_space=True, use_surrogate=False)
+    
+    def _f_logq(self, x):
+        return self.density.logp(x, original_space=True, use_surrogate=True)
+    
     def run(self):
         try:
             old_client = self._client
             _new_client = False
-            self._client, _new_client = check_client(client)
-            f_opt, f_sam, f_pos = self._result.finished
+            self._client, _new_client = check_client(self._client)
+            f_opt, f_sam, f_pos = self.recipe_trace.finished
             if not f_opt:
                 self._opt_step()
             if not f_sam:

@@ -187,8 +187,12 @@ class _HTrace(SampleTrace):
         if self.random_state is None:
             self.random_state = check_state(None)
         self._random_state = split_state(self._random_state, self.n_chain)[i]
-        self._x_0.reshape((-1, self._x_0.shape[-1]))
-        self._x_0 = self._x_0[self._random_state.randint(0, self._x_0.shape[0])]
+        self._x_0 = self._x_0.reshape((-1, self._x_0.shape[-1]))
+        if self._x_0.shape[0] == self._n_chain:
+            self._x_0 = self._x_0[i]
+        else:
+            self._x_0 = self._x_0[
+                self._random_state.randint(0, self._x_0.shape[0])]
         self._set_step_size_2()
         self._set_metric_2()
         self._chain_initialized = True
@@ -281,7 +285,7 @@ class _HTrace(SampleTrace):
         if return_logp:
             logp = self.logp_original if original_space else self.logp
             logp = logp[since_iter:]
-            return samples, logp
+            return logp
         else:
             samples = self.samples_original if original_space else self.samples
             samples = samples[since_iter:]

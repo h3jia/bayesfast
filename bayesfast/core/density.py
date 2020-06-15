@@ -953,7 +953,10 @@ class DensityLite(_PipelineBase, _DensityBase):
     
     __call__ = logp
     
-    def _logp_wrapped(self, x, original_space=None):
+    def _logp_wrapped(self, x, original_space=None, use_surrogate=None):
+        if use_surrogate is not None:
+            warnings.warn('use_surrogate will be ignored for DensityLite.',
+                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)
@@ -994,7 +997,10 @@ class DensityLite(_PipelineBase, _DensityBase):
             raise ValueError('grad should be callable, or None if you want to '
                              'reset it.')
     
-    def _grad_wrapped(self, x, original_space=None):
+    def _grad_wrapped(self, x, original_space=None, use_surrogate=None):
+        if use_surrogate is not None:
+            warnings.warn('use_surrogate will be ignored for DensityLite.',
+                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)
@@ -1038,7 +1044,11 @@ class DensityLite(_PipelineBase, _DensityBase):
             raise ValueError('logp_and_grad should be callable, or None if you'
                              'want to reset it.')
     
-    def _logp_and_grad_wrapped(self, x, original_space=None):
+    def _logp_and_grad_wrapped(self, x, original_space=None,
+                               use_surrogate=None):
+        if use_surrogate is not None:
+            warnings.warn('use_surrogate will be ignored for DensityLite.',
+                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)

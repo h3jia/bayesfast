@@ -24,9 +24,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None, client=None,
         sampler = 'NUTS'
     elif isinstance(sample_trace, (HTrace, ETrace)):
         raise NotImplementedError
-    elif sample_trace is None:
+    elif sample_trace is None or isinstance(sample_trace, dict):
+        sample_trace = {} if (sample_trace is None) else sample_trace
         if sampler == 'NUTS':
-            sample_trace = NTrace()
+            sample_trace = NTrace(**sample_trace)
         elif sampler == 'HMC' or sampler == 'Ensemble':
             raise NotImplementedError
         else:

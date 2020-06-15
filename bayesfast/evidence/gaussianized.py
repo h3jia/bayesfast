@@ -171,6 +171,8 @@ class _GBaseQ(_GBase):
         
         return self._compute_evidence(logp, x_p, logp_p, n_q)
     
+    __call__ = run
+    
     def _compute_evidence(self, logp, x_p, logp_p, n_q):
         raise NotImplementedError('abstract method.')
     
@@ -299,3 +301,5 @@ class GHM(_GBase):
         self.sit.fit(data=x_p[:n_half])
         logq_p = self.sit.logq(x_p[n_half:])
         return harmonic(logp_p, logq_p)
+    
+    __call__ = run
