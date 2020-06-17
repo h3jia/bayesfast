@@ -16,7 +16,7 @@ __all__ = ['sample']
 # TODO: fix pub/sub key
 
 
-def sample(density, prior=None, trace=None, sampler='NUTS', n_run=None, client=None,
+def sample(density, base=None, trace=None, sampler='NUTS', n_run=None, client=None,
            verbose=True, n_update=None, n_steps=None, dt=None):
     # DEVELOPMENT NOTES
     # if use_surrogate is not specified in density_options
@@ -127,8 +127,8 @@ def sample(density, prior=None, trace=None, sampler='NUTS', n_run=None, client=N
             return TraceTuple(tt)
         
         elif sampler == 'THMC':
-            if not isinstance(prior, (Density, DensityLite)):
-                raise ValueError('prior should be a Density or DensityLite.')
+            if not isinstance(base, (Density, DensityLite)):
+                raise ValueError('base should be a Density or DensityLite.')
             def nested_helper(trace, i):
                 """Without this, there will be an UnboundLocalError."""
                 if isinstance(trace, TTrace):
@@ -144,9 +144,9 @@ def sample(density, prior=None, trace=None, sampler='NUTS', n_run=None, client=N
                         _trace = nested_helper(trace, i)
                         def logp_and_grad(x):
                             return density.logp_and_grad(x, original_space=not _trace.transform_x)
-                        def logprior_and_grad(x):
-                            return prior.logp_and_grad(x, original_space=not _trace.transform_x)
-                        thmc = THMC(logp_and_grad=logp_and_grad, logprior_and_grad=logprior_and_grad, trace=_trace, n_steps=n_steps, dask_key=dask_key)
+                        def logbase_and_grad(x):
+                            return base.logp_and_grad(x, original_space=not _trace.transform_x)
+                        thmc = THMC(logp_and_grad=logp_and_grad, logbase_and_grad=logbase_and_grad, trace=_trace, n_steps=n_steps, dask_key=dask_key)
                         t = thmc.run(n_run, verbose, n_update)
                         if t.transform_x:
                             t._samples_original = density.to_original(t.samples)

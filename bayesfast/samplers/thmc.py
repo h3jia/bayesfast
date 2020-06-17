@@ -12,10 +12,10 @@ __all__ = ['THMC']
 
 class THMC(BaseHMC):
     
-    def __init__(self, logp_and_grad, logprior_and_grad, trace, n_steps, dask_key=None):
+    def __init__(self, logp_and_grad, logbase_and_grad, trace, n_steps, dask_key=None):
         super().__init__(logp_and_grad, trace, dask_key=dask_key)
-        self._logprior_and_grad = logprior_and_grad
-        self.integrator = TLeapfrogIntegrator(self._trace.metric, logp_and_grad, logprior_and_grad)
+        self._logbase_and_grad = logbase_and_grad
+        self.integrator = TLeapfrogIntegrator(self._trace.metric, logp_and_grad, logbase_and_grad)
         self.n_steps = n_steps
     
     _expected_trace = TTrace
@@ -100,7 +100,7 @@ class THMC(BaseHMC):
 
 
 # A proposal for the next position
-Proposal = namedtuple("Proposal", "q, u, energy, p_accept, logp")
+Proposal = namedtuple("Proposal", "q, u, pbeta1, energy, p_accept, logp")
 
 
 # A subtree of the binary tree built by nuts.
@@ -120,7 +120,7 @@ class _Tree:
 
         self.left = self.right = start
         self.proposal = Proposal(
-            start.q, start.u, start.energy, 1.0, start.logp)
+            start.q, start.u, start.pbeta1, start.energy, 1.0, start.logp)
         self.depth = 0
         self.log_size = 0
         self.accept_sum = 0
@@ -206,7 +206,7 @@ class _Tree:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
                 proposal = Proposal(
-                    right.q, right.u, right.energy, p_accept, right.logp)
+                    right.q, right.u, right.pbeta1, right.energy, p_accept, right.logp)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False
