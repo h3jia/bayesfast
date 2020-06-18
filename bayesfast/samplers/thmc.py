@@ -12,10 +12,11 @@ __all__ = ['THMC']
 
 class THMC(BaseHMC):
     
-    def __init__(self, logp_and_grad, logprior_and_grad, trace, dask_key=None):
+    def __init__(self, logp_and_grad, logbase_and_grad, trace, n_steps, dask_key=None):
         super().__init__(logp_and_grad, trace, dask_key=dask_key)
-        self._logprior_and_grad = logprior_and_grad
-        self.integrator = TLeapfrogIntegrator(self._trace.metric, logp_and_grad, logprior_and_grad)
+        self._logbase_and_grad = logbase_and_grad
+        self.integrator = TLeapfrogIntegrator(self._trace.metric, logp_and_grad, logbase_and_grad)
+        self.n_steps = n_steps
     
     _expected_trace = TTrace
     
@@ -26,14 +27,19 @@ class THMC(BaseHMC):
         
     def astep(self):
         """Perform a single HMC iteration."""
-        try:
+        try: 
             q0 = self._trace._samples[-1]
-            u0 = self._final_u
+            u0 = self._trace._final_u
             Q0 = np.append(u0, q0)
+            p0 = self._trace.metric.random(self._trace.random_state)
+            v0 = np.random.normal(0,1) # initialize each step
         except:
             q0 = self._trace.x_0
+#             u0 = -1.19097569
             u0 = np.random.normal(0,1) # initialize the first time
             Q0 = np.append(u0, q0)
+#             p0 = 1.43270697
+#             v0 = -0.3126519
             assert Q0.ndim == 1
         p0 = self._trace.metric.random(self._trace.random_state)
         v0 = np.random.normal(0,1) # initialize each step
@@ -54,29 +60,47 @@ class THMC(BaseHMC):
         self._trace.step_size.update(hmc_step.accept_stat, self.warmup)
         # see step_size.py
         self._trace.metric.update(hmc_step.end.q, self.warmup)
-        step_stats = NStepStats(**hmc_step.stats, 
+        step_stats = self.trace._stats.make_stats(**hmc_step.stats, 
                                 **self._trace.step_size.sizes(), 
                                 warmup=self.warmup, 
                                 diverging=bool(hmc_step.divergence_info))
-        self._trace.update(hmc_step.end.q, hmc_step.end.u, step_stats)
+        self._trace.update(hmc_step.end.q, hmc_step.end.u, hmc_step.end.pbeta1, step_stats)
     
     def _hamiltonian_step(self, start, p0, step_size):
-        tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self._trace.max_change, self.logbern)
+        if self.n_steps == None:
+            # Use NUTS for each HMC iteration
+            tree = _Tree(len(p0), self.integrator, start, step_size, 
+                         self._trace.max_change, self.logbern)
 
-        for _ in range(self._trace._max_treedepth):
-            direction = self.logbern(np.log(0.5)) * 2 - 1
-            divergence_info, turning = tree.extend(direction)
-            if divergence_info or turning:
-                break
+            for _ in range(self._trace._max_treedepth):
+                direction = self.logbern(np.log(0.5)) * 2 - 1
+                divergence_info, turning = tree.extend(direction)
+                if divergence_info or turning:
+                    break
 
-        stats = tree.stats()
-        accept_stat = stats['mean_tree_accept']
-        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
+            stats = tree.stats()
+            accept_stat = stats['mean_tree_accept']
+            return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
+        else:
+            # Use regular HMC with n_steps steps:
+            new_state = start
+            for _ in range(self.n_steps):
+                prev_state = new_state
+                new_state = self.integrator.step(step_size, prev_state)
+            init_energy = start.energy
+            prop_energy = new_state.energy
+            accept = self.logbern(init_energy-prop_energy)
+            divergent = np.isnan(prop_energy)
+            if accept and not divergent:
+                proposal = new_state
+            else:
+                proposal = start
+            stats = {'logp': proposal.logp, 'energy': prop_energy}
+            return HMCStepData(proposal, None, divergent, stats)
 
 
 # A proposal for the next position
-Proposal = namedtuple("Proposal", "q, u, energy, p_accept, logp")
+Proposal = namedtuple("Proposal", "q, u, pbeta1, energy, p_accept, logp")
 
 
 # A subtree of the binary tree built by nuts.
@@ -96,7 +120,7 @@ class _Tree:
 
         self.left = self.right = start
         self.proposal = Proposal(
-            start.q, start.u, start.energy, 1.0, start.logp)
+            start.q, start.u, start.pbeta1, start.energy, 1.0, start.logp)
         self.depth = 0
         self.log_size = 0
         self.accept_sum = 0
@@ -182,7 +206,7 @@ class _Tree:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
                 proposal = Proposal(
-                    right.q, right.u, right.energy, p_accept, right.logp)
+                    right.q, right.u, right.pbeta1, right.energy, p_accept, right.logp)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False

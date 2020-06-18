@@ -1,6 +1,6 @@
 from collections import namedtuple, OrderedDict
 
-__all__ = ['NStepStats', 'NStats']
+__all__ = ['NStepStats', 'NStats', 'HStats']
 
 # TODO: finish HStats
 
@@ -9,9 +9,11 @@ nstats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
                 'step_size', 'step_size_bar', 'warmup', 'energy_change',
                 'max_energy_change', 'diverging')
 
+hstats_items = ('logp', 'energy',
+                'step_size', 'step_size_bar', 'warmup', 'diverging')
 
 NStepStats = namedtuple('NStepStats', nstats_items)
-
+HStepStats = namedtuple('HStepStats', hstats_items)
 
 class _HStats:
     """Utilities shared by HStats and NStats."""
@@ -54,8 +56,14 @@ class _HStats:
 
 class HStats(_HStats):
     """Stats class for the (vanilla) HMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
+    @property
+    def stats_items(self):
+        return hstats_items
+    
+    def make_stats(self, *args, **kwargs):
+        return HStepStats(*args, **kwargs)
+    
+    _step_stats = HStepStats
 
 
 class NStats(_HStats):
@@ -63,5 +71,8 @@ class NStats(_HStats):
     @property
     def stats_items(self):
         return nstats_items
+    
+    def make_stats(self, *args, **kwargs):
+        return NStepStats(*args, **kwargs)
     
     _step_stats = NStepStats

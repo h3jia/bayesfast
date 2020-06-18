@@ -29,7 +29,7 @@ class BaseHMC:
         if isinstance(trace, self._expected_trace):
             self._trace = trace
         else:
-            raise ValueError('trace should be a HTrace or NTrace.')
+            raise ValueError('trace should be a HTrace, TTrace, or NTrace.')
         self._chain_id = trace.chain_id
         self._prefix = ' CHAIN #' + str(self._chain_id) + ' : '
         self.integrator = CpuLeapfrogIntegrator(self._trace.metric,
@@ -69,7 +69,7 @@ class BaseHMC:
         hmc_step = self._hamiltonian_step(start, p0, step_size)
         self._trace.step_size.update(hmc_step.accept_stat, self.warmup)
         self._trace.metric.update(hmc_step.end.q, self.warmup)
-        step_stats = NStepStats(**hmc_step.stats, 
+        step_stats = self.trace._stats.make_stats(**hmc_step.stats, 
                                 **self._trace.step_size.sizes(), 
                                 warmup=self.warmup, 
                                 diverging=bool(hmc_step.divergence_info))
@@ -81,7 +81,7 @@ class BaseHMC:
             def sw(message, category, *args, **kwargs):
                 pub.put([category, self._prefix + str(message)])
             warnings.showwarning = sw
-        try:            
+        try:
             i_iter = self.trace.i_iter
             n_iter = self.trace.n_iter
             n_warmup = self.trace.n_warmup

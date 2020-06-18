@@ -149,8 +149,8 @@ class _Tree:
                              % energy_change)
                 error = None
         tree = Subtree(None, None, None, None, -np.inf, 0, 1)
-        divergance_info = DivergenceInfo(error_msg, error, left)
-        return tree, divergance_info, False
+        divergence_info = DivergenceInfo(error_msg, error, left)
+        return tree, divergence_info, False
 
     def _build_subtree(self, left, depth, epsilon):
         if depth == 0:

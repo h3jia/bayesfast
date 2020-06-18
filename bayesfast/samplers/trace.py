@@ -2,7 +2,7 @@ import numpy as np
 from .hmc_utils.step_size import DualAverageAdaptation
 from .hmc_utils.metrics import QuadMetric, QuadMetricDiag, QuadMetricFull
 from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
-from .hmc_utils.stats import NStepStats, NStats
+from .hmc_utils.stats import NStepStats, NStats, HStats
 from ..utils.random import check_state, split_state
 from copy import deepcopy
 import warnings
@@ -404,9 +404,19 @@ class _HTrace(_Trace):
 
 class HTrace(_HTrace):
     """Trace class for the (vanilla) HMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
-
+    def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
+                 random_state=None, step_size=1., adapt_step_size=True,
+                 metric='diag', adapt_metric=True, max_change=1000.,
+                 max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
+                 t_0=10., initial_mean=None, initial_weight=10.,
+                 adapt_window=60, update_window=1, doubling=True,
+                 transform_x=True):
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
+                         step_size, adapt_step_size, metric, adapt_metric, 
+                         max_change, target_accept, gamma, k, t_0, initial_mean,
+                         initial_weight, adapt_window, update_window, doubling,
+                         transform_x)
+        self._stats = HStats()
 
 class NTrace(_HTrace):
     """Trace class for the NUTS sampler."""
@@ -454,7 +464,7 @@ class TTrace(_HTrace):
                  max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True,
-                 transform_x=True):
+                 transform_x=True, use_nuts=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
@@ -467,8 +477,12 @@ class TTrace(_HTrace):
             raise ValueError('max_treedepth should be a postive int, instead '
                              'of {}.'.format(max_treedepth))
         self._max_treedepth = max_treedepth
-        self._stats = NStats()
+        if use_nuts:
+            self._stats = NStats()
+        else:
+            self._stats = HStats()
         self._final_u = None
+        self._pbeta1 = []
     
     @property
     def max_treedepth(self):
@@ -485,10 +499,16 @@ class TTrace(_HTrace):
         We add another 1 for the test during initialization.
         """
 
-    def update(self, point, u, stats):
-        """Update the trace to add the resulting final point (q) and temperature variable (u) from a HMC step."""
+    @property
+    def pbeta1(self):
+        return np.array(self._pbeta1)
+        
+    def update(self, point, u, pbeta1, stats):
+        """Update the trace to add the resulting final point (q), temperature variable (u), and probability of beta=1 given the point q (pbeta1) from a HMC step."""
         super().update(point, stats)
         self._final_u = u
+        self._pbeta1.append(pbeta1)
+        
         
 class ETrace(_Trace):
     """Trace class for the ensemble sampler from emcee."""
@@ -497,7 +517,7 @@ class ETrace(_Trace):
 
 
 class TraceTuple:
-    """Collection of multiple NTrace/HTrace from different chains."""
+    """Collection of multiple NTrace/HTrace/TTrace from different chains."""
     def __init__(self, traces):
         try:
             traces = tuple(traces)
@@ -581,6 +601,17 @@ class TraceTuple:
                           'float, presumably because different chains have run '
                           'for different lengths.', RuntimeWarning)
         return s
+    
+    @property
+    def pbeta1(self):
+        if not np.all(t._sampler == 'THMC' for t in self.traces):
+            raise ValueError('Only tempered HMC traces have pbeta1.')
+        p = np.array([t.pbeta1 for t in self.traces])
+        if p.dtype.kind != 'f':
+            warnings.warn('the array of pbeta1 does not has dtype of float, '
+                          'presumably because different chains have run for '
+                          'different lengths.', RuntimeWarning)
+        return p
     
     @property
     def logp(self):
