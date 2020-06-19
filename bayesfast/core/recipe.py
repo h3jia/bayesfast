@@ -321,10 +321,12 @@ class SampleStep(BaseStep):
 
 class PostStep:
     """Configuring a step for post-processing."""
-    def __init__(self, n_is=0, k_trunc=0.25, evidence_method='GBS'):
+    def __init__(self, n_is=0, k_trunc=0.25, evidence_method='GBS',
+                 random_state=None):
         self.n_is = n_is
         self.k_trunc = k_trunc
         self.evidence_method = evidence_method
+        self.random_state = random_state
     
     @property
     def n_is(self):
@@ -364,11 +366,22 @@ class PostStep:
             em = GHM()
         elif isinstance(em, dict):
             em = GBS(**em)
-        elif hasattr(em, 'run'):
+        elif hasattr(em, 'run') and hasattr(em, 'random_state'):
             pass
         else:
             raise ValueError('invalid value for evidence_method.')
         self._evidence_method = em
+    
+    @property
+    def random_state(self):
+        return self._random_state
+    
+    @random_state.setter
+    def random_state(self, state):
+        if state is None:
+            self._random_state = None
+        else:
+            self._random_state = check_state(state)
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
@@ -477,7 +490,8 @@ SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
 
 
 PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
-                        'logq, logz, logz_err, x_p, x_q, logp_p, logq_q')
+                        'logq, logz, logz_err, x_p, x_q, logp_p, logq_q, '
+                        'trace_p, trace_q')
 
 
 class Recipe:
@@ -899,8 +913,6 @@ class Recipe:
         f_logq = None
         
         logp_p = None
-        logp_q = None
-        logq_p = None
         logq_q = None
         
         x_max = None
@@ -912,6 +924,9 @@ class Recipe:
         weights_trunc = None
         logp = None
         logq = None
+        
+        trace_p = None
+        trace_q = None
         
         logz = None
         logz_err = None
@@ -927,27 +942,24 @@ class Recipe:
             prev_result = recipe_trace._r_sample[-1]
             
             if prev_step.has_surrogate:
-                x_q = prev_result.sample_trace.get(return_logp=False,
-                                                   flatten=False)
-                logq_q = prev_result.sample_trace.get(return_logp=True,
-                                                      flatten=False)
+                trace_q = prev_result.sample_trace
+                x_q = trace_q.get(return_logp=False, flatten=False)
+                logq_q = trace_q.get(return_logp=True, flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
             
             else:
-                x_p = prev_result.sample_trace.get(return_logp=False,
-                                                   flatten=False)
-                logp_p = prev_result.sample_trace.get(return_logp=True,
-                                                      flatten=False)
+                trace_p = prev_result.sample_trace
+                x_p = trace_p.get(return_logp=False, flatten=False)
+                logp_p = trace_p.get(return_logp=True, flatten=False)
         
         elif recipe_trace._i_optimize:
             prev_step = recipe_trace._s_optimize
             prev_result = recipe_trace._r_optimize
             
             if prev_step.has_surrogate and prev_result.sample_trace is not None:
-                x_q = prev_result.sample_trace.get(return_logp=False,
-                                                   flatten=False)
-                logq_q = prev_result.sample_trace.get(return_logp=True,
-                                                      flatten=False)
+                trace_q = prev_result.sample_trace
+                x_q = trace_q.get(return_logp=False, flatten=False)
+                logq_q = trace_q.get(return_logp=True, flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
             
             else:
@@ -957,6 +969,13 @@ class Recipe:
             raise RuntimeError('you have run neither OptimizeStep nor '
                                'SampleStep before the PostStep.')
         
+        if (step.evidence_method is not None and 
+            step.evidence_method.random_state is None):
+            if step.random_state is None:
+                step.random_state = check_state(
+                    deepcopy(prev_step.random_state))
+            step.evidence_method.random_state = step.random_state
+        
         if x_p is not None:
             samples = x_p.reshape((-1, x_p.shape[-1]))
             weights = np.ones(samples.shape[0])
@@ -965,7 +984,7 @@ class Recipe:
             
             if step.evidence_method is not None:
                 logz, logz_err = step.evidence_method(
-                    x_p=x_p, logp=self._f_logp, logp_p=logp_p)
+                    x_p=trace_p, logp=self._f_logp, logp_p=logp_p)
             if step.n_is > 0:
                 warnings.warn('n_is will not be used when we already have exact'
                               ' samples from logp.', RuntimeWarning)
@@ -996,7 +1015,7 @@ class Recipe:
                 
                 if step.evidence_method is not None:
                     logz_q, logz_err_q = step.evidence_method(
-                        x_p=x_q, logp=self._f_logq, logp_p=logq_q)
+                        x_p=trace_q, logp=self._f_logq, logp_p=logq_q)
                     logz_pq = logsumexp(logp - logq, b=1 / logp.size)
                     foo = np.exp(logp - logq - logz_pq)
                     tau = integrated_time(foo)
@@ -1014,7 +1033,7 @@ class Recipe:
                                   'evidence of logq, which may differ from the '
                                   'evidence of logp.', RuntimeWarning)
                     logz, logz_err = step.evidence_method(
-                        x_p=x_q, log=self._f_logq, logp_p=logq_q)
+                        x_p=trace_q, log=self._f_logq, logp_p=logq_q)
         
         else:
             if (step.n_is is not None) or (step.evidence_method is not None):
@@ -1023,7 +1042,7 @@ class Recipe:
         
         self.recipe_trace._r_post = PostResult(
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
-            x_q, logp_p, logq_q)
+            x_q, logp_p, logq_q, trace_p, trace_q)
         print(' ***** PostStep finished. ***** \n')        
     
     def _f_logp(self, x):

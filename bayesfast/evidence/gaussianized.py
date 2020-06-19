@@ -12,6 +12,7 @@ import warnings
 __all__ = ['GBS', 'GIS', 'GHM']
 
 # TODO: directly get logp_p from TraceTuple
+# TODO: (CRITICAL) FIX MAPPING USING DASK
 
 
 a = """
@@ -177,7 +178,11 @@ class _GBaseQ(_GBase):
         raise NotImplementedError('abstract method.')
     
     def _map(self, logp, x):
-        try:
+        x_shape = x.shape
+        x = x.reshape((-1, x_shape[-1]))
+        return np.asarray(list(map(logp, x))).reshape(x_shape[:-1])
+        
+        """try:
             old_client = self._client
             _new_client = False
             self._client, _new_client = check_client(self.client)
@@ -191,7 +196,7 @@ class _GBaseQ(_GBase):
             if _new_client:
                 self._client.cluster.close()
                 self._client.close()
-                self._client = old_client
+                self._client = old_client"""
 
 
 class GBS(_GBaseQ):

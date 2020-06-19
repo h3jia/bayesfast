@@ -45,7 +45,7 @@ class SIT:
     cubic_options ：dict, optional
         Additional keyword arguments for the cubic spline. Set to {} by default.
     ica_options : dict, optional
-        Additional keyword arguments for FastICA. Set to {'max_iter': 80} by
+        Additional keyword arguments for FastICA. Set to {'max_iter': 100} by
         default.
     random_options : dict, optional
         Additional keyword arguments for `bf.utils.random.multivariate_normal`.
@@ -53,7 +53,7 @@ class SIT:
     """
     def __init__(self, n_iter=10, client=None, bw_factor=1., m_ica=20000,
                  random_state=None, m_plot=8, cubic_options={},
-                 ica_options={'max_iter': 80}, random_options={}):
+                 ica_options={'max_iter': 100}, random_options={}):
         self._data = None
         self._cubic = []
         self.n_iter = n_iter
@@ -304,13 +304,14 @@ class SIT:
                     self.triangle_plot()
                 try:
                     y, A, B, m = self._ica(self._data)
+                    self._data = self._gaussianize_nd(y)
                 except:
                     warnings.warn(
-                        "we found that sometimes ica goes wrong, but actually "
+                        "we found that sometimes it goes wrong, but actually "
                         "it can work if we use a different random seed, so "
                         "let's give it one more chance.", RuntimeWarning)
                     y, A, B, m = self._ica(self._data)
-                self._data = self._gaussianize_nd(y)
+                    self._data = self._gaussianize_nd(y)
                 self._A = np.concatenate((self._A, A[np.newaxis]), axis=0)
                 self._B = np.concatenate((self._B, B[np.newaxis]), axis=0)
                 self._m = np.concatenate((self._m, m[np.newaxis]), axis=0)
