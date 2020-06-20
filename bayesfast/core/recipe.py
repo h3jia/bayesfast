@@ -391,30 +391,33 @@ class RecipeTrace:
     """Recording the process of running a Recipe."""
     def __init__(self, optimize=None, sample=[], post=None):
         if isinstance(optimize, OptimizeStep) or optimize is None:
-            self._s_optimize = optimize
+            self._s_optimize = deepcopy(optimize)
         elif isinstance(optimize, dict):
-            self._s_optimize = OptimizeStep(**optimize)
+            self._s_optimize = OptimizeStep(**deepcopy(optimize))
         else:
             raise ValueError('invalid value for optimize.')
         
         if isinstance(sample, SampleStep):
-            self._s_sample = [sample]
+            self._s_sample = [deepcopy(sample)]
         elif isinstance(sample, dict):
-            self._s_sample = [SampleStep(**sample)]
-        elif all_isinstance(sam, (SampleStep, dict)):
+            self._s_sample = [SampleStep(**deepcopy(sample))]
+        elif all_isinstance(sample, (SampleStep, dict)):
             self._s_sample = list(sample)
             for i, s in enumerate(self._s_sample):
+                s = deepcopy(s)
                 if isinstance(s, dict):
                     self._s_sample[i] = SampleStep(**s)
+                else:
+                    self._s_sample[i] = s
             self._s_sample = tuple(self._s_sample)
         else:
             raise ValueError('sample should be a SampleStep, or consists of '
                              'SampleStep(s).')
         
         if isinstance(post, PostStep) or post is None:
-            self._s_post = post
+            self._s_post = deepcopy(post)
         elif isinstance(post, dict):
-            self._s_post = PostStep(**post)
+            self._s_post = PostStep(**deepcopy(post))
         else:
             raise ValueError('invalid value for post.')
         
@@ -587,6 +590,8 @@ class Recipe:
         # in the end, optionally run sampling
         step = self.recipe_trace._s_optimize
         result = self.recipe_trace._r_optimize
+        recipe_trace = self.recipe_trace
+        
         if step.random_state is None:
             step.random_state = check_state(None)
         
@@ -679,7 +684,7 @@ class Recipe:
         
         if step.has_surrogate and step.sample_trace is not None:
             self._opt_sample()
-        result._i_optimize = 1
+        recipe_trace._i_optimize = 1
         print('\n ***** OptimizeStep finished. ***** \n')
     
     def _opt_sample(self):
@@ -701,6 +706,7 @@ class Recipe:
         
         old_list = self._density.surrogate_list
         self._density.surrogate_list = result[-1].surrogate_list
+        self._density.use_surrogate = True
         t = sample(self.density, sample_trace=sample_trace, client=self.client)
         x = t.get(flatten=True)
         step._random_state = deepcopy(t[0]._random_state)
@@ -722,11 +728,11 @@ class Recipe:
             
             if get_prev_step:
                 if i == 0:
-                    prev_result = recipe_trace._r_optimize
+                    prev_result = recipe_trace._r_optimize[-1]
                     prev_step = recipe_trace._s_optimize
                 else:
-                    prev_result = result[-1]
-                    prev_step = steps[-1]
+                    prev_result = result[i - 1]
+                    prev_step = steps[i - 1]
             
             get_prev_density = (get_prev_step and this_step.x_0 is None and
                                 prev_step.sample_trace is not None)
@@ -969,7 +975,7 @@ class Recipe:
             raise RuntimeError('you have run neither OptimizeStep nor '
                                'SampleStep before the PostStep.')
         
-        if (step.evidence_method is not None and 
+        if (step.evidence_method is not None and
             step.evidence_method.random_state is None):
             if step.random_state is None:
                 step.random_state = check_state(
@@ -1043,6 +1049,7 @@ class Recipe:
         self.recipe_trace._r_post = PostResult(
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
             x_q, logp_p, logq_q, trace_p, trace_q)
+        recipe_trace._i_post = 1
         print(' ***** PostStep finished. ***** \n')        
     
     def _f_logp(self, x):

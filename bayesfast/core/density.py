@@ -214,10 +214,6 @@ class Pipeline(_PipelineBase):
         List of surrogate modules. Set to `[]` by default.
     input_vars : str or 1-d array_like of str, optional
         Name(s) of input variable(s). Set to `['__var__']` by default.
-    output_vars : str, 1-d array_like of str, or None, optional
-        Name(s) of the variable(s) to be extracted at the end of evaluation. If
-        str, will return `np.ndarray`. If 1-d array_like of str, will return
-        `VariableDict`. If `None`, all the variables will be returned.
     input_dims : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
         array_like, should have the same shape as `input_vars`. If `None`, will
@@ -255,14 +251,12 @@ class Pipeline(_PipelineBase):
     See the tutorial for more information of usage.
     """
     def __init__(self, module_list=[], surrogate_list=[],
-                 input_vars=['__var__'], output_vars=None, input_dims=None,
-                 input_scales=None, hard_bounds=True, copy_input=False,
-                 module_start=None, module_stop=None, original_space=True,
-                 use_surrogate=False):
+                 input_vars=['__var__'], input_dims=None, input_scales=None,
+                 hard_bounds=True, copy_input=False, module_start=None,
+                 module_stop=None, original_space=True, use_surrogate=False):
         self.module_list = module_list
         self.surrogate_list = surrogate_list
         self.input_vars = input_vars
-        self.output_vars = output_vars
         self.input_dims = input_dims
         self.input_scales = input_scales
         self.hard_bounds = hard_bounds
@@ -487,84 +481,50 @@ class Pipeline(_PipelineBase):
                 raise RuntimeError(
                     'pipeline fun evaluation failed at step #{}.'.format(i))
             i += di
-        if self.output_vars is None:
-            return var_dict
-        elif isinstance(self.output_vars, str):
-            return var_dict._fun[self.output_vars]
-        else:
-            return var_dict[self.output_vars]
+        return var_dict
     
     __call__ = fun
     
     def jac(self, x, original_space=None, use_surrogate=None):
         _faj = self.fun_and_jac(x, original_space, use_surrogate)
-        if isinstance(self.output_vars, str):
-            return _faj[1] # _faj: (fun, jac)
-        else:
-            return _faj # _faj: VariableDict
+        return _faj
     
     def fun_and_jac(self, x, original_space=None, use_surrogate=None):
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
-        # since in certain cases we need to return (vec of fun, vec of jac)
-        # seems that we cannot directly use recursions to vectorize here
+        # vectorization using recursions
         # TODO: review this
         if isinstance(x, VariableDict):
             var_dict = deepcopy(x) if self.copy_input else x
         else:
             x = np.atleast_1d(x)
-            if x.dtype.kind == 'f' and x.ndim == 1:
-                if self.copy_input:
-                    x = x.copy()
-                if not original_space:
-                    j = np.diag(self.to_original_grad(x))
-                    x = self.to_original(x)
-                else:
-                    j = np.eye(x.shape[-1])
-                var_dict = VariableDict()
-                if self._input_cum is None:
-                    var_dict._fun[self._input_vars[0]] = x
-                    var_dict._jac[self._input_vars[0]] = j
-                else:
-                    for i, n in enumerate(self._input_vars):
-                        var_dict._fun[n] = x[
-                            self._input_cum[i]:self._input_cum[i + 1]]
-                        var_dict._jac[n] = j[
-                            self._input_cum[i]:self._input_cum[i + 1]]
-            else:
-                x = np.ascontiguousarray(x)
+            if x.ndim == 1:
                 if x.dtype.kind == 'f':
-                    shape = x.shape[:-1]
-                    size = np.prod(shape)
-                    x_f = x.reshape((size, -1))
+                    if self.copy_input:
+                        x = x.copy()
+                    if not original_space:
+                        j = np.diag(self.to_original_grad(x))
+                        x = self.to_original(x)
+                    else:
+                        j = np.eye(x.shape[-1])
+                    var_dict = VariableDict()
+                    if self._input_cum is None:
+                        var_dict._fun[self._input_vars[0]] = x
+                        var_dict._jac[self._input_vars[0]] = j
+                    else:
+                        for i, n in enumerate(self._input_vars):
+                            var_dict._fun[n] = x[
+                                self._input_cum[i]:self._input_cum[i + 1]]
+                            var_dict._jac[n] = j[
+                                self._input_cum[i]:self._input_cum[i + 1]]
                 elif x.dtype.kind == 'O':
-                    shape = x.shape
-                    size = np.prod(shape)
-                    x_f = x.reshape(size)
+                    return np.asarray([self.fun_and_jac(
+                        _x, original_space, use_surrogate) for _x in x])
                 else:
-                    ValueError('invalid input for fun_and_jac.')
-                if isinstance(self.output_vars, str):
-                    _faj0 = self.fun_and_jac(
-                        x_f[0], original_space, use_surrogate)
-                    _fshape = _faj0[0].shape
-                    _jshape = _faj0[1].shape
-                    result_f = np.empty((size, *_fshape), dtype=np.float)
-                    result_j = np.empty((size, *_jshape), dtype=np.float)
-                    result_f[0] = _faj0[0]
-                    result_j[0] = _faj0[1]
-                    for i in range(1, size):
-                        _faj = self.fun_and_jac(
-                            x_f[i], original_space, use_surrogate)
-                        result_f[i] = _faj[0]
-                        result_j[i] = _faj[1]
-                    return (result_f.reshape((*shape, *_fshape)), 
-                            result_j.reshape((*shape, *_jshape)))
-                else:
-                    result = np.empty(size, dtype='object')
-                    for i in range(size):
-                        result[i] = self.fun_and_jac(
-                            x_f[i], original_space, use_surrogate)
-                    return result.reshape(shape)
+                    raise ValueError('invalid input for fun_and_jac.')
+            else:
+                return np.asarray([self.fun_and_jac(
+                    _x, original_space, use_surrogate) for _x in x])
         
         start, stop = self._get_start_stop()
         if use_surrogate and self.has_surrogate:
@@ -618,10 +578,7 @@ class Pipeline(_PipelineBase):
                     'pipeline fun_and_jac evaluation failed at step '
                     '#{}.'.format(i))
             i += di
-        if self.output_vars is None:
-            return var_dict
-        else:
-            return var_dict[self.output_vars]
+        return var_dict
     
     @property
     def input_vars(self):
@@ -674,33 +631,6 @@ class Pipeline(_PipelineBase):
     @property
     def input_size(self):
         return np.sum(self.input_dims) if self.input_dims is not None else None
-    
-    def fit(self, var_dicts):
-        if not all_isinstance(var_dicts, VariableDict):
-            raise ValueError('var_dicts should consist of VariableDict(s).')
-        
-        # decay is defined only for Density, not for Pipeline
-        if isinstance(self, Density):
-            x = self._get_var(var_dicts, self._input_vars)
-            self.set_decay(x)
-        logp = self._get_logp(var_dicts)
-        
-        for i, su in enumerate(self._surrogate_list):
-            x = self._get_var(var_dicts, su._input_vars)
-            if su._input_scales is not None:
-                x = (x - su._input_scales[:, 0]) / su._input_scales_diff
-            y = self._get_var(var_dicts, su._output_vars)
-            su.fit(x, y, logp)
-    
-    @classmethod
-    def _get_var(cls, var_dicts, var_names):
-        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
-                         for vd in var_dicts])
-    
-    @classmethod
-    def _get_logp(cls, var_dicts):
-        """This is defined only for density."""
-        return None
 
 
 class Density(Pipeline, _DensityBase):
@@ -709,6 +639,9 @@ class Density(Pipeline, _DensityBase):
     
     Parameters
     ----------
+    density_name : str, optional
+        The name of the variable that stands for the density. Set to `__var__`
+        by default.
     decay_options : dict, optional
         Keyword arguments to be passed to `self.set_decay_options`. Set to `{}`
         by default.
@@ -722,90 +655,87 @@ class Density(Pipeline, _DensityBase):
     See the docstring of `Pipeline`. Here the `output_vars` should be a str,
     and will be set to `'__var__'` by default.
     """
-    def __init__(self, decay_options={}, *args, **kwargs):
+    def __init__(self, density_name='__var__', decay_options={}, *args,
+                 **kwargs):
+        self.density_name = density_name
         super().__init__(*args, **kwargs)
         self.set_decay_options(**decay_options)
     
-    # https://stackoverflow.com/questions/38301453/
-    output_vars = property(Pipeline.output_vars.__get__)
+    @property
+    def density_name(self):
+        return self._density_name
     
-    @output_vars.setter
-    def output_vars(self, name):
-        if name is None:
-            self._output_vars = '__var__'
-        elif isinstance(name, str):
-            self._output_vars = name
-        else:
-            raise ValueError(
-                'output_vars should be a str, instead of {}.'.format(name))
+    @density_name.setter
+    def density_name(self, name):
+        try:
+            self._density_name = str(name)
+        except:
+            raise ValueError('invalid value for density_name.')
     
     def logp(self, x, original_space=None, use_surrogate=None):
+        x = np.asarray(x)
+        if x.dtype.kind != 'f':
+            raise NotImplementedError('currently x should be a numpy array of '
+                                      'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
-        _logp = self.fun(x, original_space, use_surrogate)[..., 0]
-        if x.dtype.kind == 'f':
-            if self._use_decay and use_surrogate:
-                x_o = x if original_space else self.to_original(x)
-                beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
-                                  x_o - self._mu)
-                _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
-            if not original_space:
-                _logp += self._get_diff(x_trans=x)
-        else:
-            if (self._use_decay and use_surrogate) or (not original_space):
-                raise NotImplementedError(
-                    'decay and logp transform have not been implemented when '
-                    'x is VariableDict.')
+        _fun = self.fun(x, original_space, use_surrogate)
+        _logp = VariableDict.get(_fun, self.density_name, 'fun')[..., 0]
+        if self._use_decay and use_surrogate:
+            x_o = x if original_space else self.to_original(x)
+            beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
+                              x_o - self._mu)
+            _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
+        if not original_space:
+            _logp += self._get_diff(x_trans=x)
         return _logp
     
     __call__ = logp
     
     def grad(self, x, original_space=None, use_surrogate=None):
+        x = np.asarray(x)
+        if x.dtype.kind != 'f':
+            raise NotImplementedError('currently x should be a numpy array of '
+                                      'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
-        _grad = self.jac(x, original_space, use_surrogate)[..., 0, :]
-        if x.dtype.kind == 'f':
-            if self._use_decay and use_surrogate:
-                x_o = x if original_space else self.to_original(x)
-                beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
-                                  x_o - self._mu)
-                _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
-                          (beta2 > self._alpha_2)[..., np.newaxis])
-            if not original_space:
-                _tog = self.to_original_grad(x)
-                _grad *= _tog
-                _grad += self.to_original_grad2(x) / _tog
-        else:
-            if (self._use_decay and use_surrogate) or (not original_space):
-                raise NotImplementedError(
-                    'decay and logp transform have not been implemented when '
-                    'x is VariableDict.')
+        _jac = self.jac(x, original_space, use_surrogate)
+        _grad = VariableDict.get(_jac, self.density_name, 'jac')[..., 0, :]
+        if self._use_decay and use_surrogate:
+            x_o = x if original_space else self.to_original(x)
+            beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
+                              x_o - self._mu)
+            _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
+                      (beta2 > self._alpha_2)[..., np.newaxis])
+        if not original_space:
+            _tog = self.to_original_grad(x)
+            _grad *= _tog
+            _grad += self.to_original_grad2(x) / _tog
         return _grad
     
     def logp_and_grad(self, x, original_space=None, use_surrogate=None):
+        x = np.asarray(x)
+        if x.dtype.kind != 'f':
+            raise NotImplementedError('currently x should be a numpy array of '
+                                      'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
-        _logp_and_grad = self.fun_and_jac(x, original_space, use_surrogate)
-        _logp = _logp_and_grad[0][..., 0]
-        _grad = _logp_and_grad[1][..., 0, :]
-        if x.dtype.kind == 'f':
-            if self._use_decay and use_surrogate:
-                x_o = x if original_space else self.to_original(x)
-                beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
-                                  x_o - self._mu)
-                _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
-                _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) *
-                          (beta2 > self._alpha_2)[..., np.newaxis])
-            if not original_space:
-                _logp += self._get_diff(x_trans=x)
-                _tog = self.to_original_grad(x)
-                _grad *= _tog
-                _grad += self.to_original_grad2(x) / _tog
-        else:
-            if (self._use_decay and use_surrogate) or (not original_space):
-                raise NotImplementedError(
-                    'decay and logp transform have not been implemented when '
-                    'x is VariableDict.')
+        _fun_and_jac = self.fun_and_jac(x, original_space, use_surrogate)
+        _logp = VariableDict.get(_fun_and_jac, self.density_name, 'fun')[..., 0]
+        _grad = VariableDict.get(
+            _fun_and_jac, self.density_name, 'jac')[..., 0, :]
+        if self._use_decay and use_surrogate:
+            x_o = x if original_space else self.to_original(x)
+            beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
+                              x_o - self._mu)
+            _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
+            _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) *
+                      (beta2 > self._alpha_2)[..., np.newaxis])
+        if not original_space:
+            _logp += self._get_diff(x_trans=x)
+            _tog = self.to_original_grad(x)
+            _grad *= _tog
+            _grad += self.to_original_grad2(x) / _tog
         return _logp, _grad
     
     @property
@@ -862,10 +792,28 @@ class Density(Pipeline, _DensityBase):
                 self._alpha = np.max(_beta) * self._alpha_p / 100
             self._alpha_2 = self._alpha**2
     
+    def fit(self, var_dicts):
+        if not all_isinstance(var_dicts, VariableDict):
+            raise ValueError('var_dicts should consist of VariableDict(s).')
+        
+        x = self._get_var(var_dicts, self._input_vars)
+        self._set_decay(x)
+        logp = self._get_logp(var_dicts)
+        
+        for i, su in enumerate(self._surrogate_list):
+            x = self._get_var(var_dicts, su._input_vars)
+            if su._input_scales is not None:
+                x = (x - su._input_scales[:, 0]) / su._input_scales_diff
+            y = self._get_var(var_dicts, su._output_vars)
+            su.fit(x, y, logp)
+    
     @classmethod
-    def _get_logp(cls, var_dicts):
-        """This is defined only for density."""
-        return self._get_var(var_dicts, self.output_vars)
+    def _get_var(cls, var_dicts, var_names):
+        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
+                         for vd in var_dicts])
+    
+    def _get_logp(self, var_dicts):
+        return self._get_var(var_dicts, [self.density_name])
 
 
 class DensityLite(_PipelineBase, _DensityBase):

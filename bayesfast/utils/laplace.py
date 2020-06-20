@@ -120,13 +120,13 @@ class Laplace:
         if not callable(hess):
             if callable(grad):
                 def _hess(*args, **kwargs):
-                    foo = Jacobian(grad, **hess_options)(*args, **kwargs)
+                    foo = Jacobian(grad, **self._hess_options)(*args, **kwargs)
                     return (foo + foo.T) / 2
                 hess = _hess
             else:
-                hess = Hessian(logp, **hess_options)
+                hess = Hessian(logp, **self._hess_options)
         if not callable(grad):
-            grad = Gradient(logp, **grad_options)
+            grad = Gradient(logp, **self._grad_options)
         
         opt = minimize(fun=lambda x: -logp(x), x0=x_0,
                        method=self._optimize_method, jac=lambda x: -grad(x),

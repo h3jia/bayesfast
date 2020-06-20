@@ -63,6 +63,17 @@ class VariableDict:
     @property
     def jac(self):
         return self._jac
+    
+    @classmethod
+    def get(cls, var_dicts, key, target='fun'):
+        if not isinstance(key, str):
+            raise ValueError('key should be a str.')
+        if target != 'fun' and target != 'jac':
+            raise ValueError('target should be fun or jac.')
+        if isinstance(var_dicts, VariableDict):
+            return getattr(var_dicts, target)[key]
+        elif hasattr(var_dicts, '__iter__'):
+            return np.asarray([cls.get(vd, key, target) for vd in var_dicts])
 
 
 class PropertyList:
