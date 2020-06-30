@@ -7,8 +7,9 @@ except:
 
 __all__ = ['EnsembleSampler']
 
+# TODO: implement the wrapper of emcee sampler
+
 
 class EnsembleSampler:
-    
-    def __init__(self, *args, **kwargs):
+    def __init__(*args, **kwargs):
         raise NotImplementedError

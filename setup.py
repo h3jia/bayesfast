@@ -2,6 +2,7 @@ from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 import numpy as np
 
+
 ext_modules = [
     Extension(
         "bayesfast.transforms._constraint",
@@ -39,7 +40,7 @@ ext_modules = [
 
 setup(
     name='bayesfast',
-    version='0.1.0dev1',
+    version='0.1.0dev2',
     author='He Jia and Uros Seljak',
     maintainer='He Jia',
     maintainer_email='he.jia.phy@gmail.com',
@@ -47,9 +48,9 @@ setup(
                  'posterior sampling and evidence estimation.'),
     url='https://github.com/HerculesJack/bayesfast',
     license='Apache License, Version 2.0',
-    python_requires=">=3",
-    install_requires=['cython', 'dask', 'distributed', 'numdifftools', 'numpy',
-                      'scikit-learn', 'scipy'],
+    python_requires=">=3.5",
+    install_requires=['cython', 'numdifftools', 'multiprocess', 'matplotlib',
+                      'numpy>=1.17', 'scikit-learn', 'scipy', 'threadpoolctl'],
     packages=find_packages(),
     ext_modules=cythonize(ext_modules, language_level="3"),
 )

@@ -2,36 +2,27 @@ import numpy as np
 from collections import namedtuple
 from .hmc_utils.base_hmc import BaseHMC, HMCStepData, DivergenceInfo
 from .hmc_utils.integration import IntegrationError
+from .sample_trace import NTrace
 
 __all__ = ['NUTS']
 
+# TODO: review the code
+
 
 class NUTS(BaseHMC):
-
-    def __init__(self, logp_and_grad, trace=None, dask_key=None, chain_id=None, 
-                 random_state=None, x_0=None, step_size=0.25, 
-                 adapt_step_size=True, metric=None, adapt_metric=True, 
-                 Emax=1000, target_accept=0.9, gamma=0.05, k=0.75, t0=10, 
-                 max_treedepth=10):
-        super().__init__(logp_and_grad, trace, dask_key, chain_id,
-                         random_state, x_0, step_size, adapt_step_size, metric,
-                         adapt_metric, Emax, target_accept, gamma, k, t0)
-        max_treedepth = int(max_treedepth)
-        if max_treedepth <= 0:
-            raise ValueError('max_treedepth should be a positive int, instead '
-                             'of {}.'.format(max_treedepth))
-        self._trace._max_treedepth = max_treedepth
-
+    
+    _expected_trace = NTrace
+    
     def logbern(self, log_p):
         if np.isnan(log_p):
             raise FloatingPointError("log_p can't be nan.")
-        return np.log(self._trace.random_state.uniform()) < log_p
+        return np.log(self._sample_trace.random_generator.uniform()) < log_p
         
     def _hamiltonian_step(self, start, p0, step_size):
         tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self._trace.Emax, self.logbern)
+                     self._sample_trace.max_change, self.logbern)
 
-        for _ in range(self._trace._max_treedepth):
+        for _ in range(self._sample_trace._max_treedepth):
             direction = self.logbern(np.log(0.5)) * 2 - 1
             divergence_info, turning = tree.extend(direction)
             if divergence_info or turning:
@@ -53,12 +44,12 @@ Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
 
 class _Tree:
     
-    def __init__(self, ndim, integrator, start, step_size, Emax, logbern):
+    def __init__(self, ndim, integrator, start, step_size, max_change, logbern):
         self.ndim = ndim
         self.integrator = integrator
         self.start = start
         self.step_size = step_size
-        self.Emax = Emax
+        self.max_change = max_change
         self.start_energy = np.array(start.energy)
 
         self.left = self.right = start
@@ -80,7 +71,7 @@ class _Tree:
 
         Return a tuple `(diverging, turning)` of type (DivergenceInfo, bool).
         `diverging` indicates, that the tree extension was aborted because
-        the energy change exceeded `self.Emax`. `turning` indicates that
+        the energy change exceeded `self.max_change`. `turning` indicates that
         the tree extension was stopped because the termination criterior
         was reached (the trajectory is turning back).
         """
@@ -145,7 +136,7 @@ class _Tree:
 
             if np.abs(energy_change) > np.abs(self.max_energy_change):
                 self.max_energy_change = energy_change
-            if np.abs(energy_change) < self.Emax:
+            if np.abs(energy_change) < self.max_change:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
                 proposal = Proposal(

@@ -44,7 +44,7 @@ def uniform(low, high, size, skip=1, dir_file=df):
     points = points[skip:]
     points = low + (high - low) * points
     return points
-    
+
 
 def multivariate_normal(mean, cov, size, skip=1, dir_file=df):
     mean = np.atleast_1d(mean)

@@ -10,6 +10,7 @@ __all__ = ['_from_original_f', '_from_original_f2', '_from_original_j',
            '_to_original_j2', '_to_original_jj', '_to_original_jj2']
 
 # TODO: rewrite and directly enable ndim > 2 (currently reshaping as ndim = 2) ?
+# TODO: do we need the one side transform ?
 
 
 @cython.wraparound(False)

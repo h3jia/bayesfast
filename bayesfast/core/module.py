@@ -1,12 +1,14 @@
 import numpy as np
 from collections import namedtuple
 from ..utils.collections import PropertyList
+from ..utils import all_isinstance
 import warnings
 
 __all__ = ['Module', 'Surrogate']
 
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
+# TODO: check if Surrogate has been fitted?
 
 
 class Module:
@@ -26,10 +28,6 @@ class Module:
         Name(s) of input variable(s). Set to `['__var__']` by default.
     output_vars : str or 1-d array_like of str, optional
         Name(s) of output variable(s). Set to `['__var__']` by default.
-    copy_vars : str or 1-d array_like of str, optional
-        Name(s) of variable(s) to be copied. Set to `[]` by default.
-    paste_vars : str or 1-d array_like of str, optional
-        New name(s) for the copied variable(s). Set to `[]` by default. 
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to `[]` by default.
@@ -39,7 +37,7 @@ class Module:
     recombine_output : bool or 1-d array_like of positive int, optional
         Controlling the recombination of output variables. Set to `False` by
         default.
-    var_scales : None or array_like, optional
+    input_scales : None or array_like, optional
         Controlling the scaling of input variables. Set to `None` by default.
     label : str, optional
         Label of Module used in the `print_summary` method.
@@ -51,20 +49,18 @@ class Module:
         `fun_and_jac`.
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=['__var__'], output_vars=['__var__'], copy_vars=[],
-                 paste_vars=[], delete_vars=[], recombine_input=False,
-                 recombine_output=False, var_scales=None, label=None,
-                 fun_args=(), fun_kwargs={}, jac_args=(), jac_kwargs={},
-                 fun_and_jac_args=(), fun_and_jac_kwargs={}):
+                 input_vars=['__var__'], output_vars=['__var__'],
+                 delete_vars=[], recombine_input=False, recombine_output=False,
+                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
+                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
+                 fun_and_jac_kwargs={}):
         self._fun_jac_init(fun, jac, fun_and_jac)
         self.input_vars = input_vars
         self.output_vars = output_vars
-        self.copy_vars = copy_vars
-        self.paste_vars = paste_vars
         self.delete_vars = delete_vars
         self.recombine_input = recombine_input
         self.recombine_output = recombine_output
-        self.var_scales = var_scales
+        self.input_scales = input_scales
         self.label = label
         
         self.fun_args = fun_args
@@ -105,7 +101,7 @@ class Module:
         
         args = self._adjust_dim(args, dim, tag_1)
         if strategy is False:
-            if tag == 'input' and self._var_scales is not None:
+            if tag == 'input' and self._input_scales is not None:
                 strategy = np.array([a.shape[0] for a in args], dtype=np.int)
                 cum = np.cumsum(np.insert(strategy, 0, 0))
             else:
@@ -114,9 +110,10 @@ class Module:
             cargs = np.concatenate(args, axis=0)
         except:
             raise ValueError('failed to concatenate {}.'.format(tag_1))
-        if tag == 'input' and self._var_scales is not None:
+        if tag == 'input' and self._input_scales is not None:
             try:
-                cargs = (cargs - self._var_scales[:, 0]) / self._var_scales_diff
+                cargs = ((cargs - self._input_scales[:, 0]) / 
+                         self._input_scales_diff)
             except:
                 raise ValueError('failed to rescale the input variables.')
         if strategy is True:
@@ -208,7 +205,7 @@ class Module:
         args = self._recombine(args, 'input')
         jac_out = self._jac(*args, *self._jac_args, **self._jac_kwargs)
         jac_out = self._recombine(jac_out, 'output_jac')
-        return [j / self._var_scales_diff for j in jac_out]
+        return [j / self._input_scales_diff for j in jac_out]
     
     @property
     def has_jac(self):
@@ -243,7 +240,7 @@ class Module:
             *args, *self.fun_and_jac_args, **self.fun_and_jac_kwargs)
         fun_out = self._recombine(fun_out, 'output_fun')
         jac_out = self._recombine(jac_out, 'output_jac')
-        return (fun_out, [j / self._var_scales_diff for j in jac_out])
+        return (fun_out, [j / self._input_scales_diff for j in jac_out])
     
     @property
     def has_fun_and_jac(self):
@@ -268,7 +265,7 @@ class Module:
         else:
             try:
                 names = list(names)
-                assert all(isinstance(nn, str) for nn in names)
+                assert all_isinstance(names, str)
                 if not allow_empty:
                     assert len(names) > 0
             except:
@@ -315,24 +312,6 @@ class Module:
     def output_vars(self, names):
         self._output_vars = PropertyList(
             names, lambda x: self._var_check(x, 'output', False, 'raise'))
-    
-    @property
-    def copy_vars(self):
-        return self._copy_vars
-    
-    @copy_vars.setter
-    def copy_vars(self, names):
-        self._copy_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'copy', True, 'ignore'))
-    
-    @property
-    def paste_vars(self):
-        return self._paste_vars
-    
-    @paste_vars.setter
-    def paste_vars(self, names):
-        self._paste_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'paste', True, 'raise'))
         
     @property
     def delete_vars(self):
@@ -392,24 +371,26 @@ class Module:
                 scales = np.array((np.zeros_like(scales), scales)).T.copy()
             if not (scales.ndim == 2 and scales.shape[-1] == 2):
                 raise ValueError('I do not know how to interpret the shape '
-                                 'of var_scales.')
+                                 'of input_scales.')
         except:
-            raise ValueError('Invalid value for var_scales.')
-        self._var_scales_diff = scales[:, 1] - scales[:, 0]
+            raise ValueError('Invalid value for input_scales.')
+        self._input_scales_diff = scales[:, 1] - scales[:, 0]
         return scales
     
     @property
-    def var_scales(self):
-        return self._var_scales
+    def input_scales(self):
+        return self._input_scales
     
-    @var_scales.setter
-    def var_scales(self, scales):
+    @input_scales.setter
+    def input_scales(self, scales):
         if scales is None:
-            self._var_scales = None
-            self._var_scales_diff = 1.
+            self._input_scales = None
+            self._input_scales_diff = 1.
         else:
-            self._var_scales = self._scale_check(scales)
-            self._var_scales.flags.writeable = False # TODO: PropertyArray?
+            self._input_scales = self._scale_check(scales)
+            # we do not allow directly modify the elements of input_scales here
+            # as it cannot trigger the update of input_scales_diff
+            self._input_scales.flags.writeable = False # TODO: PropertyArray?
     
     @property
     def label(self):
@@ -522,6 +503,8 @@ class Surrogate(Module):
         index where the true `Module` should start to be replaced by the
         `Surrogate`, and `extent` represents the number of `Module`s to be
         replaced.
+    fit_options : dict, optional
+        Additional keyword arguments for fitting the surrogate model.
     args : array_like, optional
         Additional arguments to be passed to `Module.__init__`.
     kwargs : dict, optional
@@ -531,8 +514,8 @@ class Surrogate(Module):
     -----
     Unlike `Module`, the default value of `recombine_input` will be `True`.
     """
-    def __init__(self, input_size=None, output_size=None, scope=(0, 1), *args,
-                 **kwargs):
+    def __init__(self, input_size=None, output_size=None, scope=(0, 1),
+                 fit_options={}, *args, **kwargs):
         self._initialized = False
         super().__init__(None, None, None, *args, **kwargs)
         if len(args) < 6 and not 'recombine_input' in kwargs:
@@ -556,6 +539,7 @@ class Surrogate(Module):
         self.input_size = input_size
         self.output_size = output_size
         self.scope = scope
+        self.fit_options = fit_options
         if not hasattr(self, '_fun'):
             self._fun = None
         if not hasattr(self, '_jac'):
@@ -579,6 +563,14 @@ class Surrogate(Module):
             self._scope = SurrogateScope(int(start), int(extent))
         except:
             raise ValueError('invalid value for scope.')
+    
+    @property
+    def fit_options(self):
+        return self._fit_options
+    
+    @fit_options.setter
+    def fit_options(self, options):
+        self._fit_options = dict(options)
     
     @property
     def input_size(self):

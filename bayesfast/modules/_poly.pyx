@@ -47,7 +47,7 @@ def _quadratic_j(const double[::1] x, const double[:, :, ::1] a,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _cubic_2_f(const double[::1] x, const double[:, :, ::1] a, double[::1] out, 
+def _cubic_2_f(const double[::1] x, const double[:, :, ::1] a, double[::1] out,
                int m, int n):
     cdef size_t i, j, k
     cdef double *t = <double *> malloc(m * sizeof(double))
@@ -68,7 +68,7 @@ def _cubic_2_f(const double[::1] x, const double[:, :, ::1] a, double[::1] out,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _cubic_2_j(const double[::1] x, const double[:, :, ::1] a, 
+def _cubic_2_j(const double[::1] x, const double[:, :, ::1] a,
                double[:, ::1] out, int m, int n):
     cdef size_t i, j, k
     for i in prange(m, nogil=True, schedule='static'):
@@ -84,7 +84,7 @@ def _cubic_2_j(const double[::1] x, const double[:, :, ::1] a,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _cubic_3_f(const double[::1] x, const double[:, :, :, ::1] a, 
+def _cubic_3_f(const double[::1] x, const double[:, :, :, ::1] a,
                double[::1] out, int m, int n):
     cdef size_t i, j, k, l
     cdef double *s = <double *> malloc(m * sizeof(double))
@@ -110,7 +110,7 @@ def _cubic_3_f(const double[::1] x, const double[:, :, :, ::1] a,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _cubic_3_j(const double[::1] x, const double[:, :, :, ::1] a, 
+def _cubic_3_j(const double[::1] x, const double[:, :, :, ::1] a,
                double[:, ::1] out, int m, int n):
     cdef size_t i, j, k, l
     cdef double *t = <double *> malloc(m * sizeof(double))

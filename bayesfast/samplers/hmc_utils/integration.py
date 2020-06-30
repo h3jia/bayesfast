@@ -4,6 +4,8 @@ from collections import namedtuple
 
 __all__ = ['CpuLeapfrogIntegrator']
 
+# TODO: review the code
+
 
 State = namedtuple("State", 'q, p, v, q_grad, energy, logp')
 

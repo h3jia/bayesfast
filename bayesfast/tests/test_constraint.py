@@ -5,7 +5,7 @@ from numdifftools import Gradient, Hessdiag
 # TODO: finish comparison
 
 
-p = bf.Pipeline(var_scales=[[-10, 10], [-5, 8], [-4, 6], [-8, 6]],
+p = bf.Pipeline(input_scales=[[-10, 10], [-5, 8], [-4, 6], [-8, 6]],
                 hard_bounds=[[0, 0], [0, 1], [1, 0], [1, 1]])
 x = np.ones(4) * 0.6
 
