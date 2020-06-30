@@ -11,8 +11,7 @@ For cosmologists, we have an add-on package
 which provides several frequently-used cosmological modules.
 
 Both packages are in live development, so the API may be changed at any time.
-**Note that some parts of the code are still experimental,
-as we haven't implemented public API for them.**
+**Note that some parts of the code are still experimental.**
 If you find a bug or have useful suggestions, please feel free to 
 open an issue / pull request, or email [He Jia](mailto:he.jia.phy@gmail.com).
 We also have a roadmap for features to implement in the future.
@@ -31,8 +30,8 @@ pip install -e .
 
 ## Dependencies
 
-BayesFast depends on cython, dask, distributed, numdifftools, numpy, 
-scikit-learn and scipy.
+BayesFast depends on cython, numdifftools, multiprocess, matplotlib, numpy,
+scikit-learn, scipy and threadpoolctl.
 Currently, it is only tested on Linux with Python 3.6.
 
 ## License
@@ -44,9 +43,10 @@ BayesFast is distributed under the Apache License, Version 2.0.
 If you find BayesFast useful for your research,
 please consider citing our papers accordingly:
 
-* He Jia and Uros Seljak, *BayesFast: A Fast and Scalable Method for 
-Cosmological Bayesian Inference*, in prep (for posterior sampling)
-* He Jia and Uros Seljak, *[Normalizing Constant Estimation
-with Gaussianized Bridge Sampling](https://arxiv.org/abs/1912.06073)*,
-accepted by [AABI 2019](http://www.approximateinference.org/) 
+* He Jia and Uros Seljak,
+*BayesFast: A Fast and Scalable Method for Cosmological Bayesian Inference*,
+in prep (for posterior sampling)
+* He Jia and Uros Seljak,
+*Normalizing Constant Estimation with Gaussianized Bridge Sampling*,
+[AABI 2019 Proceedings, PMLR 118:1-14](http://proceedings.mlr.press/v118/jia20a.html)
 (for evidence estimation)
