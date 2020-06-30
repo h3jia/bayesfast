@@ -4,14 +4,14 @@ from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
 from ..samplers import SampleTrace, NTrace, _HTrace, TraceTuple
 from ..samplers import _get_step_size, _get_metric
-from ..utils import threadpool_limits, check_client, all_isinstance
-from ..utils import Laplace, untemper_laplace_samples
-from ..utils.random import check_state, split_state, multivariate_normal
+from ..utils import all_isinstance, Laplace, untemper_laplace_samples
+from ..utils.parallel import ParallelBackend, get_backend
+from ..utils.random import get_generator
+from ..utils.sobol import multivariate_normal
 from ..utils import SystematicResampler, integrated_time
 from ..utils.collections import VariableDict, PropertyList
 from ..evidence import GBS, GIS, GHM
 import numpy as np
-from distributed import Client
 from collections import namedtuple, OrderedDict
 import warnings
 from copy import deepcopy
@@ -22,29 +22,27 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: RecipeTrace.n_call
 # TODO: early stop in pipeline evaluation
 # TODO: early stop by comparing KL
-# TODO: use tqdm to add progress bar for _map_fun
+# TODO: use tqdm to add progress bar for map
 # TODO: better control when we don't have enough points before resampling
 # TODO: {} as default value
 # TODO: monitor the progress of IS
 # TODO: improve optimization with trust region?
 #       https://arxiv.org/pdf/1804.00154.pdf
 # TODO: add checkpoint facility
-# TODO: review the hierarchical structure of random_state and client
-# TODO: chunk size for client.map
 # TODO: review Recipe.__getstate__
 
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
     def __init__(self, surrogate_list=[], alpha_n=2, fitted=False,
-                 sample_trace=None, x_0=None, random_state=None,
+                 sample_trace=None, x_0=None, random_generator=None,
                  reuse_metric=True):
         self.surrogate_list = surrogate_list
         self.alpha_n = alpha_n
         self.fitted = fitted
         self.sample_trace = sample_trace
         self.x_0 = x_0
-        self.random_state = random_state
+        self.random_generator = random_generator
         self.reuse_metric = reuse_metric
     
     @property
@@ -129,15 +127,18 @@ class BaseStep:
         self._sample_trace = t
     
     @property
-    def random_state(self):
-        return self._random_state
-    
-    @random_state.setter
-    def random_state(self, state):
-        if state is None:
-            self._random_state = None
+    def random_generator(self):
+        if self._random_generator is None:
+            return get_generator()
         else:
-            self._random_state = check_state(state)
+            return self._random_generator
+    
+    @random_generator.setter
+    def random_generator(self, generator):
+        if generator is None:
+            self._random_generator = None
+        else:
+            self._random_generator = np.random.default_rng(generator)
     
     @property
     def reuse_metric(self):
@@ -151,11 +152,11 @@ class BaseStep:
 class OptimizeStep(BaseStep):
     """Configuring a step for optimization."""
     def __init__(self, surrogate_list=[], alpha_n=2., laplace=None, eps_pp=0.1,
-                 eps_pq=0.1, max_iter=10, x_0=None, random_state=None,
+                 eps_pq=0.1, max_iter=5, x_0=None, random_generator=None,
                  fitted=False, run_sampling=True, sample_trace=None,
                  reuse_metric=True):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
-                         random_state, reuse_metric)
+                         random_generator, reuse_metric)
         self.laplace = laplace
         self.eps_pp = eps_pp
         self.eps_pq = eps_pq
@@ -230,10 +231,10 @@ class SampleStep(BaseStep):
     """Configuring a step for sampling."""
     def __init__(self, surrogate_list=[], alpha_n=2., sample_trace=None,
                  resampler={}, reuse_samples=0, reuse_step_size=True,
-                 reuse_metric=True, random_state=None, logp_cutoff=True,
-                 alpha_min=1.5, alpha_supp=0.1, x_0=None, fitted=False):
+                 reuse_metric=True, random_generator=None, logp_cutoff=True,
+                 alpha_min=1.5, alpha_supp=1.25, x_0=None, fitted=False):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
-                         random_state, reuse_metric)
+                         random_generator, reuse_metric)
         self.resampler = resampler
         self.reuse_samples = reuse_samples
         self.reuse_step_size = reuse_step_size
@@ -312,21 +313,16 @@ class SampleStep(BaseStep):
     def n_eval_min(self):
         return int(self._alpha_min * 
                    max(su.n_param for su in self._surrogate_list))
-    
-    @property
-    def n_eval_supp(self):
-        return int(self._alpha_supp * 
-                   max(su.n_param for su in self._surrogate_list))
 
 
 class PostStep:
     """Configuring a step for post-processing."""
-    def __init__(self, n_is=0, k_trunc=0.25, evidence_method='GBS',
-                 random_state=None):
+    def __init__(self, n_is=0, k_trunc=0.25, evidence_method=None,
+                 random_generator=None):
         self.n_is = n_is
         self.k_trunc = k_trunc
         self.evidence_method = evidence_method
-        self.random_state = random_state
+        self.random_generator = random_generator
     
     @property
     def n_is(self):
@@ -366,22 +362,25 @@ class PostStep:
             em = GHM()
         elif isinstance(em, dict):
             em = GBS(**em)
-        elif hasattr(em, 'run') and hasattr(em, 'random_state'):
+        elif hasattr(em, 'run'):
             pass
         else:
             raise ValueError('invalid value for evidence_method.')
         self._evidence_method = em
     
     @property
-    def random_state(self):
-        return self._random_state
-    
-    @random_state.setter
-    def random_state(self, state):
-        if state is None:
-            self._random_state = None
+    def random_generator(self):
+        if self._random_generator is None:
+            return get_generator()
         else:
-            self._random_state = check_state(state)
+            return self._random_generator
+    
+    @random_generator.setter
+    def random_generator(self, generator):
+        if generator is None:
+            self._random_generator = None
+        else:
+            self._random_generator = np.random.default_rng(generator)
 
 
 RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
@@ -389,7 +388,7 @@ RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
 
 class RecipeTrace:
     """Recording the process of running a Recipe."""
-    def __init__(self, optimize=None, sample=[], post=None):
+    def __init__(self, optimize=None, sample=[], post={}):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = deepcopy(optimize)
         elif isinstance(optimize, dict):
@@ -453,20 +452,21 @@ class RecipeTrace:
     # TODO: finish this
     @property
     def n_call(self):
-        _n_call = 0
-        for _opt in self._r_optimize:
-            if len(_opt.surrogate_list) > 0:
-                _n_call += len(_opt.var_dicts)
-            else:
-                raise NotImplementedError
-        for _sam in self._r_sample:
-            if len(_sam.surrogate_list) > 0:
-                _n_call += len(_sam.var_dicts)
-            else:
-                raise NotImplementedError
-        if self._r_post is not None:
-            raise NotImplementedError
-        return _n_call
+        if self._r_post is None:
+            _n_call = 0
+            for _opt in self._r_optimize:
+                if len(_opt.surrogate_list) > 0:
+                    _n_call += len(_opt.var_dicts)
+                else:
+                    raise NotImplementedError
+            for _sam in self._r_sample:
+                if len(_sam.surrogate_list) > 0:
+                    _n_call += len(_sam.var_dicts)
+                else:
+                    raise NotImplementedError
+            return _n_call
+        else:
+            return self._r_post.n_call        
     
     @property
     def finished(self):
@@ -494,19 +494,19 @@ SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
 
 PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
                         'logq, logz, logz_err, x_p, x_q, logp_p, logq_q, '
-                        'trace_p, trace_q')
+                        'trace_p, trace_q, n_call')
 
 
 class Recipe:
     
-    def __init__(self, density, client=None, recipe_trace=None, optimize=None,
-                 sample=[], post=None, copy_density=True):
+    def __init__(self, density, parallel_backend=None, recipe_trace=None,
+                 optimize=None, sample=[], post={}, copy_density=True):
         if isinstance(density, (Density, DensityLite)):
             self._density = deepcopy(density) if copy_density else density
         else:
             raise ValueError('density should be a Density or DensityLite.')
         
-        self.client = client
+        self.parallel_backend = parallel_backend
         
         if recipe_trace is None:
             recipe_trace = RecipeTrace(optimize, sample, post)
@@ -519,9 +519,9 @@ class Recipe:
         self._recipe_trace = recipe_trace
     
     def __getstate__(self):
-        """We need this to make self._client work correctly."""
+        """We need this to make self._parallel_backend work correctly."""
         self_dict = self.__dict__.copy()
-        del self_dict['_client'], self_dict['_recipe_trace']
+        del self_dict['_parallel_backend'], self_dict['_recipe_trace']
         # TODO: review this
         #       we remove recipe_trace because it contains a PropertyList
         #       that is not pickle-able
@@ -534,24 +534,22 @@ class Recipe:
         return self._density
     
     @property
-    def client(self):
-        return self._client
-    
-    @client.setter
-    def client(self, clt):
-        if isinstance(clt, (int, Client)) or clt is None:
-            self._client = clt
+    def parallel_backend(self):
+        if self._parallel_backend is None:
+            return get_backend()
         else:
-            raise ValueError('invalid value for client.')
+            return self._parallel_backend
+    
+    @parallel_backend.setter
+    def parallel_backend(self, backend):
+        if backend is None:
+            self._parallel_backend = None
+        else:
+            self._parallel_backend = ParallelBackend(backend)
     
     @property
     def recipe_trace(self):
         return self._recipe_trace
-    
-    @classmethod
-    def _map_fun(cls, client, density, x, attr='fun'):
-        foo = client.map(getattr(density, attr), x)
-        return client.gather(foo)
     
     def _opt_surro(self, x_0, var_dicts):
         step = self.recipe_trace._s_optimize
@@ -592,9 +590,6 @@ class Recipe:
         result = self.recipe_trace._r_optimize
         recipe_trace = self.recipe_trace
         
-        if step.random_state is None:
-            step.random_state = check_state(None)
-        
         if step.has_surrogate:
             if isinstance(self._density, DensityLite):
                 raise RuntimeError('self.density should be a Density, instead '
@@ -602,7 +597,10 @@ class Recipe:
             self._density.surrogate_list = step._surrogate_list
             
             if step.fitted:
-                x_0 = None
+                if step.x_0 is None:
+                    x_0 = np.zeros(self.density.input_size)
+                else:
+                    x_0 = step.x_0.copy()
                 var_dicts = None
             else:
                 if step.x_0 is None:
@@ -616,12 +614,19 @@ class Recipe:
                             'you only gave me enough {} points in x_0.'.format(
                             step.n_eval, step.x_0.shape[0]))
                     x_0 = step.x_0[:step.n_eval].copy()
-                var_dicts = self._map_fun(self._client, self._density, x_0)
-                self._density.fit(var_dicts)
+                self.density.use_surrogate = False
+                self.density.original_space = True
+                with self.parallel_backend:
+                    var_dicts = self.parallel_backend.map(self.density.fun, x_0)
+                self.density.fit(var_dicts)
             self._opt_surro(x_0, var_dicts)
-            print(' OptimizeStep proceeding: iter #0 finished.')
+            _a = result[-1].f_max
+            _pq = _a.logp_trans - _a.logq_trans
+            print(' OptimizeStep proceeding: iter #0 finished, while current '
+                  'logp = {:.3f}, logp_trans = {:.3f}, delta_pq = '
+                  '{:.3f}.'.format(_a.logp, _a.logp_trans, _pq))
             
-            for i in range(1, step._max_iter):
+            for i in range(1, step.max_iter):
                 x_0 = result[-1].laplace_samples
                 if x_0.shape[0] < step.n_eval:
                     raise RuntimeError(
@@ -629,22 +634,40 @@ class Recipe:
                         'can only get {} points from the previous '
                         'iteration.'.format(step.n_eval, x_0.shape[0]))
                 x_0 = x_0[:step.n_eval].copy()
-                var_dicts = self._map_fun(self._client, self._density, x_0)
-                self._density.fit(var_dicts)
+                self.density.use_surrogate = False
+                self.density.original_space = True
+                with self.parallel_backend:
+                    var_dicts = self.parallel_backend.map(self.density.fun, x_0)
+                self.density.fit(var_dicts)
                 self._opt_surro(x_0, var_dicts)
                 _a = result[-1].f_max
                 _b = result[-2].f_max
                 _pp = _a.logp_trans - _b.logp_trans
                 _pq = _a.logp_trans - _a.logq_trans
                 print(' OptimizeStep proceeding: iter #{} finished, while '
-                      'delta_pp = {:.3f}, delta_pq = {:.3f}.'.format(i, _pp, 
-                      _pq))
+                      'current logp = {:.3f}, logp_trans = {:.3f}, delta_pp = '
+                      '{:.3f}, delta_pq = {:.3f}.'.format(i, _a.logp,
+                      _a.logp_trans, _pp, _pq))
                 if (abs(_pp) < step._eps_pp) and (abs(_pq) < step._eps_pq):
                     break
-            if i == step._max_iter - 1:
+            if i == step.max_iter - 1:
                 warnings.warn('Optimization did not converge within the max '
                               'number of iterations.', RuntimeWarning)
-
+            
+            logp_trans_all = np.asarray([r.f_max.logp_trans for r in result])
+            is_max = np.where(logp_trans_all == np.max(logp_trans_all))[0]
+            if is_max.size == 1:
+                i_max = is_max[0]
+            else:
+                logq_trans_all = np.asarray(
+                    [r.f_max.logq_trans for r in result])
+                diff_all = np.abs(logp_trans_all - logq_trans_all)
+                i_max = is_max[np.argmin(diff_all[is_max])]
+            
+            result.append(result[i_max])
+            print(' OptimizeStep proceeding: we will use iter #{} as it has '
+                  'the highest logp_trans.'.format(i_max))
+        
         else:
             if step.x_0 is None:
                 dim = self.density.input_size
@@ -665,7 +688,7 @@ class Recipe:
                 _grad = None
             # TODO: allow user-defined hessian for optimizer?
             # TODO: if generating pseudo random numbers in Laplace
-            #       use the RandomState of the OptimizeStep?
+            #       use the random generator of the OptimizeStep?
             laplace_result = step.laplace.run(logp=_logp, x_0=x_0, grad=_grad)
             
             x_trans = laplace_result.x_max
@@ -695,8 +718,6 @@ class Recipe:
         if sample_trace.x_0 is None:
             sample_trace.x_0 = result[-1].laplace_samples
             sample_trace._x_0_transformed = False
-        if sample_trace.random_state is None:
-            sample_trace.random_state = step.random_state
         if step.reuse_metric:
             cov = result[-1].laplace_result.cov.copy()
             if sample_trace._metric == 'diag':
@@ -704,16 +725,14 @@ class Recipe:
             elif sample_trace._metric == 'full':
                 sample_trace._metric = cov
         
-        old_list = self._density.surrogate_list
         self._density.surrogate_list = result[-1].surrogate_list
         self._density.use_surrogate = True
-        t = sample(self.density, sample_trace=sample_trace, client=self.client)
+        t = sample(self.density, sample_trace=sample_trace,
+                   parallel_backend=self.parallel_backend)
         x = t.get(flatten=True)
-        step._random_state = deepcopy(t[0]._random_state)
         result[-1] = result[-1]._replace(samples=x, sample_trace=t)
-        self._density.surrogate_list = old_list
         print('\n *** Finished sampling the surrogate density defined by the '
-              'last OptimizeStep. *** \n')
+              'selected OptimizeStep. *** \n')
     
     def _sam_step(self):
         steps = self.recipe_trace._s_sample
@@ -724,7 +743,7 @@ class Recipe:
             this_step = steps[i]
             sample_trace = this_step.sample_trace
             get_prev_step = not (i == 0 and not recipe_trace._i_optimize)
-            get_prev_samples = get_prev_step or this_step.x_0 is not None
+            get_prev_samples = get_prev_step or (this_step.x_0 is not None)
             
             if get_prev_step:
                 if i == 0:
@@ -754,21 +773,10 @@ class Recipe:
                 prev_density = prev_result.sample_trace.get(return_logp=True,
                                                             flatten=True)
             
-            if this_step.random_state is None:
-                if get_prev_step:
-                    this_step.random_state = deepcopy(prev_step._random_state)
-                else:
-                    this_step.random_state = check_state(None)
-            
             if isinstance(sample_trace, _HTrace):
                 if sample_trace.x_0 is None and get_prev_samples:
                     sample_trace.x_0 = prev_samples
                     sample_trace._x_0_transformed = prev_transformed
-                
-                if sample_trace.random_state is None:
-                    _1, _2 = split_state(this_step.random_state, 2)
-                    this_step.random_state = _1
-                    sample_trace.random_state = _2
                 
                 if get_prev_step:
                     if sample_trace._step_size is None:
@@ -785,9 +793,7 @@ class Recipe:
                                 prev_result.sample_trace, sample_trace._metric)
             
             if this_step.has_surrogate:
-                if isinstance(self._density, Density):
-                    self._density.use_surrogate = True
-                else:
+                if not isinstance(self._density, Density):
                     raise RuntimeError('self.density should be a Density for '
                                        'surrogate modeling.')
                 self._density.surrogate_list = this_step._surrogate_list
@@ -828,51 +834,64 @@ class Recipe:
                         i_resample = np.arange(this_step.n_eval)
                     
                     x_fit = prev_samples[i_resample]
-                    var_dicts = self._map_fun(self.client, self.density, x_fit)
-                    var_dicts_all = var_dicts.copy()
+                    self.density.use_surrogate = False
+                    self.density.original_space = True
+                    with self.parallel_backend:
+                        var_dicts = np.asarray(
+                            self.parallel_backend.map(self.density.fun, x_fit))
+                    var_dicts_fit = var_dicts.copy()
                     
                     if this_step.reuse_samples:
                         for j in range(i):
                             if (j + this_step.reuse_samples >= i or
                                 this_step.reuse_samples < 0):
-                                var_dicts_all.extend(result[j].var_dicts)
+                                var_dicts_fit = np.concatenate(
+                                    (var_dicts_fit, result[j].var_dicts))
                     
                     if this_step.logp_cutoff and get_prev_density:
-                        logp_all = np.concatenate(
-                            [vd.fun[self.density.extract_name] for vd in
-                            var_dicts_all])
+                        logp_fit = np.concatenate(
+                            [vd.fun[self.density.density_name] for vd in
+                            var_dicts_fit])
                         logq_fit = prev_density[i_resample]
                         logq_min = np.min(logq_fit)
                         np.delete(prev_samples, i_resample, axis=0)
                         np.delete(prev_density, i_resample, axis=0)
                         
-                        is_good = logp_all > logq_min
+                        is_good = logp_fit > logq_min
                         n_good = np.sum(is_good)
-                        if n_good < logp_all.size / 2:
+                        f_good = n_good / logp_fit.size
+                        if f_good < 0.5:
                             warnings.warn('more than half of the samples are '
                                           'abandoned because their logp < '
                                           'logq_min.', RuntimeWarning)
                         
-                        var_dicts_all = var_dicts[is_good]
-                        while len(var_dicts_all) < this_step.n_eval_min:
-                            if prev_samples.shape[0] < this_step.n_eval_supp:
+                        var_dicts_fit = var_dicts_fit[is_good]
+                        while len(var_dicts_fit) < this_step.n_eval_min:
+                            n_eval_supp = ((this_step.n_eval_min -
+                                           len(var_dicts_fit)) / f_good *
+                                           this_step.alpha_supp)
+                            n_eval_supp = max(int(n_eval_supp), 4)
+                            if prev_samples.shape[0] < n_eval_supp:
                                 raise RuntimeError('I do not have enough '
                                                    'supplementary points.')
                             if this_step.resampler is None:
-                                i_resample = np.arange(this_step.n_eval_supp)
+                                i_resample = np.arange(n_eval_supp)
                             else:
                                 i_resample = this_step.resampler(
-                                    prev_density, this_step.n_eval_supp)
+                                    prev_density, n_eval_supp)
                             
                             x_fit = prev_samples[i_resample]
-                            var_dicts_supp = self._map_fun(self.client, 
-                                                           self.density, x_fit)
+                            self.density.use_surrogate = False
+                            self.density.original_space = True
+                            with self.parallel_backend:
+                                var_dicts_supp = np.asarray(
+                                    self.parallel_backend.map(self.density.fun,
+                                    x_fit))
                             logp_supp = np.concatenate(
-                                [vd.fun[self.density.extract_name] for vd in
+                                [vd.fun[self.density.density_name] for vd in
                                 var_dicts_supp])
                             np.delete(prev_samples, i_resample, axis=0)
                             np.delete(prev_density, i_resample, axis=0)
-                            var_dicts.extend(var_dicts_supp)
                             
                             is_good = logp_supp > logq_min
                             n_good = np.sum(is_good)
@@ -881,12 +900,16 @@ class Recipe:
                                     'more than half of the samples are '
                                     'abandoned because their logp < logq_min.',
                                     RuntimeWarning)
-                            var_dicts_all.extend(var_dicts_supp[is_good])
+                            var_dicts = np.concatenate((var_dicts,
+                                                        var_dicts_supp))
+                            var_dicts_fit = np.concatenate(
+                                (var_dicts_fit, var_dicts_supp[is_good]))
                     
-                    self.density.fit(var_dicts_all)
+                    self.density.fit(var_dicts_fit)
                 
-                t = sample(self._density, sample_trace=sample_trace,
-                           client=self._client)
+                self.density.use_surrogate = True
+                t = sample(self.density, sample_trace=sample_trace,
+                           parallel_backend=self.parallel_backend)
                 x = t.get(flatten=True)
                 surrogate_list = deepcopy(self._density._surrogate_list)
                 result.append(SampleResult(
@@ -895,15 +918,14 @@ class Recipe:
             
             else:
                 if isinstance(self._density, Density):
-                    self._density.use_surrogate = False
-                t = sample(self._density, sample_trace=sample_trace,
-                           client=self._client)
+                    self.density.use_surrogate = False
+                t = sample(self.density, sample_trace=sample_trace,
+                           parallel_backend=self.parallel_backend)
                 x = t.get(flatten=True)
-                result.append(SampleResult(samples=x, surrogate_list=[], 
+                result.append(SampleResult(samples=x, surrogate_list=[],
                                            var_dicts=None, sample_trace=t))
             
             recipe_trace._i_sample += 1
-            this_step._random_state = deepcopy(t[0]._random_state)
             print('\n *** SampleStep proceeding: iter #{} finished. *** '
                   '\n'.format(i))
         print(' ***** SampleStep finished. ***** \n')
@@ -938,7 +960,7 @@ class Recipe:
         logz_err = None
         
         if recipe_trace._i_optimize:
-            opt_result = recipe_trace._r_optimize
+            opt_result = recipe_trace._r_optimize[-1]
             x_max = opt_result.x_max.x
             logp_max = opt_result.f_max.logp
             logq_max = opt_result.f_max.logq
@@ -960,9 +982,11 @@ class Recipe:
         
         elif recipe_trace._i_optimize:
             prev_step = recipe_trace._s_optimize
-            prev_result = recipe_trace._r_optimize
+            prev_result = recipe_trace._r_optimize[-1]
             
             if prev_step.has_surrogate and prev_result.sample_trace is not None:
+                # sample_trace in OptimizeStep will be ignored
+                # if has_surrogate is False
                 trace_q = prev_result.sample_trace
                 x_q = trace_q.get(return_logp=False, flatten=False)
                 logq_q = trace_q.get(return_logp=True, flatten=False)
@@ -974,13 +998,6 @@ class Recipe:
         else:
             raise RuntimeError('you have run neither OptimizeStep nor '
                                'SampleStep before the PostStep.')
-        
-        if (step.evidence_method is not None and
-            step.evidence_method.random_state is None):
-            if step.random_state is None:
-                step.random_state = check_state(
-                    deepcopy(prev_step.random_state))
-            step.evidence_method.random_state = step.random_state
         
         if x_p is not None:
             samples = x_p.reshape((-1, x_p.shape[-1]))
@@ -1010,10 +1027,12 @@ class Recipe:
                 
                 self.density.use_surrogate = False
                 self.density.original_space = True
-                logp = np.asarray(self._map_fun(self.client, self.density,
-                                  samples, 'logp')).reshape(-1)
+                with self.parallel_backend:
+                    logp = np.asarray(
+                        self.parallel_backend.map(self.density.logp,
+                        samples)).reshape(-1)
                 weights = np.exp(logp - logq)
-                if steps.k_trunc < 0:
+                if step.k_trunc < 0:
                     weights_trunc = weights.copy()
                 else:
                     weights_trunc = np.clip(weights, 0, np.mean(weights) *
@@ -1024,7 +1043,7 @@ class Recipe:
                         x_p=trace_q, logp=self._f_logq, logp_p=logq_q)
                     logz_pq = logsumexp(logp - logq, b=1 / logp.size)
                     foo = np.exp(logp - logq - logz_pq)
-                    tau = integrated_time(foo)
+                    tau = float(integrated_time(foo))
                     logz_err_pq = (
                         np.var(foo) / np.mean(foo)**2 / logp.size * tau)**0.5
                     logz = logz_q + logz_pq
@@ -1039,16 +1058,23 @@ class Recipe:
                                   'evidence of logq, which may differ from the '
                                   'evidence of logp.', RuntimeWarning)
                     logz, logz_err = step.evidence_method(
-                        x_p=trace_q, log=self._f_logq, logp_p=logq_q)
+                        x_p=trace_q, logp=self._f_logq, logp_p=logq_q)
         
         else:
             if (step.n_is is not None) or (step.evidence_method is not None):
                 warnings.warn('n_is and evidence_method will not be used when '
                               'we only have Laplace samples.', RuntimeWarning)
         
-        self.recipe_trace._r_post = PostResult(
+        try:
+            n_call = recipe_trace.n_call + step.n_is
+            warnings.warn('as of now, n_call does not take the possible logp '
+                          'calls during evidence evaluation into account.',
+                          RuntimeWarning)
+        except:
+            n_call = None
+        recipe_trace._r_post = PostResult(
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
-            x_q, logp_p, logq_q, trace_p, trace_q)
+            x_q, logp_p, logq_q, trace_p, trace_q, n_call)
         recipe_trace._i_post = 1
         print(' ***** PostStep finished. ***** \n')        
     
@@ -1059,23 +1085,13 @@ class Recipe:
         return self.density.logp(x, original_space=True, use_surrogate=True)
     
     def run(self):
-        try:
-            old_client = self._client
-            _new_client = False
-            self._client, _new_client = check_client(self._client)
-            f_opt, f_sam, f_pos = self.recipe_trace.finished
-            if not f_opt:
-                self._opt_step()
-            if not f_sam:
-                self._sam_step()
-            if not f_pos:
-                self._pos_step()
-            
-        finally:
-            if _new_client:
-                self._client.cluster.close()
-                self._client.close()
-                self._client = old_client
+        f_opt, f_sam, f_pos = self.recipe_trace.finished
+        if not f_opt:
+            self._opt_step()
+        if not f_sam:
+            self._sam_step()
+        if not f_pos:
+            self._pos_step()
     
     def get(self):
         try:

@@ -3,7 +3,7 @@ from .hmc_utils.step_size import DualAverageAdaptation
 from .hmc_utils.metrics import QuadMetric, QuadMetricDiag, QuadMetricFull
 from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
 from .hmc_utils.stats import NStepStats, NStats
-from ..utils.random import check_state, split_state
+from ..utils.random import get_generator, spawn_generator
 from copy import deepcopy
 import warnings
 
@@ -16,13 +16,13 @@ __all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TraceTuple',
 class SampleTrace:
     """Utilities shared by all different types of SampleTrace classes."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
-                 random_state=None):
+                 random_generator=None):
         self._chain_initialized = False
         self.n_chain = n_chain
         self.n_iter = n_iter
         self.n_warmup = n_warmup
         self.x_0 = x_0
-        self.random_state = random_state
+        self.random_generator = random_generator
         self._x_0_transformed = False
     
     @property
@@ -138,26 +138,29 @@ class SampleTrace:
             return None
     
     @property
-    def random_state(self):
-        return self._random_state
-    
-    @random_state.setter
-    def random_state(self, state):
-        if state is None:
-            self._random_state = None
+    def random_generator(self):
+        if self._random_generator is None:
+            return get_generator()
         else:
-            self._random_state = check_state(state)
+            return self._random_generator
+    
+    @random_generator.setter
+    def random_generator(self, generator):
+        if generator is None:
+            self._random_generator = None
+        else:
+            self._random_generator = np.random.default_rng(generator)
 
 
 class _HTrace(SampleTrace):
     """Utilities shared by HTrace and NTrace."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
-                 random_state=None, step_size=None, adapt_step_size=True,
+                 random_generator=None, step_size=None, adapt_step_size=True,
                  metric='diag', adapt_metric=True, max_change=1000.,
                  target_accept=0.8, gamma=0.05, k=0.75, t_0=10.,
                  initial_mean=None, initial_weight=10., adapt_window=60,
                  update_window=1, doubling=True):
-        super().__init__(n_chain, n_iter, n_warmup, x_0, random_state)
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator)
         self._samples = []
         self._chain_id = None
         self.max_change = max_change
@@ -184,15 +187,14 @@ class _HTrace(SampleTrace):
             raise ValueError(
                 'i should satisfy 0 <= i < n_chain, but you give {}.'.format(i))
         self._chain_id = i
-        if self.random_state is None:
-            self.random_state = check_state(None)
-        self._random_state = split_state(self._random_state, self.n_chain)[i]
+        self.random_generator = spawn_generator(
+            self.random_generator, self.n_chain)[i]
         self._x_0 = self._x_0.reshape((-1, self._x_0.shape[-1]))
         if self._x_0.shape[0] == self._n_chain:
             self._x_0 = self._x_0[i]
         else:
             self._x_0 = self._x_0[
-                self._random_state.randint(0, self._x_0.shape[0])]
+                self.random_generator.integers(0, self._x_0.shape[0])]
         self._set_step_size_2()
         self._set_metric_2()
         self._chain_initialized = True
@@ -411,9 +413,9 @@ class _HTrace(SampleTrace):
         if isinstance(self.metric, QuadMetric):
             pass
         else:
-            if self._metric == 'diag':
+            if isinstance(self._metric, str) and self._metric == 'diag':
                 self._metric = np.ones(self.input_size)
-            elif self._metric == 'full':
+            elif isinstance(self._metric, str) and self._metric == 'full':
                 self._metric = np.eye(self.input_size)
             elif isinstance(self._metric, np.ndarray):
                 pass
@@ -450,12 +452,12 @@ class HTrace(_HTrace):
 class NTrace(_HTrace):
     """Trace class for the NUTS sampler."""
     def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, x_0=None,
-                 random_state=None, step_size=1., adapt_step_size=True,
+                 random_generator=None, step_size=1., adapt_step_size=True,
                  metric='diag', adapt_metric=True, max_change=1000.,
                  max_treedepth=10, target_accept=0.8, gamma=0.05, k=0.75,
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True):
-        super().__init__(n_chain, n_iter, n_warmup, x_0, random_state,
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)

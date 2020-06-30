@@ -28,10 +28,6 @@ class Module:
         Name(s) of input variable(s). Set to `['__var__']` by default.
     output_vars : str or 1-d array_like of str, optional
         Name(s) of output variable(s). Set to `['__var__']` by default.
-    copy_vars : str or 1-d array_like of str, optional
-        Name(s) of variable(s) to be copied. Set to `[]` by default.
-    paste_vars : str or 1-d array_like of str, optional
-        New name(s) for the copied variable(s). Set to `[]` by default. 
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to `[]` by default.
@@ -53,16 +49,14 @@ class Module:
         `fun_and_jac`.
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=['__var__'], output_vars=['__var__'], copy_vars=[],
-                 paste_vars=[], delete_vars=[], recombine_input=False,
-                 recombine_output=False, input_scales=None, label=None,
-                 fun_args=(), fun_kwargs={}, jac_args=(), jac_kwargs={},
-                 fun_and_jac_args=(), fun_and_jac_kwargs={}):
+                 input_vars=['__var__'], output_vars=['__var__'],
+                 delete_vars=[], recombine_input=False, recombine_output=False,
+                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
+                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
+                 fun_and_jac_kwargs={}):
         self._fun_jac_init(fun, jac, fun_and_jac)
         self.input_vars = input_vars
         self.output_vars = output_vars
-        self.copy_vars = copy_vars
-        self.paste_vars = paste_vars
         self.delete_vars = delete_vars
         self.recombine_input = recombine_input
         self.recombine_output = recombine_output
@@ -318,24 +312,6 @@ class Module:
     def output_vars(self, names):
         self._output_vars = PropertyList(
             names, lambda x: self._var_check(x, 'output', False, 'raise'))
-    
-    @property
-    def copy_vars(self):
-        return self._copy_vars
-    
-    @copy_vars.setter
-    def copy_vars(self, names):
-        self._copy_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'copy', True, 'ignore'))
-    
-    @property
-    def paste_vars(self):
-        return self._paste_vars
-    
-    @paste_vars.setter
-    def paste_vars(self, names):
-        self._paste_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'paste', True, 'raise'))
         
     @property
     def delete_vars(self):

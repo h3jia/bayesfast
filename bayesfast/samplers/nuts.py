@@ -16,7 +16,7 @@ class NUTS(BaseHMC):
     def logbern(self, log_p):
         if np.isnan(log_p):
             raise FloatingPointError("log_p can't be nan.")
-        return np.log(self._sample_trace.random_state.uniform()) < log_p
+        return np.log(self._sample_trace.random_generator.uniform()) < log_p
         
     def _hamiltonian_step(self, start, p0, step_size):
         tree = _Tree(len(p0), self.integrator, start, step_size, 

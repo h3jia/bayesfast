@@ -4,7 +4,7 @@ from collections import namedtuple
 from numdifftools import Gradient, Hessian, Jacobian
 from scipy.optimize import minimize
 from scipy.linalg import sqrtm
-from .random import multivariate_normal
+from .sobol import multivariate_normal
 from .misc import make_positive
 
 __all__ = ['Laplace', 'untemper_laplace_samples']
@@ -23,6 +23,9 @@ class Laplace:
     optimize_method : str or callable, optional
         The `method` parameter for `scipy.optimize.minimize`. Set to
         `'Newton-CG'` by default.
+    optimize_tol : float, optional
+        The `tol` parameter for `scipy.optimize.minimize`. Set to `1e-5` by
+        default.
     optimize_options : dict, optional
         The `options` parameter for `scipy.optimize.minimize`. Set to `{}` by
         default.
@@ -38,9 +41,10 @@ class Laplace:
     beta : positive float, optional
         Scaling the approximate distribution `logq`, i.e. the final samples will
         come from `beta * logq`. Set to `1.` by default.
-    random_options : dict, optional
-        Additional keyword arguments for `bf.utils.random.multivariate_normal`
-        (other than `mean`, `cov` and `size`). Set to `{}` by default.
+    mvn_generator : None or callable, optional
+        Random number generator for the multivairate normal distribution. Should
+        have signature `(mean, cov, size) -> samples`. If `None`, will use
+        `bayesfast.utils.sobol.multivariate_normal`. Set to `None` by default.
     grad_options : dict, optional
         Additional keyword arguments for `numdifftools` to compute the gradient.
         Will be ignored if direct expression for the gradient is provided in
@@ -50,9 +54,9 @@ class Laplace:
         Will be ignored if direct expression for the Hessian is provided in
         `run`. Set to `{}` by default.
     """
-    def __init__(self, optimize_method='Newton-CG', optimize_options={},
-                 max_cond=1e5, n_sample=2000, beta=1., random_options={},
-                 grad_options={}, hess_options={}):
+    def __init__(self, optimize_method='Newton-CG', optimize_tol=1e-5,
+                 optimize_options={}, max_cond=1e5, n_sample=2000, beta=1.,
+                 mvn_generator=None, grad_options={}, hess_options={}):
         if callable(optimize_method):
             self._optimize_method = optimize_method
         else:
@@ -60,6 +64,16 @@ class Laplace:
                 self._optimize_method = str(optimize_method)
             except:
                 raise ValueError('invalid value for optimize_method.')
+        
+        if optimize_tol is None:
+            pass
+        else:
+            try:
+                optimize_tol = float(optimize_tol)
+                assert optimize_tol > 0
+            except:
+                raise ValueError('invalid value for optimize_tol.')
+        self._optimize_tol = optimize_tol
         
         try:
             self._optimize_options = dict(optimize_options)
@@ -90,10 +104,12 @@ class Laplace:
         except:
             raise ValueError('beta should be a positive float.')
         
-        try:
-            self._random_options = dict(random_options)
-        except:
-            raise ValueError('invalid value for random_options.')
+        if mvn_generator is None:
+            mvn_generator = multivariate_normal
+        if callable(mvn_generator):
+            self._mvn_generator = mvn_generator
+        else:
+            raise ValueError('invalid value for mvn_generator.')
         
         try:
             self._grad_options = dict(grad_options)
@@ -130,16 +146,16 @@ class Laplace:
         
         opt = minimize(fun=lambda x: -logp(x), x0=x_0,
                        method=self._optimize_method, jac=lambda x: -grad(x),
-                       hess=lambda x: -hess(x), options=self._optimize_options)
+                       hess=lambda x: -hess(x), tol=self._optimize_tol,
+                       options=self._optimize_options)
         if not opt.success:
             warnings.warn(
-                'the optimization stopped at {}, but probably it has not '
+                'the optimization stopped at {}, but maybe it has not '
                 'converged yet.'.format(opt.x), RuntimeWarning)
         x_max = opt.x
         f_max = -opt.fun
         cov = np.linalg.inv(make_positive(-hess(x_max), self._max_cond))
-        samples = multivariate_normal(x_max, cov / self._beta, n_sample,
-                                      **self._random_options)
+        samples = self._mvn_generator(x_max, cov / self._beta, n_sample)
         return LaplaceResult(x_max, f_max, samples, cov, self._beta, opt)
 
 

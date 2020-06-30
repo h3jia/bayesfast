@@ -3,11 +3,15 @@ from collections import namedtuple
 from ..sample_trace import _HTrace
 from .integration import CpuLeapfrogIntegrator
 from .stats import NStepStats
-from ...utils import random as bfrandom
 import warnings
 from copy import deepcopy
 import time
-from distributed import Pub
+from multiprocess import Lock
+try:
+    from distributed import Pub
+    HAS_DASK = True
+except:
+    HAS_DASK = False
 
 __all__ = ['BaseHMC']
 
@@ -23,9 +27,11 @@ DivergenceInfo = namedtuple("DivergenceInfo", "message, exec_info, state")
 
 class BaseHMC:
     """Superclass to implement Hamiltonian/hybrid monte carlo."""
-    def __init__(self, logp_and_grad, sample_trace, dask_key=None):
+    def __init__(self, logp_and_grad, sample_trace, dask_key=None,
+                 process_lock=None):
         self._logp_and_grad = logp_and_grad
         self.dask_key = dask_key
+        self.process_lock = process_lock
         if isinstance(sample_trace, self._expected_trace):
             self._sample_trace = sample_trace
         else:
@@ -56,7 +62,7 @@ class BaseHMC:
         except:
             q0 = self._sample_trace.x_0
             assert q0.ndim == 1
-        p0 = self._sample_trace.metric.random(self._sample_trace.random_state)
+        p0 = self.sample_trace.metric.random(self.sample_trace.random_generator)
         start = self.integrator.compute_state(q0, p0)
 
         if not np.isfinite(start.energy):
@@ -76,12 +82,16 @@ class BaseHMC:
         self._sample_trace.update(hmc_step.end.q, step_stats)
     
     def run(self, n_run=None, verbose=True, n_update=None):
-        if self._dask_key is not None:
+        if self._dask_key is None:
+            def sw(message, *args, **kwargs):
+                warnings._showwarning_orig(self._prefix + str(message), *args,
+                                           **kwargs)
+        else:
             pub = Pub(self._dask_key)
             def sw(message, category, *args, **kwargs):
                 pub.put([category, self._prefix + str(message)])
+        try:
             warnings.showwarning = sw
-        try:            
             i_iter = self._sample_trace.i_iter
             n_iter = self._sample_trace.n_iter
             n_warmup = self._sample_trace.n_warmup
@@ -131,7 +141,11 @@ class BaseHMC:
                         else:
                             msg_2 = ''
                         if self._dask_key is None:
+                            if self.has_lock:
+                                self.process_lock.acquire()
                             print(msg_0 + msg_1 + msg_2)
+                            if self.has_lock:
+                                self.process_lock.release()
                         else:
                             pub.put(
                                 ['SamplingProceeding', msg_0 + msg_1 + msg_2])
@@ -143,7 +157,11 @@ class BaseHMC:
                        'obtained {} samples in {:.2f} seconds.'.format(n_iter,
                        n_iter, n_run, t_f - t_s))
                 if self._dask_key is None:
+                    if self.has_lock:
+                        self.process_lock.acquire()
                     print(msg)
+                    if self.has_lock:
+                        self.process_lock.release()
                 else:
                     pub.put(['SamplingFinished', msg])
             return self._sample_trace
@@ -163,12 +181,33 @@ class BaseHMC:
         if key is None:
             pass
         else:
-            try:
-                key = str(key)
-            except:
-                warnings.warn('invalid value for dask_key.', RuntimeWarning)
-                key = None
+            if HAS_DASK:
+                try:
+                    key = str(key)
+                except:
+                    raise ValueError('invalid value for dask_key.')
+            else:
+                raise RuntimeError('you give me the dask_key but have not '
+                                   'installed dask.')
         self._dask_key = key
+    
+    @property
+    def use_dask(self):
+        return (self.dask_key is not None)
+    
+    @property
+    def process_lock(self):
+        return self._process_lock
+    
+    def process_lock(self, lock):
+        if lock is None or isinstance(lock, Lock):
+            self._process_lock = lock
+        else:
+            raise ValueError('invalid value for process_lock.')
+    
+    @property
+    def has_lock(self):
+        return (self.process_lock is not None)
     
     @property
     def chain_id(self):

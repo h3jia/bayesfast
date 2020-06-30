@@ -2,17 +2,15 @@ import numpy as np
 from .bridge import bridge
 from .importance import importance
 from .harmonic import harmonic
-from ..utils.random import check_state
-from ..utils import check_client
+from ..utils.parallel import ParallelBackend, get_backend
 from ..transforms import SIT
 from ..samplers import TraceTuple
-from distributed import Client
+from threadpoolctl import threadpool_limits
 import warnings
 
 __all__ = ['GBS', 'GIS', 'GHM']
 
 # TODO: directly get logp_p from TraceTuple
-# TODO: (CRITICAL) FIX MAPPING USING DASK
 
 
 a = """
@@ -22,8 +20,10 @@ a = """
     ----------
     sit : SIT, dict or None, optional
         The `SIT` generative model.
-    client : Client, int or None, optional
-        The `dask` client for parallelization.
+    parallel_backend : None, int, Pool, Client or ParallelBackend, optional
+        The backend for parallelization. If `None`, will use the bayesfast
+        global parallel backend. Otherwise, will be passed to initialize
+        a ParallelBackend.
     """
 
 
@@ -36,9 +36,9 @@ b = """n_q : positive int or None, optional
 
 class _GBase:
     """Utilities shared by GBS, GIS and GHM."""
-    def __init__(self, sit=None, client=None):
+    def __init__(self, sit=None, parallel_backend=None):
         self.sit = sit
-        self.client = client
+        self.parallel_backend = parallel_backend
     
     @property
     def sit(self):
@@ -57,27 +57,18 @@ class _GBase:
         self._sit = s
     
     @property
-    def random_state(self):
-        return self.sit.random_state
-    
-    @random_state.setter
-    def random_state(self, rs):
-        self.sit.random_state = rs
-    
-    @property
-    def client(self):
-        return self._client
-    
-    @client.setter
-    def client(self, clt):
-        if clt is None:
-            self._client = self.sit.client
-        elif isinstance(clt, (int, Client)):
-            self._client = clt
-            if self.sit.client is None:
-                self.sit.client = clt
+    def parallel_backend(self):
+        if self._parallel_backend is None:
+            return get_backend()
         else:
-            raise ValueError('invalid value for client.')
+            return self._parallel_backend
+    
+    @parallel_backend.setter
+    def parallel_backend(self, backend):
+        if backend is None:
+            self._parallel_backend = None
+        else:
+            self._parallel_backend = ParallelBackend(backend)
     
     def run(self, x_p, logp, logp_p=None):
         raise NotImplementedError('abstrace method.')
@@ -87,8 +78,8 @@ class _GBase:
 
 class _GBaseQ(_GBase):
     """Utilities shared by GBS and GIS."""
-    def __init__(self, sit=None, client=None, n_q=None, f_call=0.1):
-        super().__init__(sit, client)
+    def __init__(self, sit=None, parallel_backend=None, n_q=None, f_call=0.05):
+        super().__init__(sit, parallel_backend)
         self.n_q = n_q
         self.f_call = f_call
     
@@ -178,25 +169,11 @@ class _GBaseQ(_GBase):
         raise NotImplementedError('abstract method.')
     
     def _map(self, logp, x):
-        x_shape = x.shape
-        x = x.reshape((-1, x_shape[-1]))
-        return np.asarray(list(map(logp, x))).reshape(x_shape[:-1])
-        
-        """try:
-            old_client = self._client
-            _new_client = False
-            self._client, _new_client = check_client(self.client)
+        with self.parallel_backend:
             x_shape = x.shape
             x = x.reshape((-1, x_shape[-1]))
-            foo = self._client.map(logp, x)
-            logp_x = np.asarray(self._client.gather(foo)).reshape(x_shape[:-1])
-            return logp_x
-            
-        finally:
-            if _new_client:
-                self._client.cluster.close()
-                self._client.close()
-                self._client = old_client"""
+            map_result = self.parallel_backend.map(logp, x)
+        return np.asarray(map_result).reshape(x_shape[:-1])
 
 
 class GBS(_GBaseQ):
@@ -206,6 +183,7 @@ class GBS(_GBaseQ):
     def _compute_evidence(self, logp, x_p, logp_p, n_q):
         n_half = x_p.shape[0] // 2
         self.sit.fit(data=x_p[:n_half])
+        x_q = self.sit.sample(n_q)[0]
         
         if logp_p is not None:
             try:
@@ -217,8 +195,6 @@ class GBS(_GBaseQ):
                     'the logp_p you gave me seems not correct. Will recompute '
                     'it from logp and x_p.', RuntimeWarning)
                 logp_p = None
-        
-        x_q = self.sit.sample(n_q)[0]
         
         if logp_p is None:
             logp_p = self._map(logp, x_p[n_half:])

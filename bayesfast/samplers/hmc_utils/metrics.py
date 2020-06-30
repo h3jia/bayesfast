@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.linalg
 import warnings
-from ...utils.random import check_state
 
 __all__ = ['QuadMetric', 'QuadMetricDiag', 'QuadMetricFull',
            'QuadMetricDiagAdapt', 'QuadMetricFullAdapt']
@@ -81,9 +80,9 @@ class QuadMetricDiag(QuadMetric):
             return 0.5 * x.dot(velocity)
         return 0.5 * x.dot(self._var * x)
     
-    def random(self, random_state):
+    def random(self, random_generator):
         """Draw a random value for the momentum."""
-        vals = check_state(random_state).normal(size=self._n)
+        vals = random_generator.normal(size=self._n)
         return self._inv_std * vals
 
     def velocity_energy(self, x, v_out):
@@ -121,9 +120,9 @@ class QuadMetricFull(QuadMetric):
             velocity = self.velocity(x)
         return 0.5 * x.dot(velocity)
 
-    def random(self, random_state):
+    def random(self, random_generator):
         """Draw a random value for the momentum."""
-        vals = check_state(random_state).normal(size=self._n)
+        vals = random_generator.normal(size=self._n)
         return scipy.linalg.solve_triangular(self._chol.T, vals,
                                              overwrite_b=True)
 

@@ -463,18 +463,6 @@ class Pipeline(_PipelineBase):
                 _output = _module.fun(*_input)
                 for j, n in enumerate(_module._output_vars):
                     var_dict._fun[n] = _output[j]
-                for j, n in enumerate(_module._copy_vars):
-                    try:
-                        nn = _module._paste_vars[j]
-                    except:
-                        k = 1
-                        while True:
-                            nn = n + '-Copy{}'.format(k)
-                            if nn in var_dict._fun:
-                                k += 1
-                            else:
-                                break
-                    var_dict._fun[nn] = np.copy(var_dict._fun[n])
                 for n in _module._delete_vars:
                     del var_dict._fun[n]
             except:
@@ -558,19 +546,6 @@ class Pipeline(_PipelineBase):
                 for j, n in enumerate(_module._output_vars):
                     var_dict._fun[n] = _output[j]
                     var_dict._jac[n] = np.dot(_output_jac[j], _input_jac)
-                for j, n in enumerate(_module._copy_vars):
-                    try:
-                        nn = _module._paste_vars[j]
-                    except:
-                        k = 1
-                        while True:
-                            nn = n + '-Copy{}'.format(k)
-                            if (nn in var_dict._fun) or (nn in var_dict._jac):
-                                k += 1
-                            else:
-                                break
-                    var_dict[nn] = (np.copy(var_dict._fun[n]), 
-                                    np.copy(var_dict._jac[n]))
                 for n in _module._delete_vars:
                     del var_dict._fun[n], var_dict._jac[n]
             except:
@@ -646,9 +621,9 @@ class Density(Pipeline, _DensityBase):
         Keyword arguments to be passed to `self.set_decay_options`. Set to `{}`
         by default.
     args : array_like, optional
-        Arguments to be passed to `Pipeline.__init__`.
+        Additional arguments to be passed to `Pipeline.__init__`.
     kwargs : dict, optional
-        Keyword arguments to be passed to `Pipeline.__init__`.
+        Additional keyword arguments to be passed to `Pipeline.__init__`.
     
     Notes
     -----
@@ -709,7 +684,6 @@ class Density(Pipeline, _DensityBase):
                       (beta2 > self._alpha_2)[..., np.newaxis])
         if not original_space:
             _tog = self.to_original_grad(x)
-            _grad *= _tog
             _grad += self.to_original_grad2(x) / _tog
         return _grad
     
@@ -734,7 +708,6 @@ class Density(Pipeline, _DensityBase):
         if not original_space:
             _logp += self._get_diff(x_trans=x)
             _tog = self.to_original_grad(x)
-            _grad *= _tog
             _grad += self.to_original_grad2(x) / _tog
         return _logp, _grad
     
@@ -797,7 +770,8 @@ class Density(Pipeline, _DensityBase):
             raise ValueError('var_dicts should consist of VariableDict(s).')
         
         x = self._get_var(var_dicts, self._input_vars)
-        self._set_decay(x)
+        if self._use_decay:
+            self._set_decay(x)
         logp = self._get_logp(var_dicts)
         
         for i, su in enumerate(self._surrogate_list):
@@ -813,7 +787,7 @@ class Density(Pipeline, _DensityBase):
                          for vd in var_dicts])
     
     def _get_logp(self, var_dicts):
-        return self._get_var(var_dicts, [self.density_name])
+        return self._get_var(var_dicts, [self.density_name])[..., 0]
 
 
 class DensityLite(_PipelineBase, _DensityBase):
@@ -902,9 +876,6 @@ class DensityLite(_PipelineBase, _DensityBase):
     __call__ = logp
     
     def _logp_wrapped(self, x, original_space=None, use_surrogate=None):
-        if use_surrogate is not None:
-            warnings.warn('use_surrogate will be ignored for DensityLite.',
-                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)
@@ -946,9 +917,6 @@ class DensityLite(_PipelineBase, _DensityBase):
                              'reset it.')
     
     def _grad_wrapped(self, x, original_space=None, use_surrogate=None):
-        if use_surrogate is not None:
-            warnings.warn('use_surrogate will be ignored for DensityLite.',
-                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)
@@ -994,9 +962,6 @@ class DensityLite(_PipelineBase, _DensityBase):
     
     def _logp_and_grad_wrapped(self, x, original_space=None,
                                use_surrogate=None):
-        if use_surrogate is not None:
-            warnings.warn('use_surrogate will be ignored for DensityLite.',
-                          RuntimeWarning)
         x = np.atleast_1d(x)
         if self.copy_input:
             x = np.copy(x)

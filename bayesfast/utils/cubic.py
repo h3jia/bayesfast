@@ -63,11 +63,11 @@ class cubic_spline:
         # TODO: add all kinds of checks
         x_all = np.ascontiguousarray(x_all)
         edge_bins = np.min((edge_bins, bins // 4))
-        #mask = np.empty((0, 4))
-        self._x = np.percentile(
-            x_all, np.linspace(0, 100, bins + 1)[edge_bins:-edge_bins])
+        # mask = np.empty((0, 4))
+        self._x = np.unique(np.percentile(
+            x_all, np.linspace(0, 100, bins + 1)[edge_bins:-edge_bins]))
         self._y = fun(self._x)
-        #mask = self._regularize_y()
+        # mask = self._regularize_y()
         self._n = self._x.shape[0]
         
         x_edge_1 = np.percentile(x_all[x_all < self._x[edge_bins]] - self._x[0], 
@@ -107,7 +107,7 @@ class cubic_spline:
                 insert_index = np.searchsorted(self._x, x_aug)
                 self._x = np.insert(self._x, insert_index, x_aug)
                 self._y = np.insert(self._y, insert_index, fun(x_aug))
-                #self._regularize_y()
+                # self._regularize_y()
                 self._n = self._x.shape[0]
         else:
             raise ValueError
@@ -209,7 +209,6 @@ class cubic_spline:
             while n_b > 0:
                 i_b = 0
                 start_b = np.max(bad_index[i_b] - 1, 0)
-                #print(bad_index, i_b)
                 while i_b < n_b - 1:
                     if bad_index[i_b + 1] - bad_index[i_b] <= 2:
                         i_b += 1

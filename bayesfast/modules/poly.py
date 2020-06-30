@@ -210,7 +210,10 @@ class PolyModel(Surrogate):
             raise ValueError('invalid value for configs.')
         self._configs = tuple(self._configs)
         self._build_recipe()
-        self._use_bound = False
+        if isinstance(bound_options, dict):
+            self.set_bound_options(**bound_options)
+        else:
+            raise ValueError('bound_options should be a dict.')
     
     @property
     def configs(self):
@@ -225,7 +228,7 @@ class PolyModel(Surrogate):
         return BoundOptions(self._use_bound, self._alpha, self._alpha_p,
                             self._center_max)
     
-    def set_bound_options(self, use_bound=True, alpha=None, alpha_p=95.,
+    def set_bound_options(self, use_bound=True, alpha=None, alpha_p=100.,
                           center_max=True):
         self._use_bound = bool(use_bound)
         if alpha is None:
@@ -261,10 +264,10 @@ class PolyModel(Surrogate):
         if self._alpha_p is not None:
             _beta = np.einsum('ij,jk,ik->i', x - self._mu, self._hess,
                               x - self._mu)**0.5
-            if self._alpha_p < 100:
+            if self._alpha_p < 100.:
                 self._alpha = np.percentile(_beta, self._alpha_p)
             else:
-                self._alpha = np.max(_beta) * self._alpha_p / 100
+                self._alpha = np.max(_beta) * self._alpha_p / 100.
         if self._center_max:
             try:
                 logp = np.asarray(logp)
@@ -274,7 +277,11 @@ class PolyModel(Surrogate):
             mu_f = x[np.argmax(logp)]
         else:
             mu_f = self._mu
-        self._f_mu = self._fun(mu_f)
+        try:
+            self._use_bound = False # to avoid using bound during fun evaluation
+            self._f_mu = self._fun(mu_f)
+        finally:
+            self._use_bound = True
     
     @property
     def recipe(self):
@@ -426,8 +433,9 @@ class PolyModel(Surrogate):
             raise RuntimeError('unexpected value of config.order.')
     
     def _fun(self, x):
-        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x -
-            self._mu)**0.5 > self._alpha and not self._all_linear):
+        if (self._use_bound and not self._all_linear and
+            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
+            self._alpha):
             return self._fj_bound(x, 'fun')
         else:
             ff = np.zeros(self._output_size)
@@ -436,8 +444,9 @@ class PolyModel(Surrogate):
             return ff
     
     def _jac(self, x):
-        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x -
-            self._mu)**0.5 > self._alpha and not self._all_linear):
+        if (self._use_bound and not self._all_linear and
+            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
+            self._alpha):
             return self._fj_bound(x, 'jac')            
         else:
             jj = np.zeros((self._output_size, self._input_size))
@@ -447,12 +456,13 @@ class PolyModel(Surrogate):
             return jj
     
     def _fun_and_jac(self, x):
-        ff = np.zeros(self._output_size)
-        jj = np.zeros((self._output_size, self._input_size))
-        if (self._use_bound and np.dot(np.dot(x - self._mu, self._hess), x - 
-            self._mu)**0.5 > self._alpha and not self._all_linear):
+        if (self._use_bound and not self._all_linear and
+            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
+            self._alpha):
             return self._fj_bound(x, 'fun_and_jac')
         else:
+            ff = np.zeros(self._output_size)
+            jj = np.zeros((self._output_size, self._input_size))
             for conf in self._configs:
                 _f, _j = self._eval_one(conf, x, 'fun_and_jac')
                 ff[conf._output_mask] += _f

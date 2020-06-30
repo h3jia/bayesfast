@@ -2,11 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from sklearn.decomposition import FastICA
-from ..utils import check_client
+from ..utils.parallel import ParallelBackend, get_backend
 from ..utils.kde import kde
 from ..utils.cubic import cubic_spline
-from ..utils.random import check_state, multivariate_normal
-from distributed import Client
+from ..utils.sobol import multivariate_normal
+from ..utils.random import get_generator
 from itertools import starmap
 import copy
 import warnings
@@ -19,8 +19,11 @@ except:
 
 __all__ = ['SIT']
 
-
 # TODO: vectorize this
+# TODO: update when sklearn supports random_generator
+#       https://github.com/scikit-learn/scikit-learn/issues/16988
+# TODO: do not activate the backend if not use_parallel
+
 
 class SIT:
     """
@@ -30,15 +33,18 @@ class SIT:
     ----------
     n_iter : positive int, optional
         Number of iterations to perform. Set to 10 by default.
-    client : Client, int or None, optional
-        Dask Client used to parallelize. Set to None by default.
+    parallel_backend : None, int, Pool, Client or ParallelBackend, optional
+        The backend for parallelization. If `None`, will use the bayesfast
+        global parallel backend. Otherwise, will be passed to initialize
+        a ParallelBackend.
     bw_factor : positive float, optional
         Multiplicative factor for the kde bandwidth. Set to 1. by default.
     m_ica : positive int, optional
         Max number of points used to compute FastICA. Set to 20000 by default.
-    random_state : RandomState, int or None, optional
-        RandomState for the numpy random number generator. Set to None by
-        default.
+    random_generator : None, int, array_like[ints], SeedSequence, BitGenerator or Generator, optional
+        The numpy random generator. If `None`, will use the bayesfast global
+        random generator. Otherwise, will be passed to
+        `numpy.random.default_rng` to initialize a random generator.
     m_plot : int, optional
         Max number of dims for triangle_plot. If non-positive, will be
         interpreted as no limits. Set to 8 by default.
@@ -47,29 +53,30 @@ class SIT:
     ica_options : dict, optional
         Additional keyword arguments for FastICA. Set to {'max_iter': 100} by
         default.
-    random_options : dict, optional
-        Additional keyword arguments for `bf.utils.random.multivariate_normal`.
-        Set to {} by default.
+    mvn_generator : None or callable, optional
+        Random number generator for the multivairate normal distribution. Should
+        have signature `(mean, cov, size) -> samples`. If `None`, will use
+        `bayesfast.utils.sobol.multivariate_normal`. Set to `None` by default.
     """
-    def __init__(self, n_iter=10, client=None, bw_factor=1., m_ica=20000,
-                 random_state=None, m_plot=8, cubic_options={},
-                 ica_options={'max_iter': 100}, random_options={}):
+    def __init__(self, n_iter=10, parallel_backend=None, bw_factor=1.,
+                 m_ica=20000, random_generator=None, m_plot=8, cubic_options={},
+                 ica_options={'max_iter': 100}, mvn_generator=None):
         self._data = None
         self._cubic = []
         self.n_iter = n_iter
-        self.client = client
+        self.parallel_backend = parallel_backend
         self.bw_factor = bw_factor
         self.m_ica = m_ica
-        self.random_state = random_state
+        self.random_generator = random_generator
         self.m_plot = m_plot
         self.cubic_options = cubic_options
         self.ica_options = ica_options
-        self.random_options = random_options
+        self.mvn_generator = mvn_generator
         
     def __getstate__(self):
-        """We need this to make self._client work correctly."""
+        """We need this to make self._parallel_backend work correctly."""
         self_dict = self.__dict__.copy()
-        del self_dict['_client']
+        self_dict['_parallel_backend'] = None
         return self_dict
     
     @property
@@ -109,15 +116,18 @@ class SIT:
         self.n_iter = self.n_iter + n
     
     @property
-    def client(self):
-        return self._client
-    
-    @client.setter
-    def client(self, clt):
-        if isinstance(clt, (int, Client)) or clt is None:
-            self._client = clt
+    def parallel_backend(self):
+        if self._parallel_backend is None:
+            return get_backend()
         else:
-            raise ValueError('invalid value for client.')
+            return self._parallel_backend
+    
+    @parallel_backend.setter
+    def parallel_backend(self, backend):
+        if backend is None:
+            self._parallel_backend = None
+        else:
+            self._parallel_backend = ParallelBackend(backend)
     
     @property
     def bw_factor(self):
@@ -146,15 +156,18 @@ class SIT:
         self._m_ica = m
     
     @property
-    def random_state(self):
-        return self._random_state
-    
-    @random_state.setter
-    def random_state(self, state):
-        if state is None:
-            self._random_state = None
+    def random_generator(self):
+        if self._random_generator is None:
+            return get_generator()
         else:
-            self._random_state = check_state(state)
+            return self._random_generator
+    
+    @random_generator.setter
+    def random_generator(self, generator):
+        if generator is None:
+            self._random_generator = None
+        else:
+            self._random_generator = np.random.default_rng(generator)
     
     @property
     def m_plot(self):
@@ -191,15 +204,17 @@ class SIT:
             raise ValueError('ica_options should be a dict.')
     
     @property
-    def random_options(self):
-        return self._random_options
+    def mvn_generator(self):
+        return self._mvn_generator
     
-    @random_options.setter
-    def random_options(self, ro):
-        try:
-            self._random_options = dict(ro)
-        except:
-            raise ValueError('random_options should be a dict.')
+    @mvn_generator.setter
+    def mvn_generator(self, mg):
+        if mg is None:
+            mg = multivariate_normal
+        if callable(mg):
+            self._mvn_generator = mg
+        else:
+            raise ValueError('invalid value for mvn_generator.')
     
     def _gaussianize_1d(self, x):
         k = kde(x, bw_factor=self._bw_factor, weights=self._weights)
@@ -208,8 +223,7 @@ class SIT:
         return c
     
     def _gaussianize_nd(self, x):
-        foo = self._client.map(self._gaussianize_1d, x.T)
-        map_result = self._client.gather(foo)
+        map_result = self.parallel_backend.map(self._gaussianize_1d, x.T)
         self._cubic.append(map_result)
         y = np.array([map_result[i](x[:, i]) for i in range(self.dim)]).T
         return y
@@ -217,13 +231,13 @@ class SIT:
     def _ica(self, x):
         io = self._ica_options.copy()
         if not 'random_state' in io:
-            io['random_state'] = self._random_state
+            io['random_state'] = self.random_generator.integers(0, 2**32)
         ica = FastICA(**io)
         if self._m_ica is None:
             ica.fit(x)
         else:
             n_ica = min(x.shape[0], self.m_ica)
-            ica.fit(x[self._random_state.choice(x.shape[0], n_ica, False)])
+            ica.fit(x[self.random_generator.choice(x.shape[0], n_ica, False)])
         y = ica.transform(x)
         m = np.mean(x, axis=0)
         s = np.std(y, axis=0)
@@ -273,7 +287,6 @@ class SIT:
     
     def fit(self, data=None, weights=None, n_run=None, plot=0):
         self._init_data(data, weights)
-        self._random_state = check_state(self._random_state)
         
         try:
             plot = int(plot)
@@ -295,10 +308,7 @@ class SIT:
             if n_run > self.n_iter - self.i_iter:
                 self.n_iter = self.i_iter + n_run
         
-        try:
-            old_client = self._client
-            _new_client = False
-            self._client, _new_client = check_client(self._client)
+        with self.parallel_backend:
             for i in range(n_run):
                 if plot != 0 and self.i_iter == 0:
                     self.triangle_plot()
@@ -328,11 +338,6 @@ class SIT:
                     self.triangle_plot()
             if plot < 0:
                 self.triangle_plot()
-        finally:
-            if _new_client:
-                self._client.cluster.close()
-                self._client.close()
-                self._client = old_client
     
     def triangle_plot(self):
         if not HAS_GETDIST:
@@ -354,17 +359,14 @@ class SIT:
                          fontsize=plot_data.shape[-1] * 4, ha='left')
         plt.show()
         
-    def sample(self, n, use_client=False):
+    def sample(self, n, use_parallel=False):
         try:
             n = int(n)
             assert n > 0
         except:
             raise ValueError('n should be a positive int.')
-        ro = self._random_options.copy()
-        if not 'random_state' in ro:
-            ro['random_state'] = self._random_state
-        y = multivariate_normal(np.zeros(self.dim), np.eye(self.dim), n, **ro)
-        x, log_j = self.backward_transform(y, use_client)
+        y = self.mvn_generator(np.zeros(self.dim), np.eye(self.dim), n)
+        x, log_j = self.backward_transform(y, use_parallel)
         return x, log_j, y
     
     def _do_evaluate(self, c, x):
@@ -376,7 +378,7 @@ class SIT:
     def _do_solve(self, c, x):
         return c.solve(x)
     
-    def forward_transform(self, x, use_client=False):
+    def forward_transform(self, x, use_parallel=False):
         try:
             y = np.array(x)
         except:
@@ -389,43 +391,30 @@ class SIT:
         y = y.reshape((-1, _original_shape[-1]))
         log_j = np.zeros(y.shape[0])
         
-        try:
-            if use_client:
-                old_client = self._client
-                _new_client = False
-                self._client, _new_client = check_client(self._client)
-            
+        with self.parallel_backend:
             for i in range(self.i_iter):
                 y = (y - self._m[i]) @ self._A[i].T
-                if use_client:
-                    foo = self._client.map(self._do_derivative, self._cubic[i],
-                                           y.T)
-                    map_result = self._client.gather(foo)
+                if use_parallel:
+                    map_result = self.parallel_backend.map(
+                        self._do_derivative, self._cubic[i], y.T)
                 else:
-                    map_result = list(starmap(self._do_derivative,
-                                              zip(self._cubic[i], y.T)))
+                    map_result = list(
+                        starmap(self._do_derivative, zip(self._cubic[i], y.T)))
                 log_j += np.sum(np.log(map_result), axis=0)
-                if use_client:
-                    foo = self._client.map(self._do_evaluate, self._cubic[i],
-                                           y.T)
-                    map_result = self._client.gather(foo)
+                if use_parallel:
+                    map_result = self.parallel_backend.map(
+                        self._do_evaluate, self._cubic[i], y.T)
                 else:
-                    map_result = list(starmap(self._do_evaluate,
-                                              zip(self._cubic[i], y.T)))
+                    map_result = list(
+                        starmap(self._do_evaluate, zip(self._cubic[i], y.T)))
                 y = np.array(map_result).T
             log_j += np.sum(self._logdetA)
             
-            y = y.reshape(_original_shape)
-            log_j = log_j.reshape(_original_shape[:-1])
-            return y, log_j
-        
-        finally:
-            if use_client and _new_client:
-                self._client.cluster.close()
-                self._client.close()
-                self._client = old_client
+        y = y.reshape(_original_shape)
+        log_j = log_j.reshape(_original_shape[:-1])
+        return y, log_j
     
-    def backward_transform(self, y, use_client=False):
+    def backward_transform(self, y, use_parallel=False):
         try:
             x = np.array(y)
         except:
@@ -438,41 +427,29 @@ class SIT:
         x = x.reshape((-1, _original_shape[-1]))
         log_j = np.zeros(x.shape[0])
         
-        try:
-            if use_client:
-                old_client = self._client
-                _new_client = False
-                self._client, _new_client = check_client(self._client)
-            
+        with self.parallel_backend:
             for i in reversed(range(self.i_iter)):
-                if use_client:
-                    foo = self._client.map(self._do_solve, self._cubic[i], x.T)
-                    map_result = self._client.gather(foo)
+                if use_parallel:
+                    map_result = self.parallel_backend.map(
+                        self._do_solve, self._cubic[i], x.T)
                 else:
-                    map_result = list(starmap(self._do_solve,
-                                              zip(self._cubic[i], x.T)))
+                    map_result = list(
+                        starmap(self._do_solve, zip(self._cubic[i], x.T)))
                 x = np.array(map_result).T
-                if use_client:
-                    foo = self._client.map(self._do_derivative, self._cubic[i],
-                                           x.T)
-                    map_result = self._client.gather(foo)
+                if use_parallel:
+                    map_result = self.parallel_backend.map(
+                        self._do_derivative, self._cubic[i], x.T)
                 else:
-                    map_result = list(starmap(self._do_derivative,
-                                              zip(self._cubic[i], x.T)))
+                    map_result = list(
+                        starmap(self._do_derivative, zip(self._cubic[i], x.T)))
                 log_j += np.sum(np.log(map_result), axis=0)
                 x = x @ self._B[i].T + self._m[i]
             log_j += np.sum(self._logdetA)
             
-            x = x.reshape(_original_shape)
-            log_j = log_j.reshape(_original_shape[:-1])
-            return x, log_j
-        
-        finally:
-            if use_client and _new_client:
-                self._client.cluster.close()
-                self._client.close()
-                self._client = old_client
+        x = x.reshape(_original_shape)
+        log_j = log_j.reshape(_original_shape[:-1])
+        return x, log_j
     
-    def logq(self, x, use_client=False):
-        y, log_j = self.forward_transform(x, use_client)
+    def logq(self, x, use_parallel=False):
+        y, log_j = self.forward_transform(x, use_parallel)
         return np.sum(norm.logpdf(y), axis=-1) + log_j
