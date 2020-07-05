@@ -311,7 +311,7 @@ class Pipeline(_PipelineBase):
         return sl
     
     def _build_surrogate_recipe(self, sl):
-        # ((0, start_0, extent_0), (1, start_1, extent_1), ...)
+        # ((0, i_step_0, n_step_0), (1, i_step_1, n_step_1), ...)
         ns = len(sl)
         if ns > 0:
             self._surrogate_recipe = np.array(

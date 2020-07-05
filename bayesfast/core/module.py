@@ -483,7 +483,7 @@ class Module:
         raise NotImplementedError
         
         
-SurrogateScope = namedtuple('SurrogateScope', ['start', 'extent'])
+SurrogateScope = namedtuple('SurrogateScope', ['i_step', 'n_step'])
 
 
 class Surrogate(Module):
@@ -499,9 +499,9 @@ class Surrogate(Module):
         The size of output variables. If None, will be inferred from
         `recombine_output`.
     scope : array_like of 2 ints, optional
-        Will be unpacked as `(start, extent)`, where `start` represents the
+        Will be unpacked as `(i_step, n_step)`, where `i_step` represents the
         index where the true `Module` should start to be replaced by the
-        `Surrogate`, and `extent` represents the number of `Module`s to be
+        `Surrogate`, and `n_step` represents the number of `Module`s to be
         replaced.
     fit_options : dict, optional
         Additional keyword arguments for fitting the surrogate model.
@@ -558,9 +558,9 @@ class Surrogate(Module):
     @scope.setter
     def scope(self, s):
         try:
-            start, extent = s
-            assert extent > 0
-            self._scope = SurrogateScope(int(start), int(extent))
+            i_step, n_step = s
+            assert n_step > 0
+            self._scope = SurrogateScope(int(i_step), int(n_step))
         except:
             raise ValueError('invalid value for scope.')
     
