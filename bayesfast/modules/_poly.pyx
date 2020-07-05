@@ -2,7 +2,6 @@ cimport cython
 from libc.stdlib cimport malloc, free
 from cython.parallel import prange, parallel
 
-
 __all__ = ['_quadratic_f', '_quadratic_j', '_cubic_2_f', '_cubic_2_j', 
            '_cubic_3_f', '_cubic_3_j', '_lsq_quadratic', '_lsq_cubic_2', 
            '_lsq_cubic_3', '_set_quadratic', '_set_cubic_2', '_set_cubic_3']
