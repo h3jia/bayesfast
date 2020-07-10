@@ -30,6 +30,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #       https://arxiv.org/pdf/1804.00154.pdf
 # TODO: add checkpoint facility
 # TODO: review Recipe.__getstate__
+# TODO: relative alpha_min
 
 
 class BaseStep:
