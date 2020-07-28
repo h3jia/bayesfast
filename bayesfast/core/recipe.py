@@ -78,9 +78,8 @@ class BaseStep:
     def alpha_n(self, a):
         try:
             a = float(a)
-            assert a > 0
         except:
-            raise ValueError('alpha_n should be a positive float.')
+            raise ValueError('alpha_n should be a float.')
         self._alpha_n = a
     
     @property
@@ -232,7 +231,7 @@ class SampleStep(BaseStep):
     def __init__(self, surrogate_list=[], alpha_n=2., sample_trace=None,
                  resampler={}, reuse_samples=0, reuse_step_size=True,
                  reuse_metric=True, random_generator=None, logp_cutoff=True,
-                 alpha_min=1.5, alpha_supp=1.25, x_0=None, fitted=False):
+                 alpha_min=0.75, alpha_supp=1.25, x_0=None, fitted=False):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
                          random_generator, reuse_metric)
         self.resampler = resampler
@@ -291,7 +290,7 @@ class SampleStep(BaseStep):
     def alpha_min(self, am):
         try:
             am = float(am)
-            assert am > 0 and am < self._alpha_n
+            assert 0. < am <= 1.
         except:
             raise ValueError('invalid value for alpha_min.')
         self._alpha_min = am
@@ -304,15 +303,14 @@ class SampleStep(BaseStep):
     def alpha_supp(self, asu):
         try:
             asu = float(asu)
-            assert asu > 0
+            assert asu > 0.
         except:
             raise ValueError('invalid value for alpha_supp.')
         self._alpha_supp = asu
     
     @property
     def n_eval_min(self):
-        return int(self._alpha_min * 
-                   max(su.n_param for su in self._surrogate_list))
+        return int(self.alpha_min * self.n_eval)
 
 
 class PostStep:
@@ -608,12 +606,15 @@ class Recipe:
                     x_0 = multivariate_normal(np.zeros(dim), np.eye(dim),
                                               step.n_eval)
                 else:
-                    if step.x_0.shape[0] < step.n_eval:
-                        raise RuntimeError(
-                            'I need {} points to fit the surrogate model, but '
-                            'you only gave me enough {} points in x_0.'.format(
-                            step.n_eval, step.x_0.shape[0]))
-                    x_0 = step.x_0[:step.n_eval].copy()
+                    if step.n_eval > 0:
+                        if step.x_0.shape[0] < step.n_eval:
+                            raise RuntimeError(
+                                'I need {} points to fit the surrogate model, '
+                                'but you only gave me enough {} points in '
+                                'x_0.'.format(step.n_eval, step.x_0.shape[0]))
+                        x_0 = step.x_0[:step.n_eval].copy()
+                    else:
+                        x_0 = step.x_0.copy()
                 self.density.use_surrogate = False
                 self.density.original_space = True
                 with self.parallel_backend:
@@ -627,6 +628,9 @@ class Recipe:
                   '{:.3f}.'.format(_a.logp, _a.logp_trans, _pq))
             
             for i in range(1, step.max_iter):
+                if step.n_eval <= 0:
+                    raise RuntimeError('alpha_n should be positive if max_iter '
+                                       'is larger than 1.')
                 x_0 = result[-1].laplace_samples
                 if x_0.shape[0] < step.n_eval:
                     raise RuntimeError(
@@ -648,11 +652,11 @@ class Recipe:
                       'current logp = {:.3f}, logp_trans = {:.3f}, delta_pp = '
                       '{:.3f}, delta_pq = {:.3f}.'.format(i, _a.logp,
                       _a.logp_trans, _pp, _pq))
+                if i == step.max_iter - 1:
+                    warnings.warn('Optimization did not converge within the max'
+                                  ' number of iterations.', RuntimeWarning)
                 if (abs(_pp) < step._eps_pp) and (abs(_pq) < step._eps_pq):
                     break
-            if i == step.max_iter - 1:
-                warnings.warn('Optimization did not converge within the max '
-                              'number of iterations.', RuntimeWarning)
             
             logp_trans_all = np.asarray([r.f_max.logp_trans for r in result])
             is_max = np.where(logp_trans_all == np.max(logp_trans_all))[0]
@@ -806,7 +810,8 @@ class Recipe:
                         raise RuntimeError('You did not give me samples to fit '
                                            'the surrogate model.')
                     
-                    if prev_samples.shape[0] < this_step.n_eval:
+                    if (this_step.n_eval > 0 and
+                        prev_samples.shape[0] < this_step.n_eval):
                         raise RuntimeError(
                             'I need {} points to fit the surrogate model, but I'
                             ' can find at most {} points.'.format(
@@ -831,7 +836,10 @@ class Recipe:
                             warnings.warn('resampler and logp_cutoff will be '
                                           'ignored, when get_prev_density is '
                                           'False.', RuntimeWarning)
-                        i_resample = np.arange(this_step.n_eval)
+                        if this_step.n_eval > 0:
+                            i_resample = np.arange(this_step.n_eval)
+                        else:
+                            i_resample = np.arange(prev_samples.shape[0])
                     
                     x_fit = prev_samples[i_resample]
                     self.density.use_surrogate = False
