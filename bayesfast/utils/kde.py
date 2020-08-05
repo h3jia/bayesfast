@@ -24,7 +24,6 @@
 #-------------------------------------------------------------------------------
 
 import warnings
-from scipy._lib.six import callable, string_types
 from scipy.special import logsumexp, ndtr
 import numpy as np
 
@@ -215,10 +214,10 @@ class kde(object):
             self.covariance_factor = self.scotts_factor
         elif bw_method == 'silverman':
             self.covariance_factor = self.silverman_factor
-        elif np.isscalar(bw_method) and not isinstance(bw_method, string_types):
+        elif np.isscalar(bw_method) and not isinstance(bw_method, str):
             self._bw_method = 'use constant'
             self.covariance_factor = lambda: bw_method
-        elif callable(bw_method):
+        elif hasattr(bw_method, '__call__'):
             self._bw_method = bw_method
             self.covariance_factor = lambda: self._bw_method(self)
         else:
