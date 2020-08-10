@@ -2,13 +2,13 @@ import numpy as np
 from .hmc_utils.step_size import DualAverageAdaptation
 from .hmc_utils.metrics import QuadMetric, QuadMetricDiag, QuadMetricFull
 from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
-from .hmc_utils.stats import NStepStats, NStats
+from .hmc_utils.stats import NStepStats, NStats, HStats
 from ..utils.random import get_generator, spawn_generator
 from copy import deepcopy
 import warnings
 
-__all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TraceTuple',
-           '_get_step_size', '_get_metric']
+__all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TTrace',
+           'TraceTuple', '_get_step_size', '_get_metric']
 
 # TODO: StatsTuple?
 
@@ -445,8 +445,43 @@ class _HTrace(SampleTrace):
 
 class HTrace(_HTrace):
     """Trace class for the (vanilla) HMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
+    def __init__(self, n_chain=4, n_iter=1500, n_warmup=500, n_int_step=32,
+                 x_0=None, random_generator=None, step_size=1.,
+                 adapt_step_size=True, metric='diag', adapt_metric=True,
+                 max_change=1000., target_accept=0.8, gamma=0.05, k=0.75,
+                 t_0=10., initial_mean=None, initial_weight=10.,
+                 adapt_window=60, update_window=1, doubling=True):
+        super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
+                         step_size, adapt_step_size, metric, adapt_metric, 
+                         max_change, target_accept, gamma, k, t_0, initial_mean,
+                         initial_weight, adapt_window, update_window, doubling)
+        self.n_int_step = n_int_step
+        self._stats = HStats()
+    
+    @property
+    def n_int_step(self):
+        return self._n_int_step
+    
+    @n_int_step.setter
+    def n_int_step(self, nis):
+        try:
+            nis = int(nis)
+            assert nis > 0
+        except:
+            raise ValueError('n_int_step should be a positive int, instead '
+                             'of {}.'.format(nis))
+        self._n_int_step = nis
+    
+    @property
+    def n_call(self):
+        return self.n_iter * (self.n_int_step + 1) + 1
+        """
+        Here we add n_iter because at the beginning of each iteration, 
+        We recompute logp_and_grad at the starting point.
+        In principle this can be avoided by reusing the old values,
+        But the current implementation doesn't do it in this way.
+        We add another 1 for the test during initialization.
+        """
 
 
 class NTrace(_HTrace):
@@ -461,7 +496,6 @@ class NTrace(_HTrace):
                          step_size, adapt_step_size, metric, adapt_metric, 
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
-        
         self.max_treedepth = max_treedepth
         self._stats = NStats()
     
@@ -489,6 +523,12 @@ class NTrace(_HTrace):
         But the current implementation doesn't do it in this way.
         We add another 1 for the test during initialization.
         """
+
+
+class TTrace(_HTrace):
+    """Trace class for the THMC sampler."""
+    def __init__(*args, **kwargs):
+        raise NotImplementedError
 
 
 class ETrace(SampleTrace):

@@ -2,7 +2,6 @@ import numpy as np
 from collections import namedtuple
 from ..sample_trace import _HTrace
 from .integration import CpuLeapfrogIntegrator
-from .stats import NStepStats
 import warnings
 from copy import deepcopy
 import time
@@ -75,10 +74,9 @@ class BaseHMC:
         hmc_step = self._hamiltonian_step(start, p0, step_size)
         self._sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)
         self._sample_trace.metric.update(hmc_step.end.q, self.warmup)
-        step_stats = NStepStats(**hmc_step.stats, 
-                                **self._sample_trace.step_size.sizes(), 
-                                warmup=self.warmup, 
-                                diverging=bool(hmc_step.divergence_info))
+        step_stats = self._expected_stats(
+            **hmc_step.stats, **self._sample_trace.step_size.sizes(),
+            warmup=self.warmup, diverging=bool(hmc_step.divergence_info))
         self._sample_trace.update(hmc_step.end.q, step_stats)
     
     def run(self, n_run=None, verbose=True, n_update=None):

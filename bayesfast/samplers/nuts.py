@@ -2,6 +2,7 @@ import numpy as np
 from collections import namedtuple
 from .hmc_utils.base_hmc import BaseHMC, HMCStepData, DivergenceInfo
 from .hmc_utils.integration import IntegrationError
+from .hmc_utils.stats import NStepStats
 from .sample_trace import NTrace
 
 __all__ = ['NUTS']
@@ -13,16 +14,18 @@ class NUTS(BaseHMC):
     
     _expected_trace = NTrace
     
+    _expected_stats = NStepStats
+    
     def logbern(self, log_p):
         if np.isnan(log_p):
             raise FloatingPointError("log_p can't be nan.")
-        return np.log(self._sample_trace.random_generator.uniform()) < log_p
-        
+        return np.log(self.sample_trace.random_generator.uniform()) < log_p
+    
     def _hamiltonian_step(self, start, p0, step_size):
         tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self._sample_trace.max_change, self.logbern)
+                     self.sample_trace.max_change, self.logbern)
 
-        for _ in range(self._sample_trace._max_treedepth):
+        for _ in range(self.sample_trace.max_treedepth):
             direction = self.logbern(np.log(0.5)) * 2 - 1
             divergence_info, turning = tree.extend(direction)
             if divergence_info or turning:

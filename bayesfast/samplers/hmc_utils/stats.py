@@ -1,15 +1,22 @@
 from collections import namedtuple, OrderedDict
 
-__all__ = ['NStepStats', 'NStats']
-
-# TODO: finish HStats
+__all__ = ['NStepStats', 'NStats', 'HStats']
 
 
 nstats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
                 'step_size', 'step_size_bar', 'warmup', 'energy_change',
                 'max_energy_change', 'diverging')
 
+
+hstats_items = ('logp', 'energy', 'n_int_step', 'accept_stat', 'accepted',
+                'step_size', 'step_size_bar', 'warmup', 'energy_change',
+                'diverging')
+
+
 NStepStats = namedtuple('NStepStats', nstats_items)
+
+
+HStepStats = namedtuple('HStepStats', hstats_items)
 
 
 class _HStats:
@@ -53,8 +60,11 @@ class _HStats:
 
 class HStats(_HStats):
     """Stats class for the (vanilla) HMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
+    @property
+    def stats_items(self):
+        return hstats_items
+    
+    _step_stats = HStepStats
 
 
 class NStats(_HStats):
