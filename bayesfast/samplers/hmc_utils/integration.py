@@ -7,7 +7,7 @@ __all__ = ['CpuLeapfrogIntegrator']
 # TODO: review the code
 
 
-State = namedtuple("State", 'q, p, v, q_grad, energy, logp')
+State = namedtuple("State", 'q, p, velocity, q_grad, energy, logp')
 
 
 class IntegrationError(RuntimeError):
@@ -25,10 +25,10 @@ class CpuLeapfrogIntegrator:
     def compute_state(self, q, p):
         """Compute Hamiltonian functions using a position and momentum."""
         logp, grad = self._logp_and_grad(q)
-        v = self._kinetic.velocity(p)
-        kinetic = self._kinetic.energy(p, velocity=v)
+        velocity = self._kinetic.velocity(p)
+        kinetic = self._kinetic.energy(p, velocity=velocity)
         energy = kinetic - logp
-        return State(q, p, v, grad, energy, logp)
+        return State(q, p, velocity, grad, energy, logp)
 
     def step(self, epsilon, state):
         """Leapfrog integrator step.
@@ -68,7 +68,7 @@ class CpuLeapfrogIntegrator:
 
         q_new = state.q.copy()
         p_new = state.p.copy()
-        v_new = np.empty_like(q_new)
+        velocity_new = np.empty_like(q_new)
 
         dt = 0.5 * epsilon
 
@@ -76,17 +76,17 @@ class CpuLeapfrogIntegrator:
         # p_new = p + dt * q_grad
         axpy(state.q_grad, p_new, a=dt)
 
-        pot.velocity(p_new, out=v_new)
+        pot.velocity(p_new, out=velocity_new)
         # q is already stored in q_new
         # q_new = q + epsilon * v_new
-        axpy(v_new, q_new, a=epsilon)
+        axpy(velocity_new, q_new, a=epsilon)
 
         logp, q_new_grad = self._logp_and_grad(q_new)
 
         # p_new = p_new + dt * q_new_grad
         axpy(q_new_grad, p_new, a=dt)
 
-        kinetic = pot.velocity_energy(p_new, v_new)
+        kinetic = pot.velocity_energy(p_new, velocity_new)
         energy = kinetic - logp
 
-        return State(q_new, p_new, v_new, q_new_grad, energy, logp)
+        return State(q_new, p_new, velocity_new, q_new_grad, energy, logp)

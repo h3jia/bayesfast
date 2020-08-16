@@ -5,6 +5,15 @@ but modified the interface to fit the BayesFast framework.
 
 URL: https://github.com/pymc-devs/pymc3/tree/c412736/pymc3/step_methods
 
+##### ##### ##### ##### ##### #####
+
+The THMC/TNUTS samplers were first implemented by Nathaniel Leslie,
+based on the algorithms introduced in the following paper:
+
+URL: https://arxiv.org/pdf/1704.03338.pdf
+
+##### ##### ##### ##### ##### #####
+
 Original license file of pymc3:
 
 =======
