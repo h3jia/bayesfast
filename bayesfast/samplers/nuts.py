@@ -5,7 +5,7 @@ from .hmc_utils.integration import IntegrationError
 from .hmc_utils.stats import NStepStats
 from .sample_trace import NTrace
 
-__all__ = ['NUTS']
+__all__ = ['NUTS', 'Tree']
 
 # TODO: review the code
 
@@ -22,8 +22,8 @@ class NUTS(BaseHMC):
         return np.log(self.sample_trace.random_generator.uniform()) < log_p
     
     def _hamiltonian_step(self, start, p0, step_size):
-        tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self.sample_trace.max_change, self.logbern)
+        tree = Tree(len(p0), self.integrator, start, step_size,
+                    self.sample_trace.max_change, self.logbern)
 
         for _ in range(self.sample_trace.max_treedepth):
             direction = self.logbern(np.log(0.5)) * 2 - 1
@@ -37,7 +37,7 @@ class NUTS(BaseHMC):
 
 
 # A proposal for the next position
-Proposal = namedtuple("Proposal", "q, q_grad, energy, p_accept, logp")
+Proposal = namedtuple("Proposal", "q, energy, p_accept, logp")
 
 
 # A subtree of the binary tree built by nuts.
@@ -45,7 +45,9 @@ Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
                      "accept_sum, n_proposals")
 
 
-class _Tree:
+class Tree:
+    
+    _expected_proposal = Proposal
     
     def __init__(self, ndim, integrator, start, step_size, max_change, logbern):
         self.ndim = ndim
@@ -56,8 +58,8 @@ class _Tree:
         self.start_energy = np.array(start.energy)
 
         self.left = self.right = start
-        self.proposal = Proposal(
-            start.q, start.q_grad, start.energy, 1.0, start.logp)
+        self.proposal = self._expected_proposal(
+            start.q, start.energy, 1.0, start.logp)
         self.depth = 0
         self.log_size = 0
         self.accept_sum = 0
@@ -142,8 +144,8 @@ class _Tree:
             if np.abs(energy_change) < self.max_change:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
-                proposal = Proposal(
-                    right.q, right.q_grad, right.energy, p_accept, right.logp)
+                proposal = self._expected_proposal(
+                    right.q, right.energy, p_accept, right.logp)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False
