@@ -16,10 +16,10 @@ class NUTS(BaseHMC):
     
     _expected_stats = NStepStats
     
-    def logbern(self, log_p):
-        if np.isnan(log_p):
-            raise FloatingPointError("log_p can't be nan.")
-        return np.log(self.sample_trace.random_generator.uniform()) < log_p
+    def logbern(self, logp):
+        if np.isnan(logp):
+            raise FloatingPointError("logp can't be nan.")
+        return np.log(self.sample_trace.random_generator.uniform()) < logp
     
     def _hamiltonian_step(self, start, p0, step_size):
         tree = Tree(len(p0), self.integrator, start, step_size,
@@ -37,7 +37,7 @@ class NUTS(BaseHMC):
 
 
 # A proposal for the next position
-Proposal = namedtuple("Proposal", "q, energy, p_accept, logp")
+Proposal = namedtuple("Proposal", "q, energy, logp, p_accept")
 
 
 # A subtree of the binary tree built by nuts.
@@ -46,6 +46,9 @@ Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
 
 
 class Tree:
+    
+    def _get_proposal(self, point, p_accept):
+        return Proposal(point.q, point.energy, point.logp, p_accept)
     
     _expected_proposal = Proposal
     
@@ -58,8 +61,7 @@ class Tree:
         self.start_energy = np.array(start.energy)
 
         self.left = self.right = start
-        self.proposal = self._expected_proposal(
-            start.q, start.energy, 1.0, start.logp)
+        self.proposal = self._get_proposal(start, 1.0)
         self.depth = 0
         self.log_size = 0
         self.accept_sum = 0
@@ -145,8 +147,7 @@ class Tree:
             if np.abs(energy_change) < self.max_change:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
-                proposal = self._expected_proposal(
-                    right.q, right.energy, p_accept, right.logp)
+                self.proposal = self._get_proposal(right, 1.0)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False
