@@ -63,13 +63,13 @@ class BaseHMC:
             assert q0.ndim == 1
         p0 = self.sample_trace.metric.random(self.sample_trace.random_generator)
         start = self.integrator.compute_state(q0, p0)
-
+        
         if not np.isfinite(start.energy):
             self._sample_trace.metric.raise_ok()
             raise RuntimeError(
                 "Bad initial energy, please check the Hamiltonian at p = {}, "
                 "q = {}.".format(p0, q0))
-            
+        
         step_size = self._sample_trace.step_size.current(self.warmup)
         hmc_step = self._hamiltonian_step(start, p0, step_size)
         self._sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)

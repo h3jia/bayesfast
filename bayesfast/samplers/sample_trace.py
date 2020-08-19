@@ -2,8 +2,10 @@ import numpy as np
 from .hmc_utils.step_size import DualAverageAdaptation
 from .hmc_utils.metrics import QuadMetric, QuadMetricDiag, QuadMetricFull
 from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
-from .hmc_utils.stats import NStepStats, NStats, HStats
+from .hmc_utils.stats import HStepStats, NStepStats, THStepStats, TNStepStats
+from .hmc_utils.stats import HStats, NStats, THStats, TNStats
 from ..utils.random import get_generator, spawn_generator
+from ..density import Density, DensityLite
 from copy import deepcopy
 import warnings
 
@@ -270,8 +272,13 @@ class _HTrace(SampleTrace):
         self._samples.append(point)
         self._stats.update(stats)
     
+    _all_return = ['samples', 'logp']
+    
     def get(self, since_iter=None, include_warmup=False, original_space=True,
-            return_logp=False, flatten=True):
+            return_type='samples', flatten=True):
+        if return_type == 'all':
+            return [self.get(since_iter, include_warmup, original_space, _,
+                    flatten) for _ in self._all_return]
         if flatten is not True:
             warnings.warn('the argument flatten is not used here.',
                           RuntimeWarning)
@@ -284,14 +291,19 @@ class _HTrace(SampleTrace):
                 raise ValueError('invalid value for since_iter.')
         if since_iter >= self.i_iter - 1:
             raise ValueError('since_iter is too large. Nothing to return.')
-        if return_logp:
+        if return_type == 'samples':
+            samples = self.samples_original if original_space else self.samples
+            samples = samples[since_iter:]
+            return samples
+        elif return_type == 'logp':
             logp = self.logp_original if original_space else self.logp
             logp = logp[since_iter:]
             return logp
         else:
-            samples = self.samples_original if original_space else self.samples
-            samples = samples[since_iter:]
-            return samples
+            return self._get(since_iter, original_space, return_type)
+    
+    def _get(self, since_iter, original_space, return_type)
+        raise ValueError('invalid value for return_type.')
     
     __call__ = get
     
@@ -525,10 +537,88 @@ class NTrace(_HTrace):
         """
 
 
-class TTrace(_HTrace):
+class _TTrace:
+    """Utilities shared by THTrace and TNTrace."""
+    def __init__(self, density_base, logxi=0.):
+        self.density_base = density_base
+        self.logxi = logxi
+    
+    @property
+    def density_base(self):
+        return self._density_base
+    
+    @density_base.setter
+    def density_base(self, db):
+        try:
+            assert isinstance(density_base, (Density, DensityLite))
+        except:
+            raise ValueError('invalid value for density_base.')
+    
+    @property
+    def logxi(self):
+        return self._logxi
+    
+    @logxi.setter
+    def logxi(self, lxi):
+        try:
+            self._logxi = float(lxi)
+        except:
+            raise ValueError('invalid value for logxi.')
+    
+    @property
+    def u(self):
+        return np.array(self.stats._u)
+    
+    @property
+    def weights(self):
+        return np.array(self.stats._weights)
+    
+    _all_return = ['samples', 'u', 'weights', 'logp']
+    
+    def _get(self, since_iter, original_space, return_type):
+        if return_type == 'u':
+            u = self.u[since_iter:]
+            return u
+        elif return_type == 'weights':
+            weights = self.weights[since_iter:]
+            return weights
+        else:
+            raise ValueError('invalid value for return_type.')
+
+
+class THTrace(_TTrace, HTrace):
     """Trace class for the THMC sampler."""
-    def __init__(*args, **kwargs):
-        raise NotImplementedError
+    def __init__(self, density_base, logxi=0., n_chain=4, n_iter=1500,
+                 n_warmup=500, n_int_step=32, x_0=None, random_generator=None,
+                 step_size=1., adapt_step_size=True, metric='diag',
+                 adapt_metric=True, max_change=1000., target_accept=0.8,
+                 gamma=0.05, k=0.75, t_0=10., initial_mean=None,
+                 initial_weight=10., adapt_window=60, update_window=1,
+                 doubling=True):
+        _TTrace.__init__(self, density_base, logxi)
+        HTrace.__init__(n_chain, n_iter, n_warmup, n_int_step, x_0,
+                        random_generator, step_size, adapt_step_size, metric,
+                        adapt_metric, max_change, target_accept, gamma, k, t_0,
+                        initial_mean, initial_weight, adapt_window,
+                        update_window, doubling)
+
+
+class TNTrace(_TTrace, NTrace):
+    """Trace class for the TNUTS sampler."""
+    def __init__(self, density_base, logxi=0., n_chain=4, n_iter=1500,
+                 n_warmup=500, x_0=None, random_generator=None, step_size=1.,
+                 adapt_step_size=True, metric='diag', adapt_metric=True,
+                 max_change=1000., max_treedepth=10, target_accept=0.8,
+                 gamma=0.05, k=0.75, t_0=10., initial_mean=None,
+                 initial_weight=10., adapt_window=60, update_window=1,
+                 doubling=True):
+        _TTrace.__init__(self, density_base, logxi)
+        NTrace.__init__(self, n_chain, n_iter, n_warmup, x_0, random_generator,
+                        step_size, adapt_step_size, metric, adapt_metric,
+                        max_change, max_treedepth, target_accept, gamma, k, t_0,
+                        initial_mean, initial_weight, adapt_window,
+                        update_window, doubling)
+        self._stats = TNStats()
 
 
 class ETrace(SampleTrace):
@@ -542,13 +632,16 @@ class TraceTuple:
     def __init__(self, sample_traces):
         try:
             sample_traces = tuple(sample_traces)
-            if isinstance(sample_traces[0], NTrace):
+            if isinstance(sample_traces[0], TNTrace):
+                self._sampler = 'TNUTS'
+            elif isinstance(sample_traces[0], THTrace):
+                self._sampler = 'THMC'
+            elif isinstance(sample_traces[0], NTrace):
                 self._sampler = 'NUTS'
             elif isinstance(sample_traces[0], HTrace):
                 self._sampler = 'HMC'
             else:
-                raise ValueError('sample_traces[0] is neither NTrace nor '
-                                 'HTrace.')
+                raise ValueError('invalid value for sample_traces')
             _type = type(sample_traces[0])
             for i, t in enumerate(sample_traces):
                 assert type(t) == _type
@@ -655,21 +748,42 @@ class TraceTuple:
     def stats(self):
         return [t.stats for t in self.sample_traces] # add StatsTuple?
     
+    @property
+    def _all_return(self):
+        if self.sampler == 'NUTS' or self.sampler == 'HMC':
+            return _HTrace._all_return
+        elif self.sampler == 'TNUTS' or self.sampler == 'THMC':
+            return _TTrace._all_return
+        else:
+            raise RuntimeError('unexpected value for self.sampler.')
+    
     # TODO: the default value for flatten?
     def get(self, since_iter=None, include_warmup=False, original_space=True,
-            return_logp=False, flatten=True):
-        tget = [t.get(since_iter, include_warmup, original_space, return_logp)
+            return_type='samples', flatten=True):
+        if return_type == 'all':
+            return [self.get(since_iter, include_warmup, original_space, _,
+                    flatten) for _ in self._all_return]
+        tget = [t.get(since_iter, include_warmup, original_space, return_type)
                 for t in self.sample_traces]
-        if return_logp:
-            logp = np.asarray(tget)
-            if flatten:
-                logp = logp.flatten()
-            return logp
-        else:
+        if return_type == 'samples':
             samples = np.asarray(tget)
             if flatten:
                 samples = samples.reshape((-1, self.input_size))
             return samples
+        elif return_type == 'logp':
+            logp = np.asarray(tget)
+            if flatten:
+                logp = logp.flatten()
+            return logp
+        elif return_type == 'u' or return_type == 'weights':
+            if not (self.sampler == 'TNUTS' or self.sampler == 'THMC'):
+                raise RuntimeError('invalid value for return_type.')
+            res = np.asarray(tget)
+            if flatten:
+                res = res.flatten()
+            return res
+        else:
+            raise ValueError('invalid value for return_type.')
     
     __call__ = get
     

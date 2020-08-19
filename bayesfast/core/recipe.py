@@ -774,7 +774,7 @@ class Recipe:
                     prev_transformed = False
             
             if get_prev_density:
-                prev_density = prev_result.sample_trace.get(return_logp=True,
+                prev_density = prev_result.sample_trace.get(return_type='logp',
                                                             flatten=True)
             
             if isinstance(sample_trace, _HTrace):
@@ -979,14 +979,14 @@ class Recipe:
             
             if prev_step.has_surrogate:
                 trace_q = prev_result.sample_trace
-                x_q = trace_q.get(return_logp=False, flatten=False)
-                logq_q = trace_q.get(return_logp=True, flatten=False)
+                x_q = trace_q.get(return_type='samples', flatten=False)
+                logq_q = trace_q.get(return_type='logp', flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
             
             else:
                 trace_p = prev_result.sample_trace
-                x_p = trace_p.get(return_logp=False, flatten=False)
-                logp_p = trace_p.get(return_logp=True, flatten=False)
+                x_p = trace_p.get(return_type='samples', flatten=False)
+                logp_p = trace_p.get(return_type='logp', flatten=False)
         
         elif recipe_trace._i_optimize:
             prev_step = recipe_trace._s_optimize
@@ -996,8 +996,8 @@ class Recipe:
                 # sample_trace in OptimizeStep will be ignored
                 # if has_surrogate is False
                 trace_q = prev_result.sample_trace
-                x_q = trace_q.get(return_logp=False, flatten=False)
-                logq_q = trace_q.get(return_logp=True, flatten=False)
+                x_q = trace_q.get(return_type='samples', flatten=False)
+                logq_q = trace_q.get(return_type='logp', flatten=False)
                 self.density._surrogate_list = prev_step.surrogate_list
             
             else:

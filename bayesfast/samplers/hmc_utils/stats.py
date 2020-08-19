@@ -1,11 +1,7 @@
 from collections import namedtuple, OrderedDict
 
-__all__ = ['NStepStats', 'NStats', 'HStats']
-
-
-nstats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
-                'step_size', 'step_size_bar', 'warmup', 'energy_change',
-                'max_energy_change', 'diverging')
+__all__ = ['HStepStats', 'NStepStats', 'THStepStats', 'TNStepStats',
+           'HStats', 'NStats', 'THStats', 'TNStats']
 
 
 hstats_items = ('logp', 'energy', 'n_int_step', 'accept_stat', 'accepted',
@@ -13,10 +9,31 @@ hstats_items = ('logp', 'energy', 'n_int_step', 'accept_stat', 'accepted',
                 'diverging')
 
 
-NStepStats = namedtuple('NStepStats', nstats_items)
+nstats_items = ('logp', 'energy', 'tree_depth', 'tree_size', 'mean_tree_accept',
+                'step_size', 'step_size_bar', 'warmup', 'energy_change',
+                'max_energy_change', 'diverging')
+
+
+thstats_items = ('u', 'weight', 'logp', 'energy', 'n_int_step', 'accept_stat',
+                 'accepted', 'step_size', 'step_size_bar', 'warmup',
+                 'energy_change', 'diverging')
+
+
+tnstats_items = ('u', 'weight', 'logp', 'energy', 'tree_depth', 'tree_size',
+                 'mean_tree_accept', 'step_size', 'step_size_bar', 'warmup',
+                 'energy_change', 'max_energy_change', 'diverging')
 
 
 HStepStats = namedtuple('HStepStats', hstats_items)
+
+
+NStepStats = namedtuple('NStepStats', nstats_items)
+
+
+THStepStats = namedtuple('THStepStats', thstats_items)
+
+
+TNStepStats = namedtuple('TNStepStats', tnstats_items)
 
 
 class _HStats:
@@ -74,3 +91,21 @@ class NStats(_HStats):
         return nstats_items
     
     _step_stats = NStepStats
+
+
+class THStats(_HStats):
+    """Stats class for the THMC sampler."""
+    @property
+    def stats_items(self):
+        return thstats_items
+    
+    _step_stats = THStepStats
+
+
+class TNStats(_HStats):
+    """Stats class for the TNUTS sampler."""
+    @property
+    def stats_items(self):
+        return tnstats_items
+    
+    _step_stats = TNStepStats

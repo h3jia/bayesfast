@@ -50,8 +50,6 @@ class Tree:
     def _get_proposal(self, point, p_accept):
         return Proposal(point.q, point.energy, point.logp, p_accept)
     
-    _expected_proposal = Proposal
-    
     def __init__(self, ndim, integrator, start, step_size, max_change, logbern):
         self.ndim = ndim
         self.integrator = integrator
