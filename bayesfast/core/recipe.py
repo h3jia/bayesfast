@@ -1026,6 +1026,12 @@ class Recipe:
             
             if step.n_is != 0:
                 if step.n_is < 0 or step.n_is > samples.shape[0]:
+                    if step.n_is > 0:
+                        warnings.warn(
+                            'you set n_is as {}, but I can only get {} samples '
+                            'from the previous step, so I will use all these '
+                            'samples to do IS for now.'.format(step.n_is,
+                            samples.shape[0]), RuntimeWarning)
                     n_is = samples.shape[0]
                 else:
                     n_is = step.n_is
