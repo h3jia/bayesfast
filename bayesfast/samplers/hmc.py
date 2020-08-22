@@ -45,6 +45,10 @@ class HMC(BaseHMC):
             end = state
             accepted = True
         
+        stats = self._stats(state, accept_stat, accepted, energy_change)
+        return HMCStepData(end, accept_stat, divergence_info, stats)
+    
+    def _stats(self, state, accept_stat, accepted, energy_change):
         stats = {
             'logp': state.logp,
             'energy': state.energy,
@@ -53,4 +57,4 @@ class HMC(BaseHMC):
             'accepted': accepted,
             'energy_change': energy_change,
         }
-        return HMCStepData(end, accept_stat, divergence_info, stats)
+        return stats

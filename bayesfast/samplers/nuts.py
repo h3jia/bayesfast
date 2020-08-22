@@ -10,32 +10,6 @@ __all__ = ['NUTS', 'Tree']
 # TODO: review the code
 
 
-class NUTS(BaseHMC):
-    
-    _expected_trace = NTrace
-    
-    _expected_stats = NStepStats
-    
-    def logbern(self, logp):
-        if np.isnan(logp):
-            raise FloatingPointError("logp can't be nan.")
-        return np.log(self.sample_trace.random_generator.uniform()) < logp
-    
-    def _hamiltonian_step(self, start, p0, step_size):
-        tree = Tree(len(p0), self.integrator, start, step_size,
-                    self.sample_trace.max_change, self.logbern)
-
-        for _ in range(self.sample_trace.max_treedepth):
-            direction = self.logbern(np.log(0.5)) * 2 - 1
-            divergence_info, turning = tree.extend(direction)
-            if divergence_info or turning:
-                break
-
-        stats = tree.stats()
-        accept_stat = stats['mean_tree_accept']
-        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
-
-
 # A proposal for the next position
 Proposal = namedtuple("Proposal", "q, energy, logp, p_accept")
 
@@ -145,7 +119,7 @@ class Tree:
             if np.abs(energy_change) < self.max_change:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
-                self.proposal = self._get_proposal(right, 1.0)
+                proposal = self._get_proposal(right, 1.0)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False
@@ -213,3 +187,31 @@ class Tree:
             'energy_change': self.proposal.energy - self.start.energy,
             'max_energy_change': self.max_energy_change,
         }
+
+
+class NUTS(BaseHMC):
+    
+    _expected_trace = NTrace
+    
+    _expected_stats = NStepStats
+    
+    _expected_tree = Tree
+    
+    def logbern(self, logp):
+        if np.isnan(logp):
+            raise FloatingPointError("logp can't be nan.")
+        return np.log(self.sample_trace.random_generator.uniform()) < logp
+    
+    def _hamiltonian_step(self, start, p0, step_size):
+        tree = self._expected_tree(len(p0), self.integrator, start, step_size,
+                                   self.sample_trace.max_change, self.logbern)
+
+        for _ in range(self.sample_trace.max_treedepth):
+            direction = self.logbern(np.log(0.5)) * 2 - 1
+            divergence_info, turning = tree.extend(direction)
+            if divergence_info or turning:
+                break
+
+        stats = tree.stats()
+        accept_stat = stats['mean_tree_accept']
+        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)

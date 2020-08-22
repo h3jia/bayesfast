@@ -1,7 +1,11 @@
 import numpy as np
 from collections import namedtuple
-from .nuts import Tree
+from .hmc_utils.base_hmc import BaseTHMC
+from .hmc_utils.stats import TNStepStats
+from .sample_trace import TNTrace
+from .nuts import Tree, NUTS
 
+__all__ = ['TNUTS', 'TTree']
 
 
 # A proposal for the next position
@@ -26,3 +30,12 @@ class TTree(Tree):
             'energy_change': self.proposal.energy - self.start.energy,
             'max_energy_change': self.max_energy_change,
         }
+
+
+class TNUTS(BaseTHMC, NUTS):
+    
+    _expected_trace = TNTrace
+    
+    _expected_stats = TNStepStats
+    
+    _expected_tree = TTree

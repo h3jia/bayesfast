@@ -5,12 +5,12 @@ from .hmc_utils.metrics import QuadMetricDiagAdapt, QuadMetricFullAdapt
 from .hmc_utils.stats import HStepStats, NStepStats, THStepStats, TNStepStats
 from .hmc_utils.stats import HStats, NStats, THStats, TNStats
 from ..utils.random import get_generator, spawn_generator
-from ..density import Density, DensityLite
+from ..core import Density, DensityLite
 from copy import deepcopy
 import warnings
 
-__all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'ETrace', 'TTrace',
-           'TraceTuple', '_get_step_size', '_get_metric']
+__all__ = ['SampleTrace', '_HTrace', 'NTrace', 'HTrace', 'TNTrace', 'THTrace',
+           'ETrace', 'TraceTuple', '_get_step_size', '_get_metric']
 
 # TODO: StatsTuple?
 
@@ -302,7 +302,7 @@ class _HTrace(SampleTrace):
         else:
             return self._get(since_iter, original_space, return_type)
     
-    def _get(self, since_iter, original_space, return_type)
+    def _get(self, since_iter, original_space, return_type):
         raise ValueError('invalid value for return_type.')
     
     __call__ = get
@@ -550,9 +550,10 @@ class _TTrace:
     @density_base.setter
     def density_base(self, db):
         try:
-            assert isinstance(density_base, (Density, DensityLite))
+            assert isinstance(db, (Density, DensityLite))
         except:
             raise ValueError('invalid value for density_base.')
+        self._density_base = db
     
     @property
     def logxi(self):

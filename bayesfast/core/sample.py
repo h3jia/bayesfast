@@ -2,8 +2,9 @@ from .density import *
 from ..utils.sobol import multivariate_normal
 from ..utils.parallel import ParallelBackend, get_backend
 from ..utils.random import get_generator
-from ..samplers import NUTS, HMC
-from ..samplers import SampleTrace, NTrace, HTrace, ETrace, TraceTuple
+from ..samplers import NUTS, HMC, TNUTS, THMC
+from ..samplers import NTrace, HTrace, TNTrace, THTrace, ETrace
+from ..samplers import SampleTrace, TraceTuple
 from threadpoolctl import threadpool_limits
 import numpy as np
 import warnings
@@ -31,6 +32,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         sampler = 'NUTS'
     elif isinstance(sample_trace, HTrace):
         sampler = 'HMC'
+    elif isinstance(sample_trace, TNTrace):
+        sampler = 'TNUTS'
+    elif isinstance(sample_trace, THTrace):
+        sampler = 'THMC'
     elif isinstance(sample_trace, ETrace):
         raise NotImplementedError
     elif sample_trace is None or isinstance(sample_trace, dict):
@@ -39,13 +44,17 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
             sample_trace = NTrace(**sample_trace)
         elif sampler == 'HMC':
             sample_trace = HTrace(**sample_trace)
+        elif sampler == 'TNUTS':
+            sample_trace = TNTrace(**sample_trace)
+        elif sampler == 'THMC':
+            sample_trace = THTrace(**sample_trace)
         elif sampler == 'Ensemble':
             raise NotImplementedError
         else:
             raise ValueError('unexpected value for sampler.')
     elif isinstance(sample_trace, TraceTuple):
         sampler = sample_trace.sampler
-        if sampler == 'NUTS' or sampler == 'HMC':
+        if any(sampler == _ for _ in ('NUTS', 'HMC', 'TNUTS', 'THMC')):
             pass
         elif sampler == 'Ensemble':
             raise NotImplementedError
@@ -92,10 +101,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         raise RuntimeError('unexpected value for parallel_backend.kind.')
     
     with parallel_backend:
-        if sampler == 'NUTS' or sampler == 'HMC':
+        if any(sampler == _ for _ in ('NUTS', 'HMC', 'TNUTS', 'THMC')):
             def nested_helper(sample_trace, i):
                 """Without this, there will be an UnboundLocalError."""
-                if isinstance(sample_trace, (NTrace, HTrace)):
+                if isinstance(sample_trace, SampleTrace):
                     sample_trace._init_chain(i)
                 elif isinstance(sample_trace, TraceTuple):
                     sample_trace = sample_trace.sample_traces[i]
@@ -103,17 +112,17 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                     raise RuntimeError('unexpected type for sample_trace.')
                 return sample_trace
             
-            def _sampler_worker(i, sampler):
+            def _sampler_worker(i, sampler_class):
                 try:
                     with threadpool_limits(1):
                         _sample_trace = nested_helper(sample_trace, i)
                         def logp_and_grad(x):
-                            return density.logp_and_grad(x,
-                                                         original_space=False)
-                        _sampler = sampler(logp_and_grad=logp_and_grad,
-                                           sample_trace=_sample_trace,
-                                           dask_key=dask_key,
-                                           process_lock=process_lock)
+                            return density.logp_and_grad(
+                                x, original_space=False)
+                        _sampler = sampler_class(
+                            logp_and_grad=logp_and_grad,
+                            sample_trace=_sample_trace, dask_key=dask_key,
+                            process_lock=process_lock)
                         t = _sampler.run(n_run, verbose)
                         t._samples_original = density.to_original(t.samples)
                         t._logp_original = density.to_original_density(
@@ -129,6 +138,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                 sampler_worker = lambda i: _sampler_worker(i, NUTS)
             elif sampler == "HMC":
                 sampler_worker = lambda i: _sampler_worker(i, HMC)
+            elif sampler == 'TNUTS':
+                sampler_worker = lambda i: _sampler_worker(i, TNUTS)
+            elif sampler == 'THMC':
+                sampler_worker = lambda i: _sampler_worker(i, THMC)
             else:
                 raise RuntimeError('unexpected value for sampler.')
             

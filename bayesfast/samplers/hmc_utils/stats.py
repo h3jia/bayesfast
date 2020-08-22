@@ -93,7 +93,14 @@ class NStats(_HStats):
     _step_stats = NStepStats
 
 
-class THStats(_HStats):
+class _TStats:
+    """TODO: should we call it weight or weights?"""
+    @property
+    def _weights(self):
+        return self._weight
+
+
+class THStats(_HStats, _TStats):
     """Stats class for the THMC sampler."""
     @property
     def stats_items(self):
@@ -102,7 +109,7 @@ class THStats(_HStats):
     _step_stats = THStepStats
 
 
-class TNStats(_HStats):
+class TNStats(_HStats, _TStats):
     """Stats class for the TNUTS sampler."""
     @property
     def stats_items(self):

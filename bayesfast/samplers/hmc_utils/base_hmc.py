@@ -1,7 +1,7 @@
 import numpy as np
 from collections import namedtuple
 from ..sample_trace import _HTrace
-from .integration import CpuLeapfrogIntegrator
+from .integration import CpuLeapfrogIntegrator, TCpuLeapfrogIntegrator
 import warnings
 from copy import deepcopy
 import time
@@ -25,7 +25,7 @@ DivergenceInfo = namedtuple("DivergenceInfo", "message, exec_info, state")
 
 
 class BaseHMC:
-    """Superclass to implement Hamiltonian/hybrid monte carlo."""
+    """Base class to implement Hamiltonian Monte Carlo."""
     def __init__(self, logp_and_grad, sample_trace, dask_key=None,
                  process_lock=None):
         self._logp_and_grad = logp_and_grad
@@ -37,13 +37,17 @@ class BaseHMC:
             raise ValueError('invalid type for sample_trace.')
         self._chain_id = sample_trace.chain_id
         self._prefix = ' CHAIN #' + str(self._chain_id) + ' : '
-        self.integrator = CpuLeapfrogIntegrator(self._sample_trace.metric,
+        self.integrator = CpuLeapfrogIntegrator(self.sample_trace.metric,
                                                 logp_and_grad)
         try:
             logp_0, grad_0 = logp_and_grad(self._sample_trace.x_0)
             assert np.isfinite(logp_0).all() and np.isfinite(grad_0).all()
         except:
             raise ValueError('failed to get finite logp and/or grad at x_0.')
+    
+    '''
+    # I have to remove this for now to make the multi inheritance
+    # in THMC/TNUTS work correctly
     
     _expected_trace = _HTrace
     
@@ -53,6 +57,7 @@ class BaseHMC:
         Subclasses must overwrite this method and return a `HMCStepData`.
         """
         raise NotImplementedError("Abstract method")
+    '''
 
     def astep(self):
         """Perform a single HMC iteration."""
@@ -65,19 +70,19 @@ class BaseHMC:
         start = self.integrator.compute_state(q0, p0)
         
         if not np.isfinite(start.energy):
-            self._sample_trace.metric.raise_ok()
+            self.sample_trace.metric.raise_ok()
             raise RuntimeError(
                 "Bad initial energy, please check the Hamiltonian at p = {}, "
                 "q = {}.".format(p0, q0))
         
-        step_size = self._sample_trace.step_size.current(self.warmup)
+        step_size = self.sample_trace.step_size.current(self.warmup)
         hmc_step = self._hamiltonian_step(start, p0, step_size)
-        self._sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)
-        self._sample_trace.metric.update(hmc_step.end.q, self.warmup)
+        self.sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)
+        self.sample_trace.metric.update(hmc_step.end.q, self.warmup)
         step_stats = self._expected_stats(
-            **hmc_step.stats, **self._sample_trace.step_size.sizes(),
+            **hmc_step.stats, **self.sample_trace.step_size.sizes(),
             warmup=self.warmup, diverging=bool(hmc_step.divergence_info))
-        self._sample_trace.update(hmc_step.end.q, step_stats)
+        self.sample_trace.update(hmc_step.end.q, step_stats)
     
     def run(self, n_run=None, verbose=True, n_update=None):
         if self._dask_key is None:
@@ -210,3 +215,50 @@ class BaseHMC:
     @property
     def chain_id(self):
         return self._chain_id
+
+
+class BaseTHMC(BaseHMC):
+    """Base class to implement Tempered HMC."""
+    def __init__(self, logp_and_grad, sample_trace, dask_key=None,
+                 process_lock=None):
+        super().__init__(logp_and_grad, sample_trace, dask_key, process_lock)
+        self.integrator = TCpuLeapfrogIntegrator(
+            self.sample_trace.metric, logp_and_grad, self._logp_and_grad_base)
+    
+    def _logp_and_grad_base(self, x):
+        logp, grad = self.sample_trace.density_base.logp_and_grad(
+            x, original_space=False)
+        return logp + self.sample_trace.logxi, grad
+    
+    def astep(self):
+        """Perform a single HMC iteration."""
+        try:
+            q0 = self.sample_trace._samples[-1]
+            u0 = self.sample_trace.stats._u[-1]
+            Q0 = np.append(u0, q0)
+        except:
+            q0 = self.sample_trace.x_0
+            assert q0.ndim == 1
+            u0 = np.random.normal(0,1)
+            Q0 = np.append(u0, q0)
+        p0 = self.sample_trace.metric.random(self.sample_trace.random_generator)
+        v0 = self.sample_trace.random_generator.normal(0, 1)
+        P0 = np.append(v0, p0)
+        start = self.integrator.compute_state(Q0, P0)
+        
+        if not np.isfinite(start.energy):
+            self.sample_trace.metric.raise_ok()
+            raise RuntimeError(
+                "Bad initial energy, please check the Hamiltonian at p = {}, "
+                "q = {}, u = {}, v = {}, ".format(p0, q0, u0, v0))
+        
+        step_size = self.sample_trace.step_size.current(self.warmup)
+        hmc_step = self._hamiltonian_step(start, P0, step_size)
+        self.sample_trace.step_size.update(hmc_step.accept_stat, self.warmup)
+        self.sample_trace.metric.update(hmc_step.end.q, self.warmup)
+        step_stats = self._expected_stats(
+            **hmc_step.stats, **self.sample_trace.step_size.sizes(),
+            warmup=self.warmup, diverging=bool(hmc_step.divergence_info))
+        self.sample_trace.update(hmc_step.end.q, step_stats)
+    
+    # _expected_trace = _TTrace
