@@ -2,39 +2,16 @@ import numpy as np
 from collections import namedtuple
 from .hmc_utils.base_hmc import BaseHMC, HMCStepData, DivergenceInfo
 from .hmc_utils.integration import IntegrationError
+from .hmc_utils.stats import NStepStats
 from .sample_trace import NTrace
 
-__all__ = ['NUTS']
+__all__ = ['NUTS', 'Tree']
 
 # TODO: review the code
 
 
-class NUTS(BaseHMC):
-    
-    _expected_trace = NTrace
-    
-    def logbern(self, log_p):
-        if np.isnan(log_p):
-            raise FloatingPointError("log_p can't be nan.")
-        return np.log(self._sample_trace.random_generator.uniform()) < log_p
-        
-    def _hamiltonian_step(self, start, p0, step_size):
-        tree = _Tree(len(p0), self.integrator, start, step_size, 
-                     self._sample_trace.max_change, self.logbern)
-
-        for _ in range(self._sample_trace._max_treedepth):
-            direction = self.logbern(np.log(0.5)) * 2 - 1
-            divergence_info, turning = tree.extend(direction)
-            if divergence_info or turning:
-                break
-
-        stats = tree.stats()
-        accept_stat = stats['mean_tree_accept']
-        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
-
-
 # A proposal for the next position
-Proposal = namedtuple("Proposal", "q, q_grad, energy, p_accept, logp")
+Proposal = namedtuple("Proposal", "q, energy, logp, p_accept")
 
 
 # A subtree of the binary tree built by nuts.
@@ -42,7 +19,10 @@ Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
                      "accept_sum, n_proposals")
 
 
-class _Tree:
+class Tree:
+    
+    def _get_proposal(self, point, p_accept):
+        return Proposal(point.q, point.energy, point.logp, p_accept)
     
     def __init__(self, ndim, integrator, start, step_size, max_change, logbern):
         self.ndim = ndim
@@ -53,8 +33,7 @@ class _Tree:
         self.start_energy = np.array(start.energy)
 
         self.left = self.right = start
-        self.proposal = Proposal(
-            start.q, start.q_grad, start.energy, 1.0, start.logp)
+        self.proposal = self._get_proposal(start, 1.0)
         self.depth = 0
         self.log_size = 0
         self.accept_sum = 0
@@ -111,13 +90,14 @@ class _Tree:
         if self.depth > 0:
             left, right = self.left, self.right
             p_sum = self.p_sum
-            turning = (p_sum.dot(left.v) <= 0) or (p_sum.dot(right.v) <= 0)
+            turning = ((p_sum.dot(left.velocity) <= 0) or
+                       (p_sum.dot(right.velocity) <= 0))
             p_sum1 = leftmost_p_sum + rightmost_begin.p
-            turning1 = ((p_sum1.dot(leftmost_begin.v) <= 0) or 
-                        (p_sum1.dot(rightmost_begin.v) <= 0))
+            turning1 = ((p_sum1.dot(leftmost_begin.velocity) <= 0) or
+                        (p_sum1.dot(rightmost_begin.velocity) <= 0))
             p_sum2 = leftmost_end.p + rightmost_p_sum
-            turning2 = ((p_sum2.dot(leftmost_end.v) <= 0) or 
-                        (p_sum2.dot(rightmost_end.v) <= 0))
+            turning2 = ((p_sum2.dot(leftmost_end.velocity) <= 0) or
+                        (p_sum2.dot(rightmost_end.velocity) <= 0))
             turning = (turning | turning1 | turning2)
 
         return diverging, turning
@@ -139,8 +119,7 @@ class _Tree:
             if np.abs(energy_change) < self.max_change:
                 p_accept = min(1, np.exp(-energy_change))
                 log_size = -energy_change
-                proposal = Proposal(
-                    right.q, right.q_grad, right.energy, p_accept, right.logp)
+                proposal = self._get_proposal(right, 1.0)
                 tree = Subtree(right, right, right.p,
                                proposal, log_size, p_accept, 1)
                 return tree, None, False
@@ -168,16 +147,17 @@ class _Tree:
 
         if not (diverging or turning):
             p_sum = tree1.p_sum + tree2.p_sum
-            turning = (p_sum.dot(left.v) <= 0) or (p_sum.dot(right.v) <= 0)
+            turning = ((p_sum.dot(left.velocity) <= 0) or
+                       (p_sum.dot(right.velocity) <= 0))
             # Additional U turn check only when depth > 1 
             # to avoid redundant work.
             if depth > 1:
                 p_sum1 = tree1.p_sum + tree2.left.p
-                turning1 = ((p_sum1.dot(tree1.left.v) <= 0) or 
-                            (p_sum1.dot(tree2.left.v) <= 0))
+                turning1 = ((p_sum1.dot(tree1.left.velocity) <= 0) or
+                            (p_sum1.dot(tree2.left.velocity) <= 0))
                 p_sum2 = tree1.right.p + tree2.p_sum
-                turning2 = ((p_sum2.dot(tree1.right.v) <= 0) or 
-                            (p_sum2.dot(tree2.right.v) <= 0))
+                turning2 = ((p_sum2.dot(tree1.right.velocity) <= 0) or
+                            (p_sum2.dot(tree2.right.velocity) <= 0))
                 turning = (turning | turning1 | turning2)
 
             log_size = np.logaddexp(tree1.log_size, tree2.log_size)
@@ -207,4 +187,31 @@ class _Tree:
             'energy_change': self.proposal.energy - self.start.energy,
             'max_energy_change': self.max_energy_change,
         }
+
+
+class NUTS(BaseHMC):
     
+    _expected_trace = NTrace
+    
+    _expected_stats = NStepStats
+    
+    _expected_tree = Tree
+    
+    def logbern(self, logp):
+        if np.isnan(logp):
+            raise FloatingPointError("logp can't be nan.")
+        return np.log(self.sample_trace.random_generator.uniform()) < logp
+    
+    def _hamiltonian_step(self, start, p0, step_size):
+        tree = self._expected_tree(len(p0), self.integrator, start, step_size,
+                                   self.sample_trace.max_change, self.logbern)
+
+        for _ in range(self.sample_trace.max_treedepth):
+            direction = self.logbern(np.log(0.5)) * 2 - 1
+            divergence_info, turning = tree.extend(direction)
+            if divergence_info or turning:
+                break
+
+        stats = tree.stats()
+        accept_stat = stats['mean_tree_accept']
+        return HMCStepData(tree.proposal, accept_stat, divergence_info, stats)
