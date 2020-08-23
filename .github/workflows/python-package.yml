@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    name: Test on ${{ matrix.os }} and Python ${{ matrix.python-version }}
+    name: Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -24,10 +24,12 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install bayesfast
+    - name: Install utils
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
+    - name: Install bayesfast
+      run: |
         # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install -e .
     - name: Lint with flake8
