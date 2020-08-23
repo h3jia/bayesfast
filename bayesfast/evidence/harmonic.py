@@ -10,7 +10,7 @@ def harmonic(logp_p, logq_p):
     try:
         lpp = np.asarray(logp_p)
         lqp = np.asarray(logq_p)
-    except:
+    except Exception:
         raise ValueError('invalid value for the inputs.')
     
     if (lpp.ndim != 1) and (lpp.ndim != 2):

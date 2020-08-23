@@ -14,7 +14,7 @@ import warnings
 try:
     from getdist import plots, MCSamples
     HAS_GETDIST = True
-except:
+except Exception:
     HAS_GETDIST = False
 
 __all__ = ['SIT']
@@ -104,7 +104,7 @@ class SIT:
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('n_iter should be a positive int.')
         self._n_iter = n
     
@@ -138,7 +138,7 @@ class SIT:
         try:
             bw = float(bw)
             assert bw > 0
-        except:
+        except Exception:
             raise ValueError('bw_factor should be a positive float.')
         self._bw_factor = bw
     
@@ -151,7 +151,7 @@ class SIT:
         try:
             m = int(m)
             assert m > 0
-        except:
+        except Exception:
             raise ValueError('m_ica should be a positive int.')
         self._m_ica = m
     
@@ -177,7 +177,7 @@ class SIT:
     def m_plot(self, m):
         try:
             m = int(m)
-        except:
+        except Exception:
             raise ValueError('m_plot should be an int.')
         self._m_plot = m
     
@@ -189,7 +189,7 @@ class SIT:
     def cubic_options(self, co):
         try:
             self._cubic_options = dict(co)
-        except:
+        except Exception:
             raise ValueError('cubic_options should be a dict.')
     
     @property
@@ -200,7 +200,7 @@ class SIT:
     def ica_options(self, io):
         try:
             self._ica_options = dict(io) 
-        except:
+        except Exception:
             raise ValueError('ica_options should be a dict.')
     
     @property
@@ -255,7 +255,7 @@ class SIT:
             try:
                 data = np.array(data)
                 assert data.size > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for data.')
             if data.ndim == 2:
                 self._data = data
@@ -273,7 +273,7 @@ class SIT:
                 try:
                     weights = np.asarray(weights)
                     assert weights.shape == (_n,)
-                except:
+                except Exception:
                     raise ValueError('invalid value for weights.')
                 self._weights = weights
             else:
@@ -290,7 +290,7 @@ class SIT:
         
         try:
             plot = int(plot)
-        except:
+        except Exception:
             raise ValueError('plot should be an int.')
         if (not HAS_GETDIST) and (plot != 0):
             plot = 0
@@ -303,7 +303,7 @@ class SIT:
             try:
                 n_run = int(n_run)
                 assert n_run > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for n_run.')
             if n_run > self.n_iter - self.i_iter:
                 self.n_iter = self.i_iter + n_run
@@ -315,7 +315,7 @@ class SIT:
                 try:
                     y, A, B, m = self._ica(self._data)
                     self._data = self._gaussianize_nd(y)
-                except:
+                except Exception:
                     warnings.warn(
                         "we found that sometimes it goes wrong, but actually "
                         "it can work if we use a different random seed, so "
@@ -363,7 +363,7 @@ class SIT:
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('n should be a positive int.')
         y = self.mvn_generator(np.zeros(self.dim), np.eye(self.dim), n)
         x, log_j = self.backward_transform(y, use_parallel)
@@ -381,7 +381,7 @@ class SIT:
     def forward_transform(self, x, use_parallel=False):
         try:
             y = np.array(x)
-        except:
+        except Exception:
             raise ValueError('invalid value for x.')
         if y.ndim == 1:
             y = y[np.newaxis, :]
@@ -417,7 +417,7 @@ class SIT:
     def backward_transform(self, y, use_parallel=False):
         try:
             x = np.array(y)
-        except:
+        except Exception:
             raise ValueError('invalid value for y.')
         if x.ndim == 1:
             x = x[np.newaxis, :]

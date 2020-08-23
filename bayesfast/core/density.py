@@ -44,7 +44,7 @@ class _PipelineBase:
             if not (scales.ndim == 2 and scales.shape[-1] == 2):
                 raise ValueError('I do not know how to interpret the shape '
                                  'of input_scales.')
-        except:
+        except Exception:
             raise ValueError('Invalid value for input_scales.')
         return scales
     
@@ -69,7 +69,7 @@ class _PipelineBase:
             if not (bounds.ndim == 2 and bounds.shape[-1] == 2):
                 raise ValueError(
                     'I do not know how to interpret the shape of hard_bounds.')
-        except:
+        except Exception:
             raise ValueError('Invalid value for hard_bounds')
         return bounds
     
@@ -360,7 +360,7 @@ class Pipeline(_PipelineBase):
             try:
                 step = int(step)
                 step = step % self.n_module
-            except:
+            except Exception:
                 raise ValueError('{} should be an int or None, instead '
                                  'of {}.'.format(tag, step))
         return step
@@ -465,7 +465,7 @@ class Pipeline(_PipelineBase):
                     var_dict._fun[n] = _output[j]
                 for n in _module._delete_vars:
                     del var_dict._fun[n]
-            except:
+            except Exception:
                 raise RuntimeError(
                     'pipeline fun evaluation failed at step #{}.'.format(i))
             i += di
@@ -548,7 +548,7 @@ class Pipeline(_PipelineBase):
                     var_dict._jac[n] = np.dot(_output_jac[j], _input_jac)
                 for n in _module._delete_vars:
                     del var_dict._fun[n], var_dict._jac[n]
-            except:
+            except Exception:
                 raise RuntimeError(
                     'pipeline fun_and_jac evaluation failed at step '
                     '#{}.'.format(i))
@@ -596,7 +596,7 @@ class Pipeline(_PipelineBase):
             dims = np.atleast_1d(dims).astype(np.int)
             assert np.all(dims > 0)
             assert dims.size > 0 and dims.ndim == 1
-        except:
+        except Exception:
             raise ValueError(
                 'input_dims should be a 1-d array_like of positive int(s), or '
                 'None, instead of {}.'.format(dims))
@@ -644,7 +644,7 @@ class Density(Pipeline, _DensityBase):
     def density_name(self, name):
         try:
             self._density_name = str(name)
-        except:
+        except Exception:
             raise ValueError('invalid value for density_name.')
     
     def logp(self, x, original_space=None, use_surrogate=None):
@@ -728,7 +728,7 @@ class Density(Pipeline, _DensityBase):
                 assert alpha > 0
                 self._alpha = alpha
                 self._alpha_2 = alpha**2
-            except:
+            except Exception:
                 raise ValueError('invalid value for alpha.')
         if alpha_p is None:
             if alpha is None:
@@ -739,20 +739,20 @@ class Density(Pipeline, _DensityBase):
                 alpha_p = float(alpha_p)
                 assert alpha_p > 0
                 self._alpha_p = alpha_p
-            except:
+            except Exception:
                 raise ValueError('invalid value for alpha_p.')
         try:
             gamma = float(gamma)
             assert gamma > 0
             self._gamma = gamma
-        except:
+        except Exception:
             raise ValueError('invalid value for gamma.')
     
     def _set_decay(self, x):
         try:
             x = np.ascontiguousarray(x)
             assert x.ndim == 2
-        except:
+        except Exception:
             raise ValueError('invalid value for x.')
         self._mu = np.mean(x, axis=0)
         self._hess = np.linalg.inv(np.cov(x, rowvar=False))
@@ -1005,7 +1005,7 @@ class DensityLite(_PipelineBase, _DensityBase):
             try:
                 size = int(size)
                 assert size > 0
-            except:
+            except Exception:
                 raise ValueError('input_size should be a positive int, or '
                                  'None, instead of {}.'.format(size))
             self._input_size = size

@@ -13,7 +13,7 @@ from multiprocess import Manager
 try:
     from distributed import Pub, Sub
     HAS_DASK = True
-except:
+except Exception:
     HAS_DASK = False
 
 __all__ = ['sample']
@@ -128,7 +128,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                         t._logp_original = density.to_original_density(
                             t.logp, x_trans=t.samples)
                     return t
-                except:
+                except Exception:
                     if use_dask:
                         pub = Pub(dask_key)
                         pub.put(['Error', i])

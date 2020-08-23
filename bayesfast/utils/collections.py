@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import numpy as np
 import copy
+import warnings
 
 __all__ = ['VariableDict', 'PropertyList']
 
@@ -15,27 +16,27 @@ class VariableDict:
         if isinstance(key, str):
             try:
                 fun = self._fun[key]
-            except:
+            except Exception:
                 fun = None
             try:
                 jac = self._jac[key]
-            except:
+            except Exception:
                 jac = None
             if fun is None and jac is None:
                 warnings.warn(
                     'you asked for the key "{}", but we found neither its '
-                    'fun nor its jac.'.format(k), RuntimeWarning)
+                    'fun nor its jac.'.format(key), RuntimeWarning)
             return np.asarray((fun, jac, 0))[:-1]
         elif isinstance(key, (list, tuple, np.ndarray)):
             new_dict = VariableDict()
             for k in key:
                 try:
                     new_dict._fun[k] = self._fun[k]
-                except:
+                except Exception:
                     new_dict._fun[k] = None
                 try:
                     new_dict._jac[k] = self._jac[k]
-                except:
+                except Exception:
                     new_dict._jac[k] = None
                 if new_dict._fun[k] is None and new_dict._jac[k] is None:
                     warnings.warn(
@@ -53,7 +54,7 @@ class VariableDict:
             value = (value[0], value[1])
             self._fun[key] = value[0]
             self._jac[key] = value[1]
-        except:
+        except Exception:
             raise ValueError('failed to get the values for fun and jac.')
     
     @property

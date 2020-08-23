@@ -54,7 +54,7 @@ class _HStats:
         else:
             try:
                 since_iter = int(since_iter)
-            except:
+            except Exception:
                 raise ValueError('invalid value for since_iter.')
         return OrderedDict(
             zip(self.stats_items, [getattr(self, '_' + si)[since_iter:] for si

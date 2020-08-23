@@ -23,7 +23,7 @@ def spawn_generator(current_generator, n, jump_current=True):
     try:
         n = int(n)
         assert n > 0
-    except:
+    except Exception:
         raise ValueError('n should be a positive int.')
     spawned = [np.random.default_rng(current_generator.bit_generator.jumped(i))
                for i in range(1, n + 1)]

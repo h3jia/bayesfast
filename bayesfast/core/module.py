@@ -108,20 +108,20 @@ class Module:
                 return args
         try:
             cargs = np.concatenate(args, axis=0)
-        except:
+        except Exception:
             raise ValueError('failed to concatenate {}.'.format(tag_1))
         if tag == 'input' and self._input_scales is not None:
             try:
                 cargs = ((cargs - self._input_scales[:, 0]) / 
                          self._input_scales_diff)
-            except:
+            except Exception:
                 raise ValueError('failed to rescale the input variables.')
         if strategy is True:
             return [cargs]
         elif isinstance(strategy, np.ndarray):
             try:
                 return [cargs[cum[i]:cum[i + 1]] for i in range(strategy.size)]
-            except:
+            except Exception:
                 raise ValueError('failed to split {}.'.format(tag_1))
         else:
             raise RuntimeError('unexpected value for {}.'.format(tag_2))
@@ -145,7 +145,7 @@ class Module:
                 args = [f(args)]
             assert all(a.ndim == dim for a in args)
             return args
-        except:
+        except Exception:
             raise ValueError('invalid value for {}.'.format(tag))
     
     @property
@@ -268,7 +268,7 @@ class Module:
                 assert all_isinstance(names, str)
                 if not allow_empty:
                     assert len(names) > 0
-            except:
+            except Exception:
                 raise ValueError(
                     '{}_vars should be a str or an array_like of str, instead '
                     'of {}'.format(tag, names))
@@ -326,7 +326,7 @@ class Module:
         try:
             recombine = np.asarray(recombine, dtype=np.int)
             assert np.all(recombine > 0) and recombine.ndim == 1
-        except:
+        except Exception:
             raise ValueError(
                 '{}_recombine should be a bool or an 1-d array_like of '
                 'int, instead of {}'.format(tag, recombine))
@@ -372,7 +372,7 @@ class Module:
             if not (scales.ndim == 2 and scales.shape[-1] == 2):
                 raise ValueError('I do not know how to interpret the shape '
                                  'of input_scales.')
-        except:
+        except Exception:
             raise ValueError('Invalid value for input_scales.')
         self._input_scales_diff = scales[:, 1] - scales[:, 0]
         return scales
@@ -411,7 +411,7 @@ class Module:
         else:
             try:
                 return tuple(args)
-            except:
+            except Exception:
                 raise ValueError('{}_args should be a tuple, instead of '
                                  '{}.'.format(tag, args))
     
@@ -422,7 +422,7 @@ class Module:
         else:
             try:
                 return dict(kwargs)
-            except:
+            except Exception:
                 raise ValueError('{}_kwargs should be a dict, instead of '
                                  '{}.'.format(tag, kwargs))
     
@@ -525,7 +525,7 @@ class Surrogate(Module):
                 assert not isinstance(self.recombine_input, bool)
                 input_size = int(np.sum(self.recombine_input))
                 assert input_size > 0
-            except:
+            except Exception:
                 raise ValueError(
                     'failed to infer input_size from recombine_input.')
         if output_size is None:
@@ -533,7 +533,7 @@ class Surrogate(Module):
                 assert not isinstance(self.recombine_output, bool)
                 output_size = int(np.sum(self.recombine_output))
                 assert output_size > 0
-            except:
+            except Exception:
                 raise ValueError(
                     'failed to infer output_size from recombine_output.')
         self.input_size = input_size
@@ -545,7 +545,7 @@ class Surrogate(Module):
         if not hasattr(self, '_jac'):
             self._jac = None
         if not hasattr(self, '_fun_and_jac'):
-            sele._fun_and_jac = None
+            self._fun_and_jac = None
         self._initialized = True
     
     def _fun_jac_init(self, fun, jac, fun_and_jac):
@@ -561,7 +561,7 @@ class Surrogate(Module):
             i_step, n_step = s
             assert n_step > 0
             self._scope = SurrogateScope(int(i_step), int(n_step))
-        except:
+        except Exception:
             raise ValueError('invalid value for scope.')
     
     @property
@@ -585,7 +585,7 @@ class Surrogate(Module):
             try:
                 size = int(size)
                 assert size > 0
-            except:
+            except Exception:
                 raise ValueError('input_size should be a positive int.')
             self._input_size = size
     
@@ -602,7 +602,7 @@ class Surrogate(Module):
             try:
                 size = int(size)
                 assert size > 0
-            except:
+            except Exception:
                 raise ValueError('output_size should be a positive int.')
             self._output_size = size
     

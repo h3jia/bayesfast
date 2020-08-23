@@ -13,7 +13,7 @@ def bridge(logp_p, logp_q, logq_p, logq_q):
         lpq = np.asarray(logp_q)
         lqp = np.asarray(logq_p)
         lqq = np.asarray(logq_q)
-    except:
+    except Exception:
         raise ValueError('invalid value for the inputs.')
     
     if (lqq.ndim != 1) and (lqq.ndim != 2):

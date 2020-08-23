@@ -78,7 +78,7 @@ class BaseStep:
     def alpha_n(self, a):
         try:
             a = float(a)
-        except:
+        except Exception:
             raise ValueError('alpha_n should be a float.')
         self._alpha_n = a
     
@@ -98,7 +98,7 @@ class BaseStep:
         else:
             try:
                 self._x_0 = np.atleast_2d(x).copy()
-            except:
+            except Exception:
                 raise ValueError('invalid value for x_0.')
     
     @property
@@ -187,7 +187,7 @@ class OptimizeStep(BaseStep):
         try:
             eps = float(eps)
             assert eps > 0
-        except:
+        except Exception:
             raise ValueError('eps_pp should be a positive float.')
         self._eps_pp = eps
     
@@ -200,7 +200,7 @@ class OptimizeStep(BaseStep):
         try:
             eps = float(eps)
             assert eps > 0
-        except:
+        except Exception:
             raise ValueError('eps_pq should be a positive float.')
         self._eps_pq = eps
     
@@ -213,7 +213,7 @@ class OptimizeStep(BaseStep):
         try:
             mi = int(mi)
             assert mi > 0
-        except:
+        except Exception:
             raise ValueError('max_iter should be a positive int.')
         self._max_iter = mi
     
@@ -263,7 +263,7 @@ class SampleStep(BaseStep):
     def reuse_samples(self, rs):
         try:
             self._reuse_samples = int(rs)
-        except:
+        except Exception:
             raise ValueError('invalid value for reuse_samples.')
     
     @property
@@ -291,7 +291,7 @@ class SampleStep(BaseStep):
         try:
             am = float(am)
             assert 0. < am <= 1.
-        except:
+        except Exception:
             raise ValueError('invalid value for alpha_min.')
         self._alpha_min = am
     
@@ -304,7 +304,7 @@ class SampleStep(BaseStep):
         try:
             asu = float(asu)
             assert asu > 0.
-        except:
+        except Exception:
             raise ValueError('invalid value for alpha_supp.')
         self._alpha_supp = asu
     
@@ -330,7 +330,7 @@ class PostStep:
     def n_is(self, n):
         try:
             self._n_is = int(n)
-        except:
+        except Exception:
             raise ValueError('invalid value for n_is.')
     
     @property
@@ -341,7 +341,7 @@ class PostStep:
     def k_trunc(self, k):
         try:
             self._k_trunc = float(k)
-        except:
+        except Exception:
             raise ValueError('invalid value for k_trunc.')
     
     @property
@@ -688,7 +688,7 @@ class Recipe:
                 _grad_0 = self.density.grad(x_0, original_space=False)
                 assert np.all(np.isfinite(_grad_0))
                 _grad = lambda x: self.density.grad(x, original_space=False)
-            except:
+            except Exception:
                 _grad = None
             # TODO: allow user-defined hessian for optimizer?
             # TODO: if generating pseudo random numbers in Laplace
@@ -1026,6 +1026,12 @@ class Recipe:
             
             if step.n_is != 0:
                 if step.n_is < 0 or step.n_is > samples.shape[0]:
+                    if step.n_is > 0:
+                        warnings.warn(
+                            'you set n_is as {}, but I can only get {} samples '
+                            'from the previous step, so I will use all these '
+                            'samples to do IS for now.'.format(step.n_is,
+                            samples.shape[0]), RuntimeWarning)
                     n_is = samples.shape[0]
                 else:
                     n_is = step.n_is
@@ -1078,7 +1084,7 @@ class Recipe:
             warnings.warn('as of now, n_call does not take the possible logp '
                           'calls during evidence evaluation into account.',
                           RuntimeWarning)
-        except:
+        except Exception:
             n_call = None
         recipe_trace._r_post = PostResult(
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
@@ -1104,5 +1110,5 @@ class Recipe:
     def get(self):
         try:
             return self.recipe_trace._r_post
-        except:
+        except Exception:
             raise RuntimeError('you have not run a PostStep.')

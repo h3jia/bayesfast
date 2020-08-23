@@ -25,14 +25,14 @@ For now, please install BayesFast from source with:
 ```
 git clone https://github.com/HerculesJack/bayesfast
 cd bayesfast
-pip install -e .
+pip install -e . # please use editable mode for now
 ```
 
 ## Dependencies
 
-BayesFast depends on cython, numdifftools, multiprocess, matplotlib, numpy,
-scikit-learn, scipy and threadpoolctl.
-Currently, it is only tested on Linux with Python 3.6.
+BayesFast requires python>=3.6, cython, extension-helpers, numdifftools,
+multiprocess, matplotlib, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
+Currently, it has been tested on Ubuntu and Mac, with python 3.6-3.8.
 
 ## License
 

@@ -9,7 +9,7 @@ def importance(logp_q, logq_q):
     try:
         lpq = np.asarray(logp_q)
         lqq = np.asarray(logq_q)
-    except:
+    except Exception:
         raise ValueError('invalid value for the inputs.')
     
     if (lqq.ndim != 1) and (lqq.ndim != 2):
