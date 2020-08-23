@@ -38,6 +38,7 @@ ext_modules = [
     )
 ]
 
+
 setup(
     name='bayesfast',
     version='0.1.0dev2',
