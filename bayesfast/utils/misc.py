@@ -27,7 +27,7 @@ class SystematicResampler:
             assert np.all(np.diff(self._nodes) > 0)
             assert self._nodes[0] >= 0 and self._nodes[-1] <= 100
             self._n_node = self._nodes.size
-        except:
+        except Exception:
             raise ValueError('invalid value for nodes.')
         
         if weights is None:
@@ -39,7 +39,7 @@ class SystematicResampler:
                 assert self._weights.ndim == 1
                 assert self._weights.size == self._n_node - 1
                 self._weights = self._weights / np.sum(self._weights)
-            except:
+            except Exception:
                 raise ValueError('invalid value for weights.')
         
         self._require_unique = bool(require_unique)
@@ -48,12 +48,12 @@ class SystematicResampler:
         try:
             a = np.asarray(a, dtype=np.float)
             assert a.ndim == 1
-        except:
+        except Exception:
             raise ValueError('invalid value for a.')
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('invalid value for n.')
         
         n_w = (n * self._weights).astype(np.int)

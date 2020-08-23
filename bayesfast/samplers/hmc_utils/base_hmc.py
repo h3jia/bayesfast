@@ -9,7 +9,7 @@ from multiprocess import Lock
 try:
     from distributed import Pub
     HAS_DASK = True
-except:
+except Exception:
     HAS_DASK = False
 
 __all__ = ['BaseHMC']
@@ -42,7 +42,7 @@ class BaseHMC:
         try:
             logp_0, grad_0 = logp_and_grad(self._sample_trace.x_0)
             assert np.isfinite(logp_0).all() and np.isfinite(grad_0).all()
-        except:
+        except Exception:
             raise ValueError('failed to get finite logp and/or grad at x_0.')
     
     '''
@@ -63,7 +63,7 @@ class BaseHMC:
         """Perform a single HMC iteration."""
         try:
             q0 = self._sample_trace._samples[-1]
-        except:
+        except Exception:
             q0 = self._sample_trace.x_0
             assert q0.ndim == 1
         p0 = self.sample_trace.metric.random(self.sample_trace.random_generator)
@@ -104,7 +104,7 @@ class BaseHMC:
                 try:
                     n_run = int(n_run)
                     assert n_run > 0
-                except:
+                except Exception:
                     raise ValueError(self._prefix + 'invalid value for n_run.')
                 if n_run > n_iter - i_iter:
                     self._sample_trace.n_iter = i_iter + n_run
@@ -116,7 +116,7 @@ class BaseHMC:
                     try:
                         n_update = int(n_update)
                         assert n_update > 0
-                    except:
+                    except Exception:
                         warnings.warn(
                             self._prefix + 'invalid value for n_update. Using '
                             'n_run//5 for now.', RuntimeWarning)
@@ -187,7 +187,7 @@ class BaseHMC:
             if HAS_DASK:
                 try:
                     key = str(key)
-                except:
+                except Exception:
                     raise ValueError('invalid value for dask_key.')
             else:
                 raise RuntimeError('you give me the dask_key but have not '
@@ -236,7 +236,7 @@ class BaseTHMC(BaseHMC):
             q0 = self.sample_trace._samples[-1]
             u0 = self.sample_trace.stats._u[-1]
             Q0 = np.append(u0, q0)
-        except:
+        except Exception:
             q0 = self.sample_trace.x_0
             assert q0.ndim == 1
             u0 = np.random.normal(0,1)

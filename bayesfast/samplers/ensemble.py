@@ -2,7 +2,7 @@ import numpy as np
 HAS_EMCEE = True
 try:
     import emcee
-except:
+except Exception:
     HAS_EMCEE = False
 
 __all__ = ['EnsembleSampler']

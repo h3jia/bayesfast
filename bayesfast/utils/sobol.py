@@ -29,13 +29,13 @@ def uniform(low, high, size, skip=1, dir_file=df):
     try:
         size = int(size)
         assert size > 0
-    except:
+    except Exception:
         raise ValueError(
             'size should be a positive int, instead of {}.'.format(size))
     try:
         skip = int(skip)
         assert skip >= 0
-    except:
+    except Exception:
         raise ValueError('skip should be a non-negative int, instead of '
                          '{}.'.format(skip))
     n_all = size + skip

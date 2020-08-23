@@ -43,7 +43,7 @@ class SampleTrace:
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('n_chain should be a positive int, instead of '
                              '{}.'.format(n))
         self._n_chain = n
@@ -52,7 +52,7 @@ class SampleTrace:
     def n_iter(self):
         try:
             return self._n_iter
-        except:
+        except Exception:
             return 0
     
     @n_iter.setter
@@ -60,7 +60,7 @@ class SampleTrace:
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('n_iter should be a positive int, instead of '
                              '{}.'.format(n))
         if n < self.i_iter:
@@ -80,7 +80,7 @@ class SampleTrace:
     def n_warmup(self):
         try:
             return self._n_warmup
-        except:
+        except Exception:
             return 0
     
     @n_warmup.setter
@@ -88,7 +88,7 @@ class SampleTrace:
         try:
             n = int(n)
             assert n > 0
-        except:
+        except Exception:
             raise ValueError('n_warmup should be a positive int, instead of '
                              '{}.'.format(n))
         self._warmup_check(n)
@@ -120,7 +120,7 @@ class SampleTrace:
         else:
             try:
                 self._x_0 = np.atleast_1d(x).copy()
-            except:
+            except Exception:
                 raise ValueError('invalid value for x_0.')
     
     # TODO: maybe we can have a better name for this?
@@ -136,7 +136,7 @@ class SampleTrace:
     def input_size(self):
         try:
             return self.x_0.shape[-1]
-        except:
+        except Exception:
             return None
     
     @property
@@ -185,7 +185,7 @@ class _HTrace(SampleTrace):
             i = int(i)
             assert i >= 0
             assert i < self.n_chain
-        except:
+        except Exception:
             raise ValueError(
                 'i should satisfy 0 <= i < n_chain, but you give {}.'.format(i))
         self._chain_id = i
@@ -218,7 +218,7 @@ class _HTrace(SampleTrace):
         try:
             max_change = float(max_change)
             assert max_change > 0
-        except:
+        except Exception:
             raise ValueError('max_change should be a positive float, instead '
                              'of {}.'.format(max_change))
         self._max_change = max_change
@@ -235,7 +235,7 @@ class _HTrace(SampleTrace):
     def i_iter(self):
         try:
             return len(self._samples)
-        except:
+        except Exception:
             return 0
     
     @property
@@ -260,7 +260,7 @@ class _HTrace(SampleTrace):
     def stats(self):
         try:
             return self._stats
-        except:
+        except Exception:
             raise NotImplementedError('stats is not defined for this '
                                       'SampleTrace.')
     
@@ -287,7 +287,7 @@ class _HTrace(SampleTrace):
         else:
             try:
                 since_iter = int(since_iter)
-            except:
+            except Exception:
                 raise ValueError('invalid value for since_iter.')
         if since_iter >= self.i_iter - 1:
             raise ValueError('since_iter is too large. Nothing to return.')
@@ -330,7 +330,7 @@ class _HTrace(SampleTrace):
                 try:
                     step_size = float(step_size)
                     assert step_size > 0
-                except:
+                except Exception:
                     raise ValueError('invalid value for step_size.')
             self._step_size = step_size
             self._adapt_step_size = bool(adapt_step_size)
@@ -338,27 +338,27 @@ class _HTrace(SampleTrace):
             try:
                 target_accept = float(target_accept)
                 assert 0 < target_accept < 1
-            except:
+            except Exception:
                 raise ValueError('invalid value for target_accept.')
             self._target_accept = target_accept
             
             try:
                 gamma = float(gamma)
                 assert gamma != 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for gamma.')
             self._gamma = gamma
             
             try:
                 k = float(k)
-            except:
+            except Exception:
                 raise ValueError('invalid value for k.')
             self._k = k
             
             try:
                 t_0 = float(t_0)
                 assert t_0 >= 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for t_0.')
             self._t_0 = t_0
     
@@ -384,7 +384,7 @@ class _HTrace(SampleTrace):
                     metric = np.asarray(metric)
                     n = metric.shape[0]
                     assert metric.shape == (n,) or metric.shape == (n, n)
-                except:
+                except Exception:
                     raise ValueError('invalid value for metric.')
             self._metric = metric
             self._adapt_metric = bool(adapt_metric)
@@ -395,28 +395,28 @@ class _HTrace(SampleTrace):
                 try:
                     initial_mean = np.atleast_1d(initial_mean)
                     assert initial_mean.ndim == 1
-                except:
+                except Exception:
                     raise ValueError('invalid value for initial_mean.')
             self._initial_mean = initial_mean
             
             try:
                 initial_weight = float(initial_weight)
                 assert initial_weight > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for initial_weight.')
             self._initial_weight = initial_weight
             
             try:
                 adapt_window = int(adapt_window)
                 assert adapt_window > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for adapt_window.')
             self._adapt_window = adapt_window
             
             try:
                 update_window = int(update_window)
                 assert update_window > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for update_window.')
             self._update_window = update_window
             self._doubling = bool(doubling)
@@ -479,7 +479,7 @@ class HTrace(_HTrace):
         try:
             nis = int(nis)
             assert nis > 0
-        except:
+        except Exception:
             raise ValueError('n_int_step should be a positive int, instead '
                              'of {}.'.format(nis))
         self._n_int_step = nis
@@ -520,7 +520,7 @@ class NTrace(_HTrace):
         try:
             mt = int(mt)
             assert mt > 0
-        except:
+        except Exception:
             raise ValueError('max_treedepth should be a postive int, instead '
                              'of {}.'.format(mt))
         self._max_treedepth = mt
@@ -551,7 +551,7 @@ class _TTrace:
     def density_base(self, db):
         try:
             assert isinstance(db, (Density, DensityLite))
-        except:
+        except Exception:
             raise ValueError('invalid value for density_base.')
         self._density_base = db
     
@@ -563,7 +563,7 @@ class _TTrace:
     def logxi(self, lxi):
         try:
             self._logxi = float(lxi)
-        except:
+        except Exception:
             raise ValueError('invalid value for logxi.')
     
     @property
@@ -648,7 +648,7 @@ class TraceTuple:
                 assert type(t) == _type
                 assert t.chain_id == i
             self._sample_traces = sample_traces
-        except:
+        except Exception:
             raise ValueError('invalid value for sample_traces.')
     
     @property
@@ -673,7 +673,7 @@ class TraceTuple:
         try:
             for t in self.sample_traces:
                 t.n_iter = n
-        except:
+        except Exception:
             for t in self.sample_traces:
                 t._n_iter = tmp
             raise
@@ -692,7 +692,7 @@ class TraceTuple:
         try:
             for t in self.sample_traces:
                 t.n_warmup = n
-        except:
+        except Exception:
             for t in self.sample_traces:
                 t._n_warmup = tmp
             raise

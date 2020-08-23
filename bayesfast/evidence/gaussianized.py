@@ -95,7 +95,7 @@ class _GBaseQ(_GBase):
             try:
                 n = int(n)
                 assert n > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for n_q.')
         self._n_q = n
     
@@ -111,7 +111,7 @@ class _GBaseQ(_GBase):
             try:
                 f = float(f)
                 assert f > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for f_call.')
         self._f_call = f
     
@@ -124,7 +124,7 @@ class _GBaseQ(_GBase):
             try:
                 x_p = np.asarray(x_p)
                 assert 2 <= x_p.ndim <= 3
-            except:
+            except Exception:
                 raise ValueError('invalid value for x_p.')
         
         if self.n_q is not None:
@@ -156,7 +156,7 @@ class _GBaseQ(_GBase):
         try:
             assert x_p.shape[-1] > 1
             assert np.prod(x_p.shape[:-1]) > 1
-        except:
+        except Exception:
             raise ValueError('invalid shape for x_p.')
         if x_p.shape[0] == 1:
             x_p = x_p[0] # the case for one single chain
@@ -190,7 +190,7 @@ class GBS(_GBaseQ):
                 logp_p = np.asarray(logp_p)
                 assert logp_p.shape == x_p.shape[:-1]
                 logp_p = logp_p[n_half:]
-            except:
+            except Exception:
                 warnings.warn(
                     'the logp_p you gave me seems not correct. Will recompute '
                     'it from logp and x_p.', RuntimeWarning)
@@ -244,13 +244,13 @@ class GHM(_GBase):
             try:
                 x_p = np.asarray(x_p)
                 assert 2 <= x_p.ndim <= 3
-            except:
+            except Exception:
                 raise ValueError('invalid value for x_p.')
         
         try:
             assert x_p.shape[-1] > 1
             assert np.prod(x_p.shape[:-1]) > 1
-        except:
+        except Exception:
             raise ValueError('invalid shape for x_p.')
         if x_p.shape[0] == 1:
             x_p = x_p[0] # the case for one single chain
@@ -262,7 +262,7 @@ class GHM(_GBase):
                 logp_p = np.asarray(logp_p)
                 assert logp_p.shape == x_p.shape[:-1]
                 logp_p = logp_p[n_half:]
-            except:
+            except Exception:
                 warnings.warn(
                     'the logp_p you gave me seems not correct. Will recompute '
                     'it from logp and x_p.', RuntimeWarning)

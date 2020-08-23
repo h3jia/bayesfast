@@ -62,7 +62,7 @@ class Laplace:
         else:
             try:
                 self._optimize_method = str(optimize_method)
-            except:
+            except Exception:
                 raise ValueError('invalid value for optimize_method.')
         
         if optimize_tol is None:
@@ -71,20 +71,20 @@ class Laplace:
             try:
                 optimize_tol = float(optimize_tol)
                 assert optimize_tol > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for optimize_tol.')
         self._optimize_tol = optimize_tol
         
         try:
             self._optimize_options = dict(optimize_options)
-        except:
+        except Exception:
             raise ValueError('invalid value for optimize_options.')
         
         try:
             max_cond = float(max_cond)
             assert max_cond > 0
             self._max_cond = max_cond
-        except:
+        except Exception:
             raise ValueError('max_cond should be a positive float.')
         
         if n_sample is None:
@@ -93,7 +93,7 @@ class Laplace:
             try:
                 n_sample = int(n_sample)
                 assert n_sample > 0
-            except:
+            except Exception:
                 raise ValueError('invalid value for n_sample.')
         self._n_sample = n_sample
         
@@ -101,7 +101,7 @@ class Laplace:
             beta = float(beta)
             assert beta > 0
             self._beta = beta
-        except:
+        except Exception:
             raise ValueError('beta should be a positive float.')
         
         if mvn_generator is None:
@@ -113,12 +113,12 @@ class Laplace:
         
         try:
             self._grad_options = dict(grad_options)
-        except:
+        except Exception:
             raise ValueError('invalid value for grad_options.')
         
         try:
             self._hess_options = dict(hess_options)
-        except:
+        except Exception:
             raise ValueError('invalid value for hess_options.')
     
     def run(self, logp, x_0=None, grad=None, hess=None):
@@ -127,7 +127,7 @@ class Laplace:
         try:
             x_0 = np.atleast_1d(x_0)
             assert x_0.ndim == 1
-        except:
+        except Exception:
             raise ValueError('invalid value for x_0.')
         if self._n_sample is None:
             n_sample = min(1000, x_0.shape[-1] * 10)

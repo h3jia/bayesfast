@@ -238,7 +238,7 @@ class PolyModel(Surrogate):
                 alpha = float(alpha)
                 assert alpha > 0
                 self._alpha = alpha
-            except:
+            except Exception:
                 raise ValueError('invalid value for alpha.')
         if alpha_p is None:
             if alpha is None:
@@ -249,7 +249,7 @@ class PolyModel(Surrogate):
                 alpha_p = float(alpha_p)
                 assert alpha_p > 0
                 self._alpha_p = alpha_p
-            except:
+            except Exception:
                 raise ValueError('invalid value for alpha_p.')
         self._center_max = bool(center_max)
     
@@ -257,7 +257,7 @@ class PolyModel(Surrogate):
         try:
             x = np.ascontiguousarray(x)
             assert x.shape[-1] == self._input_size and x.ndim == 2
-        except:
+        except Exception:
             raise ValueError('invalid value for x.')
         self._mu = np.mean(x, axis=0)
         self._hess = np.linalg.inv(np.cov(x, rowvar=False))
@@ -272,7 +272,7 @@ class PolyModel(Surrogate):
             try:
                 logp = np.asarray(logp)
                 assert x.shape[0] == logp.shape[0] and logp.ndim == 1
-            except:
+            except Exception:
                 raise ValueError('invalid value for logp.')
             mu_f = x[np.argmax(logp)]
         else:
