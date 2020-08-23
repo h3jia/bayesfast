@@ -12,6 +12,7 @@ on:
 jobs:
   build:
     name: Test on ${{ matrix.os }} and Python ${{ matrix.python-version }}
+    if: ${{ always() }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
