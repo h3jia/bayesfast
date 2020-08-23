@@ -25,7 +25,15 @@ For now, please install BayesFast from source with:
 ```
 git clone https://github.com/HerculesJack/bayesfast
 cd bayesfast
-pip install -e . # please use editable mode for now
+pip install -e .
+# you can drop the -e option if you don't want to use editable mode
+# but note that pytest may not work correctly in this case
+```
+
+To check if BayesFast is built correctly, you can do:
+
+```
+pytest # for this you will need to have pytest installed
 ```
 
 ## Dependencies
