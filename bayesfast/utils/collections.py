@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import numpy as np
 import copy
+import warnings
 
 __all__ = ['VariableDict', 'PropertyList']
 
@@ -24,7 +25,7 @@ class VariableDict:
             if fun is None and jac is None:
                 warnings.warn(
                     'you asked for the key "{}", but we found neither its '
-                    'fun nor its jac.'.format(k), RuntimeWarning)
+                    'fun nor its jac.'.format(key), RuntimeWarning)
             return np.asarray((fun, jac, 0))[:-1]
         elif isinstance(key, (list, tuple, np.ndarray)):
             new_dict = VariableDict()

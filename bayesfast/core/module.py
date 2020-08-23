@@ -545,7 +545,7 @@ class Surrogate(Module):
         if not hasattr(self, '_jac'):
             self._jac = None
         if not hasattr(self, '_fun_and_jac'):
-            sele._fun_and_jac = None
+            self._fun_and_jac = None
         self._initialized = True
     
     def _fun_jac_init(self, fun, jac, fun_and_jac):
