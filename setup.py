@@ -49,7 +49,7 @@ setup(
                  'posterior sampling and evidence estimation.'),
     url='https://github.com/HerculesJack/bayesfast',
     license='Apache License, Version 2.0',
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     install_requires=['cython', 'extension-helpers', 'numdifftools',
                       'multiprocess', 'matplotlib', 'numpy>=1.17',
                       'scikit-learn', 'scipy', 'threadpoolctl'],
