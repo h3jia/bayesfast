@@ -11,19 +11,20 @@ on:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    name: Test on ${{ matrix.os }} and Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: [3.5, 3.6, 3.7, 3.8]
 
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python ${{ matrix.python-version }} on 
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+    - name: Install bayesfast
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
