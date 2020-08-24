@@ -612,4 +612,3 @@ class Surrogate(Module):
     @property
     def n_param(self):
         raise NotImplementedError('Abstract Property.')
-
