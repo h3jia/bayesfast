@@ -8,7 +8,7 @@ __all__ = ['DualAverageAdaptation']
 
 
 class DualAverageAdaptation:
-    
+
     def __init__(self, initial_step, target, gamma, k, t_0, adapt=True):
         self._log_step = np.log(initial_step)
         self._log_bar = self._log_step

@@ -13,11 +13,11 @@ TProposal = namedtuple("Proposal", "q, u, weight, energy, logp, p_accept")
 
 
 class TTree(Tree):
-    
+
     def _get_proposal(self, point, p_accept):
         return TProposal(point.q, point.u, point.weight, point.energy,
                          point.logp, p_accept)
-    
+
     def stats(self):
         return {
             'u': self.proposal.u,
@@ -33,9 +33,9 @@ class TTree(Tree):
 
 
 class TNUTS(BaseTHMC, NUTS):
-    
+
     _expected_trace = TNTrace
-    
+
     _expected_stats = TNStepStats
-    
+
     _expected_tree = TTree

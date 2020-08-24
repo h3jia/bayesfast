@@ -20,10 +20,10 @@ Subtree = namedtuple("Subtree", "left, right, p_sum, proposal, log_size, "
 
 
 class Tree:
-    
+
     def _get_proposal(self, point, p_accept):
         return Proposal(point.q, point.energy, point.logp, p_accept)
-    
+
     def __init__(self, ndim, integrator, start, step_size, max_change, logbern):
         self.ndim = ndim
         self.integrator = integrator
@@ -190,18 +190,18 @@ class Tree:
 
 
 class NUTS(BaseHMC):
-    
+
     _expected_trace = NTrace
-    
+
     _expected_stats = NStepStats
-    
+
     _expected_tree = Tree
-    
+
     def logbern(self, logp):
         if np.isnan(logp):
             raise FloatingPointError("logp can't be nan.")
         return np.log(self.sample_trace.random_generator.uniform()) < logp
-    
+
     def _hamiltonian_step(self, start, p0, step_size):
         tree = self._expected_tree(len(p0), self.integrator, start, step_size,
                                    self.sample_trace.max_change, self.logbern)

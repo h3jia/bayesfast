@@ -41,13 +41,13 @@ class _HStats:
     def __init__(self):
         for si in self.stats_items:
             setattr(self, '_' + si, [])
-    
+
     def update(self, step_stats):
         if not isinstance(step_stats, self._step_stats):
             raise ValueError('invalid value for step_stats.')
         for si in self.stats_items:
             getattr(self, '_' + si).append(getattr(step_stats, si))
-    
+
     def get(self, since_iter=None, include_warmup=False):
         if since_iter is None:
             since_iter = 0 if include_warmup else self.n_warmup
@@ -59,17 +59,17 @@ class _HStats:
         return OrderedDict(
             zip(self.stats_items, [getattr(self, '_' + si)[since_iter:] for si
             in self.stats_items]))
-    
+
     __call__ = get
-    
+
     @property
     def stats_items(self):
         raise NotImplementedError('Abstract property.')
-    
+
     @property
     def n_iter(self):
         return len(self._logp)
-    
+
     @property
     def n_warmup(self):
         return self._warmup.index(False)
@@ -80,7 +80,7 @@ class HStats(_HStats):
     @property
     def stats_items(self):
         return hstats_items
-    
+
     _step_stats = HStepStats
 
 
@@ -89,7 +89,7 @@ class NStats(_HStats):
     @property
     def stats_items(self):
         return nstats_items
-    
+
     _step_stats = NStepStats
 
 
@@ -105,7 +105,7 @@ class THStats(_HStats, _TStats):
     @property
     def stats_items(self):
         return thstats_items
-    
+
     _step_stats = THStepStats
 
 
@@ -114,5 +114,5 @@ class TNStats(_HStats, _TStats):
     @property
     def stats_items(self):
         return tnstats_items
-    
+
     _step_stats = TNStepStats

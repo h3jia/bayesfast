@@ -33,27 +33,27 @@ class ParallelBackend:
             return backend
         else:
             return super(ParallelBackend, cls).__new__(cls)
-    
+
     def __init__(self, backend=None):
         if isinstance(backend, ParallelBackend):
             return
         self.backend = backend
-    
+
     def __enter__(self):
         if self.backend is None or isinstance(self.backend, int):
             self._backend_activated = Pool(self.backend)
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.backend is None or isinstance(self.backend, int):
             self._backend_activated.close()
             self._backend_activated.join()
             self._backend_activated = None
-    
+
     @property
     def backend(self):
         return self._backend
-    
+
     @backend.setter
     def backend(self, be):
         if be is None or (isinstance(be, int) and be > 0):
@@ -65,11 +65,11 @@ class ParallelBackend:
         else:
             raise ValueError('invalid value for backend.')
         self._backend = be
-    
+
     @property
     def backend_activated(self):
         return self._backend_activated
-    
+
     @property
     def kind(self):
         if self.backend is None or isinstance(self.backend, int):
@@ -80,7 +80,7 @@ class ParallelBackend:
             return 'dask'
         else:
             raise RuntimeError('unexpected value for self.backend.')
-    
+
     def map(self, fun, *iters):
         if self.backend_activated is None:
             raise RuntimeError('the backend is not activated. Please use it in '
@@ -92,7 +92,7 @@ class ParallelBackend:
                 self.backend_activated.map(fun, *iters))
         else:
             raise RuntimeError('unexpected value for self.backend_activated.')
-    
+
     def map_async(self, fun, *iters):
         if self.backend_activated is None:
             raise RuntimeError('the backend is not activated. Please use it in '
@@ -103,7 +103,7 @@ class ParallelBackend:
             return self.backend_activated.map(fun, *iters)
         else:
             raise RuntimeError('unexpected value for self.backend_activated.')
-    
+
     def gather(self, async_result):
         if self.backend_activated is None:
             raise RuntimeError('the backend is not activated. Please use it in '

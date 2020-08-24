@@ -242,7 +242,7 @@ class kde(object):
         self.covariance = self._data_covariance * self.factor**2
         self.inv_cov = self._data_inv_cov / self.factor**2
         self._norm_factor = np.sqrt(np.linalg.det(2 * np.pi * self.covariance))
-    
+
     def _diff(self, x):
         """Utility for evaluating pdf, logpdf and cdf_1d."""
         points = x[:, np.newaxis] if x.ndim == 1 else x
@@ -258,10 +258,10 @@ class kde(object):
                 msg = "points have dimension %s, dataset has dimension %s" % (d,
                     self.d)
                 raise ValueError(msg)
-        
+
         return points[np.newaxis, :, :] - self.dataset[:, np.newaxis, :]
         # (# of data, # of points, # of dim)
-    
+
     def pdf(self, x):
         """Evaluate the estimated pdf on a set of points.
         
@@ -288,9 +288,9 @@ class kde(object):
         result = (self.weights @ np.exp(-energy)) / self._norm_factor
 
         return result
-    
+
     __call__ = pdf
-    
+
     def logpdf(self, x):
         """Evaluate the log of the estimated pdf on a provided set of points.
         
@@ -318,7 +318,7 @@ class kde(object):
                            axis=1)
 
         return result
-    
+
     def cdf(self, x):
         """Evaluate the estimated cdf on a set of 1-d points.
         
@@ -345,14 +345,14 @@ class kde(object):
         if self.d != 1:
             msg = "currently only supports cdf for 1-d kde"
             raise NotImplementedError(msg)
-            
+
         diff = self._diff(x)[:, :, 0]
         diff_scaled = diff / np.asscalar(self.covariance)**0.5
         cum_energy = ndtr(diff_scaled)
         result = self.weights @ cum_energy
 
         return result
-    
+
     def resample(self, size=None):
         """Randomly sample a dataset from the estimated pdf.
         
@@ -378,7 +378,7 @@ class kde(object):
         means = self.dataset[indices, :]
 
         return means + norm
-    
+
     @property
     def weights(self):
         try:

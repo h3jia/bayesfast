@@ -8,11 +8,11 @@ __all__ = ['THMC']
 
 
 class THMC(BaseTHMC, HMC):
-    
+
     _expected_trace = THTrace
-    
+
     _expected_stats = THStepStats
-    
+
     def _stats(self, state, accept_stat, accepted, energy_change):
         stats = {
             'u': state.u,

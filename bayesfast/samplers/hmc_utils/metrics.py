@@ -79,7 +79,7 @@ class QuadMetricDiag(QuadMetric):
         if velocity is not None:
             return 0.5 * x.dot(velocity)
         return 0.5 * x.dot(self._var * x)
-    
+
     def random(self, random_generator):
         """Draw a random value for the momentum."""
         vals = random_generator.normal(size=self._n)
@@ -113,7 +113,7 @@ class QuadMetricFull(QuadMetric):
     def velocity(self, x, out=None):
         """Compute the velocity at the given momentum."""
         return np.dot(self._cov, x, out=out)
-    
+
     def energy(self, x, velocity=None):
         """Compute the kinetic energy at the given momentum."""
         if velocity is None:
@@ -172,7 +172,7 @@ class QuadMetricDiagAdapt(QuadMetricDiag):
             self._n, initial_mean, initial_var, initial_weight)
         self._background_var = _WeightedVariance(self._n)
         self._n_samples = 0
-        
+
         self._doubling = doubling
         self._adapt_window = int(adapt_window)
         self._update_window = int(update_window)
@@ -187,7 +187,7 @@ class QuadMetricDiagAdapt(QuadMetricDiag):
         """Use a new sample during tuning to update."""
         if not warmup:
             return
-        
+
         # Steps since previous update
         delta = self._n_samples - self._previous_update
 
@@ -207,7 +207,7 @@ class QuadMetricDiagAdapt(QuadMetricDiag):
             self._previous_update = self._n_samples
             if self._doubling:
                 self._adapt_window *= 2
-        
+
         self._n_samples += 1
 
     def raise_ok(self):
@@ -271,11 +271,11 @@ class QuadMetricFullAdapt(QuadMetricFull):
         if len(initial_mean) != n:
             raise ValueError("Wrong shape for initial_mean: expected %s got %s"
                              % (n, len(initial_mean)))
-        
+
         if initial_cov is None:
             initial_cov = np.eye(n)
             initial_weight = 1.
-        
+
         self._n = n
         self._cov = np.array(initial_cov, copy=True, dtype=np.float)
         self._chol = scipy.linalg.cholesky(self._cov, lower=True)
@@ -284,7 +284,7 @@ class QuadMetricFullAdapt(QuadMetricFull):
             self._n, initial_mean, initial_cov, initial_weight)
         self._background_cov = _WeightedCovariance(self._n)
         self._n_samples = 0
-        
+
         self._doubling = doubling
         self._adapt_window = int(adapt_window)
         self._update_window = int(update_window)
