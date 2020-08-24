@@ -464,7 +464,7 @@ class HTrace(_HTrace):
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
-                         step_size, adapt_step_size, metric, adapt_metric, 
+                         step_size, adapt_step_size, metric, adapt_metric,
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
         self.n_int_step = n_int_step
@@ -505,7 +505,7 @@ class NTrace(_HTrace):
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
-                         step_size, adapt_step_size, metric, adapt_metric, 
+                         step_size, adapt_step_size, metric, adapt_metric,
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
         self.max_treedepth = max_treedepth

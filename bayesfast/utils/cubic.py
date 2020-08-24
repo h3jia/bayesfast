@@ -58,7 +58,7 @@ class cubic_spline:
     """
     __slots__ = ('_x', '_n', '_fun', '_c', '_y', '_mask')
     
-    def __init__(self, x_all, fun, bins=100, edge_bins=1, edge_points=10, 
+    def __init__(self, x_all, fun, bins=100, edge_bins=1, edge_points=10,
                  max_width=5, split=4, max_add=5, save_fun=False):
         # TODO: add all kinds of checks
         x_all = np.ascontiguousarray(x_all)
@@ -70,12 +70,12 @@ class cubic_spline:
         # mask = self._regularize_y()
         self._n = self._x.shape[0]
         
-        x_edge_1 = np.percentile(x_all[x_all < self._x[edge_bins]] - self._x[0], 
+        x_edge_1 = np.percentile(x_all[x_all < self._x[edge_bins]] - self._x[0],
                                  np.linspace(0, 100, edge_points + 2)[1:-1])
         y_edge_1 = fun(x_edge_1 + self._x[0]) - self._y[0]
         k_edge_1 = np.sum(x_edge_1 * y_edge_1) / np.sum(x_edge_1 * x_edge_1)
         x_edge_2 = np.percentile(
-            x_all[x_all > self._x[-edge_bins - 1]] - self._x[-1], 
+            x_all[x_all > self._x[-edge_bins - 1]] - self._x[-1],
             np.linspace(0, 100, edge_points + 2)[1:-1])
         y_edge_2 = fun(x_edge_2 + self._x[-1]) - self._y[-1]
         k_edge_2 = np.sum(x_edge_2 * y_edge_2) / np.sum(x_edge_2 * x_edge_2)
@@ -241,7 +241,7 @@ class cubic_spline:
         _cubic.derivative(self._c, self._x, x, out)
         return out
     
-    def solve(self, y): 
+    def solve(self, y):
         y = np.ascontiguousarray(y)
         out = np.empty_like(y)
         _cubic.solve(self._c, self._x, self._y, y, out)

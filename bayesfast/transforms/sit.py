@@ -199,7 +199,7 @@ class SIT:
     @ica_options.setter
     def ica_options(self, io):
         try:
-            self._ica_options = dict(io) 
+            self._ica_options = dict(io)
         except Exception:
             raise ValueError('ica_options should be a dict.')
     
@@ -325,7 +325,7 @@ class SIT:
                 self._A = np.concatenate((self._A, A[np.newaxis]), axis=0)
                 self._B = np.concatenate((self._B, B[np.newaxis]), axis=0)
                 self._m = np.concatenate((self._m, m[np.newaxis]), axis=0)
-                self._logdetA = np.append(self._logdetA, 
+                self._logdetA = np.append(self._logdetA,
                                           np.log(np.abs(np.linalg.det(A))))
                 finite_index = np.isfinite(self._data).all(axis=1)
                 if len(finite_index) < self._data.shape[0]:

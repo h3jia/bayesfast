@@ -17,7 +17,7 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: implement decay and logp transform for VariableDict
 
 
-DecayOptions = namedtuple('DecayOptions', 
+DecayOptions = namedtuple('DecayOptions',
                           ('use_dacay', 'alpha', 'alpha_p','gamma'))
 
 
@@ -180,7 +180,7 @@ class _DensityBase:
         if x is not None:
             return -np.sum(np.log(np.abs(self.from_original_grad(x))), axis=-1)
         elif x_trans is not None:
-            return np.sum(np.log(np.abs(self.to_original_grad(x_trans))), 
+            return np.sum(np.log(np.abs(self.to_original_grad(x_trans))),
                           axis=-1)
         else:
             raise ValueError('x and x_trans cannot both be None.')
@@ -321,7 +321,7 @@ class Pipeline(_PipelineBase):
             self._surrogate_recipe = (
                 self._surrogate_recipe[_recipe_sort].astype(np.int))
             for i in range(ns - 1):
-                if (np.sum(self._surrogate_recipe[i, 1:]) > 
+                if (np.sum(self._surrogate_recipe[i, 1:]) >
                     self._surrogate_recipe[i + 1, 1]):
                     raise ValueError('the #{} surrogate model overlaps with '
                                      'the next one.'.format(i))
@@ -426,7 +426,7 @@ class Pipeline(_PipelineBase):
                             var_dict._fun[n] = x[
                                 self._input_cum[i]:self._input_cum[i + 1]]
                 elif x.dtype.kind == 'O':
-                    return np.asarray([self.fun(_x, original_space, 
+                    return np.asarray([self.fun(_x, original_space,
                                                 use_surrogate) for _x in x])
                 else:
                     raise ValueError('invalid input for fun.')
@@ -680,7 +680,7 @@ class Density(Pipeline, _DensityBase):
             x_o = x if original_space else self.to_original(x)
             beta2 = np.einsum('...i,ij,...j', x_o - self._mu, self._hess,
                               x_o - self._mu)
-            _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) * 
+            _grad -= (2 * self._gamma * np.dot(x_o - self._mu, self._hess) *
                       (beta2 > self._alpha_2)[..., np.newaxis])
         if not original_space:
             _tog = self.to_original_grad(x)
@@ -783,7 +783,7 @@ class Density(Pipeline, _DensityBase):
     
     @classmethod
     def _get_var(cls, var_dicts, var_names):
-        return np.array([np.concatenate([vd._fun[vn] for vn in var_names]) 
+        return np.array([np.concatenate([vd._fun[vn] for vn in var_names])
                          for vd in var_dicts])
     
     def _get_logp(self, var_dicts):
@@ -945,7 +945,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         if self.has_logp_and_grad:
             return self._logp_and_grad_wrapped
         elif self.has_logp and self.has_grad:
-            return lambda *args, **kwargs: (self._logp_wrapped(*args, **kwargs), 
+            return lambda *args, **kwargs: (self._logp_wrapped(*args, **kwargs),
                                             self._grad_wrapped(*args, **kwargs))
         else:
             raise ValueError('No valid definition of logp_and_grad is found.')

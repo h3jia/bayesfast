@@ -17,7 +17,7 @@ __all__ = ['BaseHMC']
 # TODO: review the code
 
 
-HMCStepData = namedtuple("HMCStepData", 
+HMCStepData = namedtuple("HMCStepData",
                          "end, accept_stat, divergence_info, stats")
 
 
@@ -132,7 +132,7 @@ class BaseHMC:
                             self._sample_trace.stats._diverging[-n_update:])
                         msg_0 = (
                             self._prefix +  'sampling proceeding [ {} / {} ], '
-                            'last {} samples used {:.2f} seconds'.format(i, 
+                            'last {} samples used {:.2f} seconds'.format(i,
                             n_iter, n_update, t_d))
                         if n_div / n_update > 0.05:
                             msg_1 = (', while divergence encountered in {} '

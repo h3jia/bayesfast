@@ -112,7 +112,7 @@ class Module:
             raise ValueError('failed to concatenate {}.'.format(tag_1))
         if tag == 'input' and self._input_scales is not None:
             try:
-                cargs = ((cargs - self._input_scales[:, 0]) / 
+                cargs = ((cargs - self._input_scales[:, 0]) /
                          self._input_scales_diff)
             except Exception:
                 raise ValueError('failed to rescale the input variables.')
@@ -138,7 +138,7 @@ class Module:
             # if args is a list/tuple/object-array
             # it's regarded as a collection of variables
             # otherwise, it's regarded as a single variable
-            if (isinstance(args, (list, tuple)) or 
+            if (isinstance(args, (list, tuple)) or
                 (isinstance(args, np.ndarray) and args.dtype.kind == 'O')):
                 args = [f(a) for a in args]
             else:
@@ -219,7 +219,7 @@ class Module:
         elif self.has_fun and self.has_jac:
             self._ncall_fun += 1
             self._ncall_jac += 1
-            return lambda *args: (self._fun_wrapped(*args), 
+            return lambda *args: (self._fun_wrapped(*args),
                                   self._jac_wrapped(*args))
         else:
             raise RuntimeError('No valid definition of fun_and_jac is found.')

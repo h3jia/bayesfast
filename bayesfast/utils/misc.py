@@ -5,7 +5,7 @@ __all__ = ['all_isinstance', 'make_positive', 'SystematicResampler']
 
 
 def all_isinstance(iterable, class_or_tuple):
-    return (hasattr(iterable, '__iter__') and 
+    return (hasattr(iterable, '__iter__') and
             all(isinstance(i, class_or_tuple) for i in iterable))
 
 
@@ -70,7 +70,7 @@ class SystematicResampler:
             i_all[n_c[j]:n_c[j + 1]] = i_j.astype(np.int)
         if np.unique(i_all).size < i_all.size:
             message = ('{:.1f}% of the resampled points are not unique. Please '
-                       'consider giving me more points.'.format(100 - 
+                       'consider giving me more points.'.format(100 -
                        np.unique(i_all).size / i_all.size * 100))
             if self._require_unique:
                 raise RuntimeError(message)

@@ -11,7 +11,7 @@ __all__ = ['PolyConfig', 'PolyModel']
 # TODO: check the fit mechanism
 
 
-BoundOptions = namedtuple('BoundOptions', 
+BoundOptions = namedtuple('BoundOptions',
                           ('use_bound', 'alpha', 'alpha_p', 'center_max'))
 
 
@@ -99,7 +99,7 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.output_size, self.input_size, self.input_size)
         elif self._order == 'cubic-3':
-            return (self.output_size, self.input_size, self.input_size, 
+            return (self.output_size, self.input_size, self.input_size,
                     self.input_size)
         else:
             raise RuntimeError(
@@ -121,7 +121,7 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.input_size * self.input_size,)
         elif self._order == 'cubic-3':
-            return (self.input_size * (self.input_size - 1) * 
+            return (self.input_size * (self.input_size - 1) *
                     (self.input_size - 2) // 6,)
         else:
             raise RuntimeError(
@@ -447,11 +447,11 @@ class PolyModel(Surrogate):
         if (self._use_bound and not self._all_linear and
             np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
             self._alpha):
-            return self._fj_bound(x, 'jac')            
+            return self._fj_bound(x, 'jac')
         else:
             jj = np.zeros((self._output_size, self._input_size))
             for conf in self._configs:
-                jj[conf._output_mask[:, np.newaxis], 
+                jj[conf._output_mask[:, np.newaxis],
                    conf._input_mask] += self._eval_one(conf, x, 'jac')
             return jj
     
@@ -482,9 +482,9 @@ class PolyModel(Surrogate):
         grad_beta = np.dot(self._hess, x - self._mu) / beta
         jj_0 = np.zeros((self._output_size, self._input_size))
         for conf in self._configs:
-            jj_0[conf._output_mask[:, np.newaxis], 
+            jj_0[conf._output_mask[:, np.newaxis],
                  conf._input_mask] += self._eval_one(conf, x_0, 'jac')
-        jj = jj_0 + np.outer((ff_0 - self._f_mu) / self._alpha - 
+        jj = jj_0 + np.outer((ff_0 - self._f_mu) / self._alpha -
                              np.dot(jj_0, x - self._mu) / beta, grad_beta)
         if target == 'jac':
             return jj
@@ -524,9 +524,9 @@ class PolyModel(Surrogate):
                 A = np.concatenate((A, _A), axis=-1)
             if jj_q >= 0:
                 _A = np.empty((x.shape[0], self._configs[jj_q]._a_shape[0]))
-                _x = np.ascontiguousarray(x[..., 
+                _x = np.ascontiguousarray(x[...,
                                               self._configs[jj_q]._input_mask])
-                _lsq_quadratic(_x, _A, x.shape[0], 
+                _lsq_quadratic(_x, _A, x.shape[0],
                                self._configs[jj_q].input_size)
                 kk.append(kk[-1] + self._configs[jj_q]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
@@ -534,7 +534,7 @@ class PolyModel(Surrogate):
                 _A = np.empty((x.shape[0], self._configs[jj_c2]._a_shape[0]))
                 _x = np.ascontiguousarray(x[...,
                                             self._configs[jj_c2]._input_mask])
-                _lsq_cubic_2(_x, _A, x.shape[0], 
+                _lsq_cubic_2(_x, _A, x.shape[0],
                              self._configs[jj_c2].input_size)
                 kk.append(kk[-1] + self._configs[jj_c2]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
@@ -542,7 +542,7 @@ class PolyModel(Surrogate):
                 _A = np.empty((x.shape[0], self._configs[jj_c3]._a_shape[0]))
                 _x = np.ascontiguousarray(x[...,
                                             self._configs[jj_c3]._input_mask])
-                _lsq_cubic_3(_x, _A, x.shape[0], 
+                _lsq_cubic_3(_x, _A, x.shape[0],
                              self._configs[jj_c3].input_size)
                 kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)

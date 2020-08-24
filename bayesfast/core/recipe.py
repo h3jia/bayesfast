@@ -84,7 +84,7 @@ class BaseStep:
     
     @property
     def n_eval(self):
-        return int(self._alpha_n * 
+        return int(self._alpha_n *
                    max(su.n_param for su in self._surrogate_list))
     
     @property
@@ -464,11 +464,11 @@ class RecipeTrace:
                     raise NotImplementedError
             return _n_call
         else:
-            return self._r_post.n_call        
+            return self._r_post.n_call
     
     @property
     def finished(self):
-        return RecipePhases(self._i_optimize == self._n_optimize, 
+        return RecipePhases(self._i_optimize == self._n_optimize,
                             self._i_sample == self._n_sample,
                             self._i_post == self._n_post)
 
@@ -477,7 +477,7 @@ class RecipeTrace:
 PointDoublet = namedtuple('PointDoublet', 'x, x_trans')
 
 
-DensityQuartet = namedtuple('DensityQuartet', 
+DensityQuartet = namedtuple('DensityQuartet',
                             'logp, logq, logp_trans, logq_trans')
 
 
@@ -568,7 +568,7 @@ class Recipe:
         logp_trans = self.density.from_original_density(density=logp, x=x)
         logq_trans = laplace_result.f_max
         logq = self.density.to_original_density(density=logq_trans, x=x)
-        f_max = DensityQuartet(float(logp), float(logq), float(logp_trans), 
+        f_max = DensityQuartet(float(logp), float(logq), float(logp_trans),
                                float(logq_trans))
         
         laplace_samples = self.density.to_original(laplace_result.samples)
@@ -921,7 +921,7 @@ class Recipe:
                 x = t.get(flatten=True)
                 surrogate_list = deepcopy(self._density._surrogate_list)
                 result.append(SampleResult(
-                    samples=x, surrogate_list=surrogate_list, 
+                    samples=x, surrogate_list=surrogate_list,
                     var_dicts=var_dicts, sample_trace=t))
             
             else:
@@ -1090,7 +1090,7 @@ class Recipe:
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
             x_q, logp_p, logq_q, trace_p, trace_q, n_call)
         recipe_trace._i_post = 1
-        print(' ***** PostStep finished. ***** \n')        
+        print(' ***** PostStep finished. ***** \n')
     
     def _f_logp(self, x):
         return self.density.logp(x, original_space=True, use_surrogate=False)

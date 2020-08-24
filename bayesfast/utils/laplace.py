@@ -10,7 +10,7 @@ from .misc import make_positive
 __all__ = ['Laplace', 'untemper_laplace_samples']
 
 
-LaplaceResult = namedtuple("LaplaceResult", 
+LaplaceResult = namedtuple("LaplaceResult",
                            "x_max, f_max, samples, cov, beta, opt_result")
 
 

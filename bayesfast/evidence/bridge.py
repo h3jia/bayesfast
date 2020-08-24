@@ -40,18 +40,18 @@ def bridge(logp_p, logp_q, logq_p, logq_q):
     _b = lpqf - lqqf + np.log(n_p / n_q)
     
     def score(logr):
-        _c = logsumexp(logr + _a - logsumexp(np.array((logr + _a, 
+        _c = logsumexp(logr + _a - logsumexp(np.array((logr + _a,
                        np.zeros_like(_a))), axis=0))
-        _d = logsumexp(-logr + _b - logsumexp(np.array((-logr + _b, 
+        _d = logsumexp(-logr + _b - logsumexp(np.array((-logr + _b,
                        np.zeros_like(_b))), axis=0))
         return _c - _d
     
     logr = root_scalar(score, x0=0., x1=5.).root
-    f1 = np.exp(lpqf - logr - logsumexp(np.array((lpqf - logr + 
-                 np.log(n_p / (n_p + n_q)), lqqf + np.log(n_q / (n_p + n_q)))), 
+    f1 = np.exp(lpqf - logr - logsumexp(np.array((lpqf - logr +
+                 np.log(n_p / (n_p + n_q)), lqqf + np.log(n_q / (n_p + n_q)))),
                  axis=0))
-    f2 = np.exp(lqpf - logsumexp(np.array((lppf - logr + 
-                 np.log(n_p / (n_p + n_q)), lqpf + np.log(n_q / (n_p + n_q)))), 
+    f2 = np.exp(lqpf - logsumexp(np.array((lppf - logr +
+                 np.log(n_p / (n_p + n_q)), lqpf + np.log(n_q / (n_p + n_q)))),
                  axis=0))
     re2_q = np.var(f1) / np.mean(f1)**2 / n_q
     

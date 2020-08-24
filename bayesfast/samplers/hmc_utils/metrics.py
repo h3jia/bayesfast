@@ -129,7 +129,7 @@ class QuadMetricFull(QuadMetric):
     def velocity_energy(self, x, v_out):
         """Compute velocity and return kinetic energy at the given momentum."""
         self.velocity(x, out=v_out)
-        return 0.5 * np.dot(x, v_out)   
+        return 0.5 * np.dot(x, v_out)
 
 
 class QuadMetricDiagAdapt(QuadMetricDiag):
