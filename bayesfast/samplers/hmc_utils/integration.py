@@ -19,7 +19,7 @@ class IntegrationError(RuntimeError):
 
 
 class CpuLeapfrogIntegrator:
-    
+
     def __init__(self, kinetic, logp_and_grad):
         """Leapfrog integrator using CPU."""
         self._kinetic = kinetic
@@ -96,24 +96,24 @@ class CpuLeapfrogIntegrator:
 
 
 class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
-    
+
     def __init__(self, kinetic, logp_and_grad, log_and_grad_base):
         """Leapfrog integrator using CPU for THMC/TNUTS."""
         super().__init__(kinetic, logp_and_grad)
         self._log_and_grad_base = log_and_grad_base
-    
+
     # Functions for the Hamiltonian
     @staticmethod
     def beta_fun(u):
         """Inverse temperature function."""
         return 1 / (1 + np.exp(-u))
-    
+
     @staticmethod
     def d_beta_fun(u):
         """Derivative of inverse temperature function."""
         expm = np.exp(-u)
         return expm / (1 + expm)**2
-    
+
     @staticmethod
     def temp_potential(u):
         """
@@ -121,13 +121,13 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         Minus log of derivative of beta with respect to u.
         """
         return u + 2 * np.log(1 + np.exp(-u))
-    
+
     @staticmethod
     def d_temp_potential(u):
         """Derivative of temperature term in potential."""
         exp = np.exp(u)
         return (exp - 1) / (exp + 1)
-        
+
     def compute_state(self, Q, P):
         """Compute the Hamiltonian for THMC at a position and momentum."""
         u = Q[0]
@@ -147,7 +147,7 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         delta = phi - psi
         weight = 1 if delta==0 else delta / np.expm1(delta)
         return TState(q, u, p, v, velocity, weight, energy, logp)
-    
+
     def _step(self, epsilon, state):
         """
         Perform one step of the leapfrog integration scheme
@@ -161,10 +161,10 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         v_new = state.v.copy()
         p_new = state.p.copy()
         velocity_new = state.velocity.copy()
-        
+
         # half step
         dt = 0.5 * epsilon
-        
+
         # advance position one half-step
         # q is already stored in q_new
         # u_new = u + dt * v_new
@@ -173,7 +173,7 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         # axpy(v_new, u_new, a=dt)
         # q_new = q + dt * velocity_new
         axpy(velocity_new, q_new, a=dt)
-        
+
         # update derivatives of the potential for momentum full-step
         # and second position half-step
         phi, dphi = [-x for x in self._logp_and_grad(q_new)]
@@ -183,7 +183,7 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         dU = self.d_temp_potential(u_new)
         d_pot_du_new = d_beta * (phi - psi) + dU
         d_pot_dq_new = beta * dphi + (1 - beta) * dpsi
-        
+
         # advance momentum one full step
         # v_new = v - epsilon * d_pot_du
         v_new += -d_pot_du_new * epsilon
@@ -210,10 +210,10 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         U = self.temp_potential(u_new)
         potential = beta * phi + (1 - beta) * psi + U
         energy = potential + kinetic
-        
+
         # compute log of the target
         logp = -phi
-        
+
         # compute P(beta=1 | x)
         delta = phi - psi
         weight = 1 if delta==0 else delta / np.expm1(delta)

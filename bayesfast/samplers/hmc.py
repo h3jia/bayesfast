@@ -8,11 +8,11 @@ __all__ = ['HMC']
 
 
 class HMC(BaseHMC):
-    
+
     _expected_trace = HTrace
-    
+
     _expected_stats = HStepStats
-    
+
     def _hamiltonian_step(self, start, p0, step_size):
         state = start
         try:
@@ -34,9 +34,9 @@ class HMC(BaseHMC):
             energy_change = -np.inf
             divergence_info = DivergenceInfo('Divergence encountered.', err,
                                              state)
-        
+
         accept_stat = min(1, np.exp(energy_change))
-        
+
         if (divergence_info is not None or
             self.sample_trace.random_generator.uniform() >= accept_stat):
             end = start
@@ -44,10 +44,10 @@ class HMC(BaseHMC):
         else:
             end = state
             accepted = True
-        
+
         stats = self._stats(state, accept_stat, accepted, energy_change)
         return HMCStepData(end, accept_stat, divergence_info, stats)
-    
+
     def _stats(self, state, accept_stat, accepted, energy_change):
         stats = {
             'logp': state.logp,

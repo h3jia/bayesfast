@@ -7,11 +7,11 @@ __all__ = ['VariableDict', 'PropertyList']
 
 
 class VariableDict:
-    
+
     def __init__(self):
         self._fun = OrderedDict()
         self._jac = OrderedDict()
-    
+
     def __getitem__(self, key):
         if isinstance(key, str):
             try:
@@ -46,7 +46,7 @@ class VariableDict:
         else:
             raise ValueError('key should be a str, or a list/tuple/np.ndarray '
                              'of str.')
-    
+
     def __setitem__(self, key, value):
         if not isinstance(key, str):
             raise ValueError('key should be a str.')
@@ -56,15 +56,15 @@ class VariableDict:
             self._jac[key] = value[1]
         except Exception:
             raise ValueError('failed to get the values for fun and jac.')
-    
+
     @property
     def fun(self):
         return self._fun
-    
+
     @property
     def jac(self):
         return self._jac
-    
+
     @classmethod
     def get(cls, var_dicts, key, target='fun'):
         if not isinstance(key, str):
@@ -102,7 +102,7 @@ class PropertyList:
         self.sort = self._wrapper(self._list.sort)
         self.reverse = self._wrapper(self._list.reverse)
         self.copy = lambda: copy.copy(self)
-    
+
     def __getitem__(self, key):
         return self._list.__getitem__(key)
 
@@ -116,17 +116,17 @@ class PropertyList:
 
     def __len__(self):
         return self._list.__len__()
-    
+
     def __iter__(self):
         return self._list.__iter__()
-    
+
     def __next__(self):
         return self._list.__next__()
-    
+
     def check(self):
         if self._check is not None:
             self._list = self._check(self._list)
-    
+
     def _wrapper(self, f):
         def _wrapped(*args, **kwargs):
             res = f(*args, **kwargs)

@@ -10,7 +10,7 @@ from .misc import make_positive
 __all__ = ['Laplace', 'untemper_laplace_samples']
 
 
-LaplaceResult = namedtuple("LaplaceResult", 
+LaplaceResult = namedtuple("LaplaceResult",
                            "x_max, f_max, samples, cov, beta, opt_result")
 
 
@@ -64,7 +64,7 @@ class Laplace:
                 self._optimize_method = str(optimize_method)
             except Exception:
                 raise ValueError('invalid value for optimize_method.')
-        
+
         if optimize_tol is None:
             pass
         else:
@@ -74,19 +74,19 @@ class Laplace:
             except Exception:
                 raise ValueError('invalid value for optimize_tol.')
         self._optimize_tol = optimize_tol
-        
+
         try:
             self._optimize_options = dict(optimize_options)
         except Exception:
             raise ValueError('invalid value for optimize_options.')
-        
+
         try:
             max_cond = float(max_cond)
             assert max_cond > 0
             self._max_cond = max_cond
         except Exception:
             raise ValueError('max_cond should be a positive float.')
-        
+
         if n_sample is None:
             pass
         else:
@@ -96,31 +96,31 @@ class Laplace:
             except Exception:
                 raise ValueError('invalid value for n_sample.')
         self._n_sample = n_sample
-        
+
         try:
             beta = float(beta)
             assert beta > 0
             self._beta = beta
         except Exception:
             raise ValueError('beta should be a positive float.')
-        
+
         if mvn_generator is None:
             mvn_generator = multivariate_normal
         if callable(mvn_generator):
             self._mvn_generator = mvn_generator
         else:
             raise ValueError('invalid value for mvn_generator.')
-        
+
         try:
             self._grad_options = dict(grad_options)
         except Exception:
             raise ValueError('invalid value for grad_options.')
-        
+
         try:
             self._hess_options = dict(hess_options)
         except Exception:
             raise ValueError('invalid value for hess_options.')
-    
+
     def run(self, logp, x_0=None, grad=None, hess=None):
         if not callable(logp):
             raise ValueError('logp should be callable.')
@@ -143,7 +143,7 @@ class Laplace:
                 hess = Hessian(logp, **self._hess_options)
         if not callable(grad):
             grad = Gradient(logp, **self._grad_options)
-        
+
         opt = minimize(fun=lambda x: -logp(x), x0=x_0,
                        method=self._optimize_method, jac=lambda x: -grad(x),
                        hess=lambda x: -hess(x), tol=self._optimize_tol,

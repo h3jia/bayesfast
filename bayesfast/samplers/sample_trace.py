@@ -26,15 +26,15 @@ class SampleTrace:
         self.x_0 = x_0
         self.random_generator = random_generator
         self._x_0_transformed = False
-    
+
     @property
     def chain_initialized(self):
         return self._chain_initialized
-    
+
     @property
     def n_chain(self):
         return self._n_chain
-    
+
     @n_chain.setter
     def n_chain(self, n):
         if self._chain_initialized:
@@ -47,14 +47,14 @@ class SampleTrace:
             raise ValueError('n_chain should be a positive int, instead of '
                              '{}.'.format(n))
         self._n_chain = n
-    
+
     @property
     def n_iter(self):
         try:
             return self._n_iter
         except Exception:
             return 0
-    
+
     @n_iter.setter
     def n_iter(self, n):
         try:
@@ -71,18 +71,18 @@ class SampleTrace:
             raise ValueError('n_warmup is {}, so n_iter should not be smaller '
                              'than this number.'.format(self.n_warmup))
         self._n_iter = n
-    
+
     @property
     def i_iter(self):
         raise NotImplementedError('Abstract property.')
-    
+
     @property
     def n_warmup(self):
         try:
             return self._n_warmup
         except Exception:
             return 0
-    
+
     @n_warmup.setter
     def n_warmup(self, n):
         try:
@@ -96,20 +96,20 @@ class SampleTrace:
             raise ValueError('n_iter is {}, so n_warmup should be smaller than '
                              'this number.'.format(self.n_iter))
         self._n_warmup = n
-    
+
     def _warmup_check(self, n):
         pass
-    
+
     def add_iter(self, n):
         self.n_iter = self.n_iter + n
-    
+
     def add_warmup(self, n):
         self.n_warmup = self.n_warmup + n
-    
+
     @property
     def x_0(self):
         return self._x_0
-    
+
     @x_0.setter
     def x_0(self, x):
         if self._chain_initialized:
@@ -122,30 +122,30 @@ class SampleTrace:
                 self._x_0 = np.atleast_1d(x).copy()
             except Exception:
                 raise ValueError('invalid value for x_0.')
-    
+
     # TODO: maybe we can have a better name for this?
     @property
     def x_0_transformed(self):
         return self._x_0_transformed
-    
+
     @property
     def samples(self):
         raise NotImplementedError('Abstract property.')
-    
+
     @property
     def input_size(self):
         try:
             return self.x_0.shape[-1]
         except Exception:
             return None
-    
+
     @property
     def random_generator(self):
         if self._random_generator is None:
             return get_generator()
         else:
             return self._random_generator
-    
+
     @random_generator.setter
     def random_generator(self, generator):
         if generator is None:
@@ -170,11 +170,11 @@ class _HTrace(SampleTrace):
                             t_0)
         self._set_metric(metric, adapt_metric, initial_mean, initial_weight,
                          adapt_window, update_window, doubling)
-    
+
     @property
     def chain_id(self):
         return self._chain_id
-    
+
     def _init_chain(self, i):
         if self._x_0 is None:
             raise RuntimeError('no valid x_0 is given.')
@@ -200,19 +200,19 @@ class _HTrace(SampleTrace):
         self._set_step_size_2()
         self._set_metric_2()
         self._chain_initialized = True
-    
+
     @property
     def step_size(self):
         return self._step_size
-    
+
     @property
     def metric(self):
         return self._metric
-    
+
     @property
     def max_change(self):
         return self._max_change
-    
+
     @max_change.setter
     def max_change(self, max_change):
         try:
@@ -222,22 +222,22 @@ class _HTrace(SampleTrace):
             raise ValueError('max_change should be a positive float, instead '
                              'of {}.'.format(max_change))
         self._max_change = max_change
-    
+
     @property
     def samples(self):
         return np.asarray(self._samples)
-    
+
     @property
     def samples_original(self):
         return np.asarray(self._samples_original)
-    
+
     @property
     def i_iter(self):
         try:
             return len(self._samples)
         except Exception:
             return 0
-    
+
     @property
     def finished(self):
         if self.i_iter < self.n_iter:
@@ -247,15 +247,15 @@ class _HTrace(SampleTrace):
         else:
             raise RuntimeError('unexpected behavior: i_iter seems larger than '
                                'n_iter.')
-    
+
     @property
     def logp(self):
         return np.asarray(self.stats._logp)
-    
+
     @property
     def logp_original(self):
         return np.asarray(self._logp_original)
-    
+
     @property
     def stats(self):
         try:
@@ -263,17 +263,17 @@ class _HTrace(SampleTrace):
         except Exception:
             raise NotImplementedError('stats is not defined for this '
                                       'SampleTrace.')
-    
+
     @property
     def n_call(self):
         raise NotImplementedError('abstract property.')
-    
+
     def update(self, point, stats):
         self._samples.append(point)
         self._stats.update(stats)
-    
+
     _all_return = ['samples', 'logp']
-    
+
     def get(self, since_iter=None, include_warmup=False, original_space=True,
             return_type='samples', flatten=True):
         if return_type == 'all':
@@ -301,12 +301,12 @@ class _HTrace(SampleTrace):
             return logp
         else:
             return self._get(since_iter, original_space, return_type)
-    
+
     def _get(self, since_iter, original_space, return_type):
         raise ValueError('invalid value for return_type.')
-    
+
     __call__ = get
-    
+
     def _warmup_check(self, n):
         if self.i_iter > 0:
             _adapt_metric = isinstance(self.metric, (QuadMetricDiagAdapt,
@@ -318,7 +318,7 @@ class _HTrace(SampleTrace):
                         'please be cautious to modify n_warmup for the adaptive'
                         ' HMC/NUTS sampler, when i_iter is larger than '
                         'n_warmup(old) and/or n_warmup(new).', RuntimeWarning)
-    
+
     def _set_step_size(self, step_size, adapt_step_size, target_accept, gamma,
                        k, t_0):
         if isinstance(step_size, DualAverageAdaptation):
@@ -334,34 +334,34 @@ class _HTrace(SampleTrace):
                     raise ValueError('invalid value for step_size.')
             self._step_size = step_size
             self._adapt_step_size = bool(adapt_step_size)
-            
+
             try:
                 target_accept = float(target_accept)
                 assert 0 < target_accept < 1
             except Exception:
                 raise ValueError('invalid value for target_accept.')
             self._target_accept = target_accept
-            
+
             try:
                 gamma = float(gamma)
                 assert gamma != 0
             except Exception:
                 raise ValueError('invalid value for gamma.')
             self._gamma = gamma
-            
+
             try:
                 k = float(k)
             except Exception:
                 raise ValueError('invalid value for k.')
             self._k = k
-            
+
             try:
                 t_0 = float(t_0)
                 assert t_0 >= 0
             except Exception:
                 raise ValueError('invalid value for t_0.')
             self._t_0 = t_0
-    
+
     def _set_step_size_2(self):
         if isinstance(self.step_size, DualAverageAdaptation):
             pass
@@ -371,7 +371,7 @@ class _HTrace(SampleTrace):
             self._step_size = DualAverageAdaptation(
                 self._step_size / self.input_size**0.25, self._target_accept,
                 self._gamma, self._k, self._t_0, self._adapt_step_size)
-    
+
     def _set_metric(self, metric, adapt_metric, initial_mean, initial_weight,
                     adapt_window, update_window, doubling):
         if isinstance(metric, QuadMetric):
@@ -388,7 +388,7 @@ class _HTrace(SampleTrace):
                     raise ValueError('invalid value for metric.')
             self._metric = metric
             self._adapt_metric = bool(adapt_metric)
-            
+
             if initial_mean is None:
                 pass
             else:
@@ -398,21 +398,21 @@ class _HTrace(SampleTrace):
                 except Exception:
                     raise ValueError('invalid value for initial_mean.')
             self._initial_mean = initial_mean
-            
+
             try:
                 initial_weight = float(initial_weight)
                 assert initial_weight > 0
             except Exception:
                 raise ValueError('invalid value for initial_weight.')
             self._initial_weight = initial_weight
-            
+
             try:
                 adapt_window = int(adapt_window)
                 assert adapt_window > 0
             except Exception:
                 raise ValueError('invalid value for adapt_window.')
             self._adapt_window = adapt_window
-            
+
             try:
                 update_window = int(update_window)
                 assert update_window > 0
@@ -420,7 +420,7 @@ class _HTrace(SampleTrace):
                 raise ValueError('invalid value for update_window.')
             self._update_window = update_window
             self._doubling = bool(doubling)
-    
+
     def _set_metric_2(self):
         if isinstance(self.metric, QuadMetric):
             pass
@@ -433,10 +433,10 @@ class _HTrace(SampleTrace):
                 pass
             else:
                 raise RuntimeError('unexpected value for self._metric.')
-            
+
             if self._initial_mean is None:
                 self._initial_mean = self.x_0.copy()
-            
+
             if self._metric.ndim == 1 and self._adapt_metric:
                 self._metric = QuadMetricDiagAdapt(
                     self.input_size, self._initial_mean, self._metric,
@@ -464,16 +464,16 @@ class HTrace(_HTrace):
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
-                         step_size, adapt_step_size, metric, adapt_metric, 
+                         step_size, adapt_step_size, metric, adapt_metric,
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
         self.n_int_step = n_int_step
         self._stats = HStats()
-    
+
     @property
     def n_int_step(self):
         return self._n_int_step
-    
+
     @n_int_step.setter
     def n_int_step(self, nis):
         try:
@@ -483,7 +483,7 @@ class HTrace(_HTrace):
             raise ValueError('n_int_step should be a positive int, instead '
                              'of {}.'.format(nis))
         self._n_int_step = nis
-    
+
     @property
     def n_call(self):
         return self.n_iter * (self.n_int_step + 1) + 1
@@ -505,16 +505,16 @@ class NTrace(_HTrace):
                  t_0=10., initial_mean=None, initial_weight=10.,
                  adapt_window=60, update_window=1, doubling=True):
         super().__init__(n_chain, n_iter, n_warmup, x_0, random_generator,
-                         step_size, adapt_step_size, metric, adapt_metric, 
+                         step_size, adapt_step_size, metric, adapt_metric,
                          max_change, target_accept, gamma, k, t_0, initial_mean,
                          initial_weight, adapt_window, update_window, doubling)
         self.max_treedepth = max_treedepth
         self._stats = NStats()
-    
+
     @property
     def max_treedepth(self):
         return self._max_treedepth
-    
+
     @max_treedepth.setter
     def max_treedepth(self, mt):
         try:
@@ -524,7 +524,7 @@ class NTrace(_HTrace):
             raise ValueError('max_treedepth should be a postive int, instead '
                              'of {}.'.format(mt))
         self._max_treedepth = mt
-    
+
     @property
     def n_call(self):
         return sum(self._stats._tree_size[1:]) + self.n_iter + 1
@@ -542,11 +542,11 @@ class _TTrace:
     def __init__(self, density_base, logxi=0.):
         self.density_base = density_base
         self.logxi = logxi
-    
+
     @property
     def density_base(self):
         return self._density_base
-    
+
     @density_base.setter
     def density_base(self, db):
         try:
@@ -554,28 +554,28 @@ class _TTrace:
         except Exception:
             raise ValueError('invalid value for density_base.')
         self._density_base = db
-    
+
     @property
     def logxi(self):
         return self._logxi
-    
+
     @logxi.setter
     def logxi(self, lxi):
         try:
             self._logxi = float(lxi)
         except Exception:
             raise ValueError('invalid value for logxi.')
-    
+
     @property
     def u(self):
         return np.array(self.stats._u)
-    
+
     @property
     def weights(self):
         return np.array(self.stats._weights)
-    
+
     _all_return = ['samples', 'u', 'weights', 'logp']
-    
+
     def _get(self, since_iter, original_space, return_type):
         if return_type == 'u':
             u = self.u[since_iter:]
@@ -650,23 +650,23 @@ class TraceTuple:
             self._sample_traces = sample_traces
         except Exception:
             raise ValueError('invalid value for sample_traces.')
-    
+
     @property
     def sample_traces(self):
         return self._sample_traces
-    
+
     @property
     def sampler(self):
         return self._sampler
-    
+
     @property
     def n_chain(self):
         return self.sample_traces[0].n_chain
-    
+
     @property
     def n_iter(self):
         return self.sample_traces[0].n_iter
-    
+
     @n_iter.setter
     def n_iter(self, n):
         tmp = self.n_iter
@@ -677,15 +677,15 @@ class TraceTuple:
             for t in self.sample_traces:
                 t._n_iter = tmp
             raise
-    
+
     @property
     def i_iter(self):
         return self.sample_traces[0].i_iter
-    
+
     @property
     def n_warmup(self):
         return self.sample_traces[0].n_warmup
-    
+
     @n_warmup.setter
     def n_warmup(self, n):
         tmp = self.n_warmup
@@ -696,11 +696,11 @@ class TraceTuple:
             for t in self.sample_traces:
                 t._n_warmup = tmp
             raise
-    
+
     @property
     def n_call(self):
         return sum([t.n_call for t in self.sample_traces])
-    
+
     @property
     def samples(self):
         s = np.array([t.samples for t in self.sample_traces])
@@ -709,7 +709,7 @@ class TraceTuple:
                           'presumably because different chains have run for '
                           'different lengths.', RuntimeWarning)
         return s
-    
+
     @property
     def samples_original(self):
         s = np.array([t.samples_original for t in self.sample_traces])
@@ -718,7 +718,7 @@ class TraceTuple:
                           'float, presumably because different chains have run '
                           'for different lengths.', RuntimeWarning)
         return s
-    
+
     @property
     def logp(self):
         l = np.array([t.logp for t in self.sample_traces])
@@ -727,7 +727,7 @@ class TraceTuple:
                           'presumably because different chains have run for '
                           'different lengths.', RuntimeWarning)
         return l
-    
+
     @property
     def logp_original(self):
         l = np.array([t.logp_original for t in self.sample_traces])
@@ -736,19 +736,19 @@ class TraceTuple:
                           'float, presumably because different chains have run '
                           'for different lengths.', RuntimeWarning)
         return l
-    
+
     @property
     def input_size(self):
         return self.samples.shape[-1]
-    
+
     @property
     def finished(self):
         return self.sample_traces[0].finished
-    
+
     @property
     def stats(self):
         return [t.stats for t in self.sample_traces] # add StatsTuple?
-    
+
     @property
     def _all_return(self):
         if self.sampler == 'NUTS' or self.sampler == 'HMC':
@@ -757,7 +757,7 @@ class TraceTuple:
             return _TTrace._all_return
         else:
             raise RuntimeError('unexpected value for self.sampler.')
-    
+
     # TODO: the default value for flatten?
     def get(self, since_iter=None, include_warmup=False, original_space=True,
             return_type='samples', flatten=True):
@@ -785,18 +785,18 @@ class TraceTuple:
             return res
         else:
             raise ValueError('invalid value for return_type.')
-    
+
     __call__ = get
-    
+
     def __getitem__(self, key):
         return self._sample_traces.__getitem__(key)
 
     def __len__(self):
         return self._sample_traces.__len__()
-    
+
     def __iter__(self):
         return self._sample_traces.__iter__()
-    
+
     def __next__(self):
         return self._sample_traces.__next__()
 
@@ -838,7 +838,7 @@ def _get_metric(sample_trace, target, from_samples=True):
                             sample_trace], axis=0)
         else:
             raise ValueError('invalid value for sample_trace.')
-    
+
     if target == 'diag':
         return np.diag(cov)
     elif target == 'full':

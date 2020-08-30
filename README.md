@@ -1,5 +1,11 @@
 # BayesFast
 
+![python package](https://github.com/HerculesJack/bayesfast/workflows/python%20package/badge.svg)
+[![codecov](https://codecov.io/gh/HerculesJack/bayesfast/branch/master/graph/badge.svg)](https://codecov.io/gh/HerculesJack/bayesfast)
+![PyPI](https://img.shields.io/pypi/v/bayesfast)
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/bayesfast)
+[![Documentation Status](https://readthedocs.org/projects/bayesfast/badge/?version=latest)](https://bayesfast.readthedocs.io/en/latest/?badge=latest)
+
 BayesFast is a Python package for efficient Bayesian analysis
 developed by [He Jia](http://hejia.io) and
 [Uros Seljak](https://physics.berkeley.edu/people/faculty/uros-seljak),
@@ -25,13 +31,22 @@ For now, please install BayesFast from source with:
 ```
 git clone https://github.com/HerculesJack/bayesfast
 cd bayesfast
-pip install -e . # please use editable mode for now
+pip install -e .
+# you can drop the -e option if you don't want to use editable mode
+# but note that pytest may not work correctly in this case
+```
+
+To check if BayesFast is built correctly, you can do:
+
+```
+pytest # for this you will need to have pytest installed
 ```
 
 ## Dependencies
 
 BayesFast requires python>=3.6, cython, extension-helpers, numdifftools,
-multiprocess, matplotlib, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
+multiprocess, matplotlib, numpy>=1.17, recommonmark, scikit-learn, scipy and
+threadpoolctl.
 Currently, it has been tested on Ubuntu and Mac, with python 3.6-3.8.
 
 ## License

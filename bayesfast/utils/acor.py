@@ -112,7 +112,7 @@ def integrated_time(x, c=5, tol=50, quiet=False):
         x = x[np.newaxis, :, :]
     if len(x.shape) != 3:
         raise ValueError("invalid dimensions.")
-    
+
     n_w, n_t, n_d = x.shape
     tau_est = np.empty(n_d)
     windows = np.empty(n_d, dtype=int)

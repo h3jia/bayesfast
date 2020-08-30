@@ -27,7 +27,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
            parallel_backend=None, verbose=True):
     if not isinstance(density, (Density, DensityLite)):
         raise ValueError('density should be a Density or DensityLite.')
-    
+
     if isinstance(sample_trace, NTrace):
         sampler = 'NUTS'
     elif isinstance(sample_trace, HTrace):
@@ -62,7 +62,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
             raise ValueError('unexpected value for sample_trace.sampler.')
     else:
         raise ValueError('unexpected value for sample_trace.')
-    
+
     if isinstance(sample_trace, SampleTrace):
         if sample_trace.random_generator is None:
             sample_trace.random_generator = get_generator()
@@ -78,12 +78,12 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         elif not sample_trace.x_0_transformed:
             sample_trace._x_0 = density.from_original(sample_trace._x_0)
             sample_trace._x_0_transformed = True
-    
+
     if parallel_backend is None:
         parallel_backend = get_backend()
     else:
         parallel_backend = ParallelBackend(parallel_backend)
-    
+
     if parallel_backend.kind == 'multiprocess':
         use_dask = False
         dask_key = None
@@ -99,7 +99,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         finished = 0
     else:
         raise RuntimeError('unexpected value for parallel_backend.kind.')
-    
+
     with parallel_backend:
         if any(sampler == _ for _ in ('NUTS', 'HMC', 'TNUTS', 'THMC')):
             def nested_helper(sample_trace, i):
@@ -111,7 +111,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                 else:
                     raise RuntimeError('unexpected type for sample_trace.')
                 return sample_trace
-            
+
             def _sampler_worker(i, sampler_class):
                 try:
                     with threadpool_limits(1):
@@ -133,7 +133,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                         pub = Pub(dask_key)
                         pub.put(['Error', i])
                     raise
-            
+
             if sampler == 'NUTS':
                 sampler_worker = lambda i: _sampler_worker(i, NUTS)
             elif sampler == "HMC":
@@ -144,7 +144,7 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                 sampler_worker = lambda i: _sampler_worker(i, THMC)
             else:
                 raise RuntimeError('unexpected value for sampler.')
-            
+
             if use_dask:
                 foo = parallel_backend.map_async(sampler_worker,
                                                  range(sample_trace.n_chain))
@@ -171,9 +171,9 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                 tt = parallel_backend.map(sampler_worker,
                                           range(sample_trace.n_chain))
             return TraceTuple(tt)
-        
+
         elif sampler == 'Ensemble':
             raise NotImplementedError
-        
+
         else:
             raise RuntimeError('unexpected value for sampler.')

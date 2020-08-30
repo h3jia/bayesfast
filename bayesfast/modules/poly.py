@@ -11,7 +11,7 @@ __all__ = ['PolyConfig', 'PolyModel']
 # TODO: check the fit mechanism
 
 
-BoundOptions = namedtuple('BoundOptions', 
+BoundOptions = namedtuple('BoundOptions',
                           ('use_bound', 'alpha', 'alpha_p', 'center_max'))
 
 
@@ -43,15 +43,15 @@ class PolyConfig:
         self._set_input_mask(input_mask)
         self._set_output_mask(output_mask)
         self._coef = None
-    
+
     @property
     def order(self):
         return self._order
-    
+
     @property
     def input_mask(self):
         return self._input_mask
-    
+
     def _set_input_mask(self, im):
         if im is None:
             self._input_mask = None
@@ -60,11 +60,11 @@ class PolyConfig:
             # we do not allow directly modify the elements of input_mask here
             # as it cannot trigger the unique/sort check
             self._input_mask.flags.writeable = False # TODO: PropertyArray?
-    
+
     @property
     def output_mask(self):
         return self._output_mask
-    
+
     def _set_output_mask(self, om):
         if om is None:
             self._output_mask = None
@@ -73,15 +73,15 @@ class PolyConfig:
             # we do not allow directly modify the elements of output_mask here
             # as it cannot trigger the unique/sort check
             self._output_mask.flags.writeable = False # TODO: PropertyArray?
-    
+
     @property
     def input_size(self):
         return self._input_mask.size if self._input_mask is not None else None
-    
+
     @property
     def output_size(self):
         return self._output_mask.size if self._output_mask is not None else None
-    
+
     @property
     def _A_shape(self):
         """
@@ -99,12 +99,12 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.output_size, self.input_size, self.input_size)
         elif self._order == 'cubic-3':
-            return (self.output_size, self.input_size, self.input_size, 
+            return (self.output_size, self.input_size, self.input_size,
                     self.input_size)
         else:
             raise RuntimeError(
                 'unexpected value "{}" for self.order.'.format(self._order))
-    
+
     @property
     def _a_shape(self):
         """
@@ -121,12 +121,12 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.input_size * self.input_size,)
         elif self._order == 'cubic-3':
-            return (self.input_size * (self.input_size - 1) * 
+            return (self.input_size * (self.input_size - 1) *
                     (self.input_size - 2) // 6,)
         else:
             raise RuntimeError(
                 'unexpected value "{}" for self.order.'.format(self._order))
-    
+
     def _set(self, a, i):
         if self._input_mask is None or self._output_mask is None:
             raise RuntimeError('you have not defined self.input_mask and/or '
@@ -214,20 +214,20 @@ class PolyModel(Surrogate):
             self.set_bound_options(**bound_options)
         else:
             raise ValueError('bound_options should be a dict.')
-    
+
     @property
     def configs(self):
         return self._configs
-    
+
     @property
     def n_config(self):
         return len(self._configs)
-    
+
     @property
     def bound_options(self):
         return BoundOptions(self._use_bound, self._alpha, self._alpha_p,
                             self._center_max)
-    
+
     def set_bound_options(self, use_bound=True, alpha=None, alpha_p=100.,
                           center_max=True):
         self._use_bound = bool(use_bound)
@@ -252,7 +252,7 @@ class PolyModel(Surrogate):
             except Exception:
                 raise ValueError('invalid value for alpha_p.')
         self._center_max = bool(center_max)
-    
+
     def _set_bound(self, x, logp=None):
         try:
             x = np.ascontiguousarray(x)
@@ -282,11 +282,11 @@ class PolyModel(Surrogate):
             self._f_mu = self._fun(mu_f)
         finally:
             self._use_bound = True
-    
+
     @property
     def recipe(self):
         return self._recipe
-    
+
     def _build_recipe(self):
         rr = np.full((self._output_size, 4), -1)
         for ii, conf in enumerate(self._configs):
@@ -327,7 +327,7 @@ class PolyModel(Surrogate):
                 np.argwhere(np.any(np.all(rr < 0, axis=1))).flatten()))
         self._recipe = rr
         self._recipe.flags.writeable = False # TODO: PropertyArray?
-    
+
     @classmethod
     def _linear(cls, config, x_in, target):
         if target == 'fun':
@@ -342,7 +342,7 @@ class PolyModel(Surrogate):
             raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-    
+
     @classmethod
     def _quadratic(cls, config, x_in, target):
         if target == 'fun':
@@ -367,7 +367,7 @@ class PolyModel(Surrogate):
             raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-    
+
     @classmethod
     def _cubic_2(cls, config, x_in, target):
         if target == 'fun':
@@ -392,7 +392,7 @@ class PolyModel(Surrogate):
             raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-    
+
     @classmethod
     def _cubic_3(cls, config, x_in, target):
         if target == 'fun':
@@ -417,7 +417,7 @@ class PolyModel(Surrogate):
             raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-    
+
     @classmethod
     def _eval_one(cls, config, x, target='fun'):
         x_in = np.ascontiguousarray(x[config.input_mask])
@@ -431,7 +431,7 @@ class PolyModel(Surrogate):
             return cls._cubic_3(config, x_in, target)
         else:
             raise RuntimeError('unexpected value of config.order.')
-    
+
     def _fun(self, x):
         if (self._use_bound and not self._all_linear and
             np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
@@ -442,19 +442,19 @@ class PolyModel(Surrogate):
             for conf in self._configs:
                 ff[conf._output_mask] += self._eval_one(conf, x, 'fun')
             return ff
-    
+
     def _jac(self, x):
         if (self._use_bound and not self._all_linear and
             np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
             self._alpha):
-            return self._fj_bound(x, 'jac')            
+            return self._fj_bound(x, 'jac')
         else:
             jj = np.zeros((self._output_size, self._input_size))
             for conf in self._configs:
-                jj[conf._output_mask[:, np.newaxis], 
+                jj[conf._output_mask[:, np.newaxis],
                    conf._input_mask] += self._eval_one(conf, x, 'jac')
             return jj
-    
+
     def _fun_and_jac(self, x):
         if (self._use_bound and not self._all_linear and
             np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
@@ -468,7 +468,7 @@ class PolyModel(Surrogate):
                 ff[conf._output_mask] += _f
                 jj[conf._output_mask[:, np.newaxis], conf._input_mask] += _j
             return ff, jj
-    
+
     def _fj_bound(self, x, target='fun'):
         beta = np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5
         x_0 = (self._alpha * x + (beta - self._alpha) * self._mu) / beta
@@ -482,9 +482,9 @@ class PolyModel(Surrogate):
         grad_beta = np.dot(self._hess, x - self._mu) / beta
         jj_0 = np.zeros((self._output_size, self._input_size))
         for conf in self._configs:
-            jj_0[conf._output_mask[:, np.newaxis], 
+            jj_0[conf._output_mask[:, np.newaxis],
                  conf._input_mask] += self._eval_one(conf, x_0, 'jac')
-        jj = jj_0 + np.outer((ff_0 - self._f_mu) / self._alpha - 
+        jj = jj_0 + np.outer((ff_0 - self._f_mu) / self._alpha -
                              np.dot(jj_0, x - self._mu) / beta, grad_beta)
         if target == 'jac':
             return jj
@@ -493,7 +493,7 @@ class PolyModel(Surrogate):
         raise ValueError(
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
-    
+
     def fit(self, x, y, logp=None):
         x = np.asarray(x)
         y = np.asarray(y)
@@ -524,9 +524,9 @@ class PolyModel(Surrogate):
                 A = np.concatenate((A, _A), axis=-1)
             if jj_q >= 0:
                 _A = np.empty((x.shape[0], self._configs[jj_q]._a_shape[0]))
-                _x = np.ascontiguousarray(x[..., 
+                _x = np.ascontiguousarray(x[...,
                                               self._configs[jj_q]._input_mask])
-                _lsq_quadratic(_x, _A, x.shape[0], 
+                _lsq_quadratic(_x, _A, x.shape[0],
                                self._configs[jj_q].input_size)
                 kk.append(kk[-1] + self._configs[jj_q]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
@@ -534,7 +534,7 @@ class PolyModel(Surrogate):
                 _A = np.empty((x.shape[0], self._configs[jj_c2]._a_shape[0]))
                 _x = np.ascontiguousarray(x[...,
                                             self._configs[jj_c2]._input_mask])
-                _lsq_cubic_2(_x, _A, x.shape[0], 
+                _lsq_cubic_2(_x, _A, x.shape[0],
                              self._configs[jj_c2].input_size)
                 kk.append(kk[-1] + self._configs[jj_c2]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
@@ -542,7 +542,7 @@ class PolyModel(Surrogate):
                 _A = np.empty((x.shape[0], self._configs[jj_c3]._a_shape[0]))
                 _x = np.ascontiguousarray(x[...,
                                             self._configs[jj_c3]._input_mask])
-                _lsq_cubic_3(_x, _A, x.shape[0], 
+                _lsq_cubic_3(_x, _A, x.shape[0],
                              self._configs[jj_c3].input_size)
                 kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
@@ -567,11 +567,11 @@ class PolyModel(Surrogate):
                 pp += 1
         if self._use_bound and not self._all_linear:
             self._set_bound(x, logp)
-    
+
     @property
     def n_param(self):
         return np.sum([conf._a_shape[0] for conf in self._configs])
-    
+
     @property
     def _all_linear(self):
         return all(conf.order == 'linear' for conf in self._configs)
