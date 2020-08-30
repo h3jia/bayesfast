@@ -52,7 +52,7 @@ setup(
     python_requires=">=3.6",
     install_requires=['cython', 'extension-helpers', 'numdifftools',
                       'multiprocess', 'matplotlib', 'numpy>=1.17',
-                      'scikit-learn', 'scipy', 'threadpoolctl'],
+                      'recommonmark', 'scikit-learn', 'scipy', 'threadpoolctl'],
     packages=find_packages(),
     ext_modules=cythonize(ext_modules, language_level="3"),
 )
