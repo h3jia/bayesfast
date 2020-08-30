@@ -1,5 +1,11 @@
 # BayesFast
 
+![python package](https://github.com/HerculesJack/bayesfast/workflows/python%20package/badge.svg)
+[![codecov](https://codecov.io/gh/HerculesJack/bayesfast/branch/master/graph/badge.svg)](https://codecov.io/gh/HerculesJack/bayesfast)
+![PyPI](https://img.shields.io/pypi/v/bayesfast)
+![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/bayesfast)
+[![Documentation Status](https://readthedocs.org/projects/bayesfast/badge/?version=latest)](https://bayesfast.readthedocs.io/en/latest/?badge=latest)
+
 BayesFast is a Python package for efficient Bayesian analysis
 developed by [He Jia](http://hejia.io) and
 [Uros Seljak](https://physics.berkeley.edu/people/faculty/uros-seljak),
