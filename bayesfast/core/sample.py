@@ -97,6 +97,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         process_lock = None
         sub = Sub(dask_key)
         finished = 0
+    elif parallel_backend.kind == 'sharedmem':
+        use_dask = False
+        dask_key = None
+        process_lock = None
     else:
         raise RuntimeError('unexpected value for parallel_backend.kind.')
 
