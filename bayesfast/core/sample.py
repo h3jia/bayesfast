@@ -100,54 +100,42 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
     else:
         raise RuntimeError('unexpected value for parallel_backend.kind.')
 
+    def nested_helper(sample_trace, i):
+        """Without this, there will be an UnboundLocalError."""
+        if isinstance(sample_trace, SampleTrace):
+            sample_trace._init_chain(i)
+        elif isinstance(sample_trace, TraceTuple):
+            sample_trace = sample_trace.sample_traces[i]
+        else:
+            raise RuntimeError('unexpected type for sample_trace.')
+        return sample_trace
+
+    def _sampler_worker(i, sampler_class):
+        try:
+            with threadpool_limits(1):
+                _sample_trace = nested_helper(sample_trace, i)
+                def logp_and_grad(x):
+                    return density.logp_and_grad(x, original_space=False)
+                _sampler = sampler_class(
+                    logp_and_grad=logp_and_grad, sample_trace=_sample_trace,
+                    dask_key=dask_key, process_lock=process_lock)
+                t = _sampler.run(n_run, verbose)
+                t._samples_original = density.to_original(t.samples)
+                t._logp_original = density.to_original_density(
+                    t.logp, x_trans=t.samples)
+            return t
+        except Exception:
+            if use_dask:
+                pub = Pub(dask_key)
+                pub.put(['Error', i])
+            raise
+
     with parallel_backend:
         if any(sampler == _ for _ in ('NUTS', 'HMC', 'TNUTS', 'THMC')):
-            def nested_helper(sample_trace, i):
-                """Without this, there will be an UnboundLocalError."""
-                if isinstance(sample_trace, SampleTrace):
-                    sample_trace._init_chain(i)
-                elif isinstance(sample_trace, TraceTuple):
-                    sample_trace = sample_trace.sample_traces[i]
-                else:
-                    raise RuntimeError('unexpected type for sample_trace.')
-                return sample_trace
-
-            def _sampler_worker(i, sampler_class):
-                try:
-                    with threadpool_limits(1):
-                        _sample_trace = nested_helper(sample_trace, i)
-                        def logp_and_grad(x):
-                            return density.logp_and_grad(
-                                x, original_space=False)
-                        _sampler = sampler_class(
-                            logp_and_grad=logp_and_grad,
-                            sample_trace=_sample_trace, dask_key=dask_key,
-                            process_lock=process_lock)
-                        t = _sampler.run(n_run, verbose)
-                        t._samples_original = density.to_original(t.samples)
-                        t._logp_original = density.to_original_density(
-                            t.logp, x_trans=t.samples)
-                    return t
-                except Exception:
-                    if use_dask:
-                        pub = Pub(dask_key)
-                        pub.put(['Error', i])
-                    raise
-
-            if sampler == 'NUTS':
-                sampler_worker = lambda i: _sampler_worker(i, NUTS)
-            elif sampler == "HMC":
-                sampler_worker = lambda i: _sampler_worker(i, HMC)
-            elif sampler == 'TNUTS':
-                sampler_worker = lambda i: _sampler_worker(i, TNUTS)
-            elif sampler == 'THMC':
-                sampler_worker = lambda i: _sampler_worker(i, THMC)
-            else:
-                raise RuntimeError('unexpected value for sampler.')
-
             if use_dask:
-                foo = parallel_backend.map_async(sampler_worker,
-                                                 range(sample_trace.n_chain))
+                foo = parallel_backend.map_async(
+                    _sampler_worker, range(sample_trace.n_chain),
+                    [eval(sampler)] * sample_trace.n_chain)
                 for msg in sub:
                     if not hasattr(msg, '__iter__'):
                         warnings.warn('unexpected message: {}.'.format(msg),
@@ -168,8 +156,9 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
                         break
                 tt = parallel_backend.gather(foo)
             else:
-                tt = parallel_backend.map(sampler_worker,
-                                          range(sample_trace.n_chain))
+                tt = parallel_backend.map(
+                    _sampler_worker, range(sample_trace.n_chain),
+                    [eval(sampler)] * sample_trace.n_chain)
             return TraceTuple(tt)
 
         elif sampler == 'Ensemble':

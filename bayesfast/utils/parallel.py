@@ -1,9 +1,10 @@
-from multiprocess.pool import Pool
 try:
     from distributed import Client
     HAS_DASK = True
 except Exception:
     HAS_DASK = False
+from multiprocess.pool import Pool
+# we have to import Pool after Client to avoid some strange error
 
 __all__ = ['ParallelBackend', 'get_backend', 'set_backend']
 
