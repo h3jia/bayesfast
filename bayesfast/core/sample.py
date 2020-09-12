@@ -101,6 +101,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         use_dask = False
         dask_key = None
         process_lock = None
+    elif parallel_backend.kind == 'loky':
+        use_dask = False
+        dask_key = None
+        process_lock = None
     else:
         raise RuntimeError('unexpected value for parallel_backend.kind.')
 

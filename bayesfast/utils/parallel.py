@@ -8,6 +8,11 @@ try:
     HAS_SHAREDMEM = True
 except Exception:
     HAS_SHAREDMEM = False
+try:
+    from loky import get_reusable_executor, reusable_executor
+    HAS_LOKY = True
+except Exception:
+    HAS_LOKY = False
 from multiprocess.pool import Pool
 import warnings
 # we have to import Pool after Client to avoid some strange error
@@ -24,12 +29,14 @@ class ParallelBackend:
     """
     The unified backend for parallelization.
     
-    Currently, we support `multiprocess.Pool`, `distributed.Client` and
-    `sharedmem.MapReduce`. `multiprocess.Pool` usually has better performance on
-    single-node machines, while `distributed.Client` can be used for multi-node
-    parallelization. Note the following known issues: when used for sampling,
-    `distributed.Client` does not respect the global bayesfast random seed,
-    while `sharedmem.MapReduce` may not display the progress messages correctly.
+    Currently, we support `multiprocess`, `dask`, `sharedmem` and `loky`.
+    `multiprocess` usually has better performance on single-node machines, while
+    `dask` can be used for multi-node parallelization. Note the following known
+    issues: when used for sampling, (1) `dask` and `loky` do not respect the
+    global bayesfast random seed; (2) `sharedmem` may not display the progress
+    messages correctly (multiple messages in the same line); (3) `loky` does not
+    print any messages at all in Jupyter. So we recommend using the default
+    `multiprocess` backend when possible.
     
     Parameters
     ----------
@@ -78,6 +85,9 @@ class ParallelBackend:
             pass
         elif HAS_SHAREDMEM and isinstance(be, MapReduce):
             pass
+        elif HAS_LOKY and isinstance(be,
+                                     reusable_executor._ReusablePoolExecutor):
+            pass
         else:
             raise ValueError('invalid value for backend.')
         self._backend_activated = be
@@ -97,6 +107,9 @@ class ParallelBackend:
             return 'dask'
         elif HAS_SHAREDMEM and isinstance(self.backend, MapReduce):
             return 'sharedmem'
+        elif HAS_LOKY and isinstance(self.backend,
+                                     reusable_executor._ReusablePoolExecutor):
+            return 'loky'
         else:
             raise RuntimeError('unexpected value for self.backend.')
 
@@ -107,10 +120,12 @@ class ParallelBackend:
         elif isinstance(self.backend_activated, Pool):
             return self.backend_activated.starmap(fun, zip(*iters))
         elif HAS_DASK and isinstance(self.backend_activated, Client):
-            return self.backend_activated.gather(
-                self.backend_activated.map(fun, *iters))
+            return self.gather(self.backend_activated.map(fun, *iters))
         elif HAS_SHAREDMEM and isinstance(self.backend_activated, MapReduce):
             return self.backend_activated.map(fun, list(zip(*iters)), star=True)
+        elif HAS_LOKY and isinstance(self.backend_activated,
+                                     reusable_executor._ReusablePoolExecutor):
+            return self.gather(self.backend_activated.map(fun, *iters))
         else:
             raise RuntimeError('unexpected value for self.backend_activated.')
 
@@ -126,6 +141,9 @@ class ParallelBackend:
             warnings.warn('sharedmem does not support map_async. Using map '
                           'instead.', RuntimeWarning)
             return self.backend_activated.map(fun, list(zip(*iters)), star=True)
+        elif HAS_LOKY and isinstance(self.backend_activated,
+                                     reusable_executor._ReusablePoolExecutor):
+            return self.backend_activated.map(fun, *iters)
         else:
             raise RuntimeError('unexpected value for self.backend_activated.')
 
@@ -139,6 +157,9 @@ class ParallelBackend:
             return self.backend_activated.gather(async_result)
         elif HAS_SHAREDMEM and isinstance(self.backend_activated, MapReduce):
             return async_result
+        elif HAS_LOKY and isinstance(self.backend_activated,
+                                     reusable_executor._ReusablePoolExecutor):
+            return list(async_result)
         else:
             raise RuntimeError('unexpected value for self.backend_activated.')
 
