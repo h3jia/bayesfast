@@ -156,11 +156,11 @@ class TCpuLeapfrogIntegrator(CpuLeapfrogIntegrator):
         axpy = linalg.blas.get_blas_funcs('axpy')
         kin = self._kinetic
 
-        u_new = state.u.copy()
-        q_new = state.q.copy()
-        v_new = state.v.copy()
-        p_new = state.p.copy()
-        velocity_new = state.velocity.copy()
+        u_new = np.copy(state.u)
+        q_new = np.copy(state.q)
+        v_new = np.copy(state.v)
+        p_new = np.copy(state.p)
+        velocity_new = np.copy(state.velocity)
 
         # half step
         dt = 0.5 * epsilon
