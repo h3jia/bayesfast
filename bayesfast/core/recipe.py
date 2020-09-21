@@ -872,6 +872,12 @@ class Recipe:
                             warnings.warn('more than half of the samples are '
                                           'abandoned because their logp < '
                                           'logq_min.', RuntimeWarning)
+                        if f_good == 0.:
+                            raise RuntimeError(
+                                'f_good is 0, indicating that the samples seem '
+                                'very bad. Please check your recipe setup. You '
+                                'may also want to try logp_cutoff=False for the'
+                                ' SampleStep.')
 
                         var_dicts_fit = var_dicts_fit[is_good]
                         while len(var_dicts_fit) < this_step.n_eval_min:

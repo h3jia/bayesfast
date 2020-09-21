@@ -5,6 +5,7 @@ from ._poly import *
 import numpy as np
 from scipy.linalg import lstsq
 from collections import namedtuple
+import warnings
 
 __all__ = ['PolyConfig', 'PolyModel']
 
@@ -272,9 +273,11 @@ class PolyModel(Surrogate):
             try:
                 logp = np.asarray(logp)
                 assert x.shape[0] == logp.shape[0] and logp.ndim == 1
+                mu_f = x[np.argmax(logp)]
             except Exception:
-                raise ValueError('invalid value for logp.')
-            mu_f = x[np.argmax(logp)]
+                warnings.warn('invalid value for logp. Disabling center_max for'
+                              ' now.', RuntimeWarning)
+                mu_f = self._mu
         else:
             mu_f = self._mu
         try:
