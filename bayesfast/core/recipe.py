@@ -492,7 +492,7 @@ SampleResult = namedtuple('SampleResult', 'samples, surrogate_list, '
 
 PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
                         'logq, logz, logz_err, x_p, x_q, logp_p, logq_q, '
-                        'trace_p, trace_q, n_call')
+                        'trace_p, trace_q, n_call, x_max, f_max')
 
 
 class Recipe:
@@ -709,7 +709,7 @@ class Recipe:
                 var_dicts=None, laplace_samples=laplace_samples,
                 laplace_result=laplace_result, samples=None, sample_trace=None))
 
-        if step.has_surrogate and step.sample_trace is not None:
+        if step.has_surrogate and step.run_sampling:
             self._opt_sample()
         recipe_trace._i_optimize = 1
         print('\n ***** OptimizeStep finished. ***** \n')
@@ -958,8 +958,7 @@ class Recipe:
         logq_q = None
 
         x_max = None
-        logp_max = None
-        logq_max = None
+        f_max = None
 
         samples = None
         weights = None
@@ -975,9 +974,8 @@ class Recipe:
 
         if recipe_trace._i_optimize:
             opt_result = recipe_trace._r_optimize[-1]
-            x_max = opt_result.x_max.x
-            logp_max = opt_result.f_max.logp
-            logq_max = opt_result.f_max.logq
+            x_max = opt_result.x_max
+            f_max = opt_result.f_max
 
         if recipe_trace._i_sample:
             prev_step = recipe_trace._s_sample[-1]
@@ -1094,7 +1092,7 @@ class Recipe:
             n_call = None
         recipe_trace._r_post = PostResult(
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
-            x_q, logp_p, logq_q, trace_p, trace_q, n_call)
+            x_q, logp_p, logq_q, trace_p, trace_q, n_call, x_max, f_max)
         recipe_trace._i_post = 1
         print(' ***** PostStep finished. ***** \n')
 
