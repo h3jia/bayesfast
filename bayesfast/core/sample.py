@@ -88,6 +88,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         use_dask = False
         dask_key = None
         process_lock = Manager().Lock()
+    elif parallel_backend.kind == 'ray':
+        use_dask = False
+        dask_key = None
+        process_lock = None
     elif parallel_backend.kind == 'dask':
         if not HAS_DASK:
             raise RuntimeError('you want me to use dask but have not installed '
@@ -105,6 +109,10 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         use_dask = False
         dask_key = None
         process_lock = None
+    # elif parallel_backend.kind == 'serial':
+    #     use_dask = False
+    #     dask_key = None
+    #     process_lock = None
     else:
         raise RuntimeError('unexpected value for parallel_backend.kind.')
 
