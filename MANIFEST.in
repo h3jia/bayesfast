@@ -1,0 +1,9 @@
+include bayesfast/transforms/_constraint.pyx
+include bayesfast/utils/_cubic.pyx
+include bayesfast/utils/_sobol.pyx
+include bayesfast/modules/_poly.pyx
+
+include bayesfast/samplers/LICENSE
+include bayesfast/utils/new-joe-kuo-6.21201
+
+global-exclude *.c
