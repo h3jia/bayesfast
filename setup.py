@@ -3,6 +3,7 @@ from Cython.Build import cythonize
 import numpy as np
 from extension_helpers import add_openmp_flags_if_available
 import warnings, os, subprocess
+from os import path
 
 
 ext_modules = [
@@ -70,14 +71,23 @@ def git_version():
     return GIT_REVISION
 
 
+# read the contents of your README file
+this_directory = path.abspath(path.dirname(__file__))
+with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
+
+
 setup(
     name='bayesfast',
+    # version='0.1.0.dev2',
     version='0.1.0.dev2+' + git_version()[:7],
     author='He Jia and Uros Seljak',
     maintainer='He Jia',
     maintainer_email='he.jia.phy@gmail.com',
     description=('Next generation Bayesian analysis tools for efficient '
                  'posterior sampling and evidence estimation.'),
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     url='https://github.com/HerculesJack/bayesfast',
     license='Apache License, Version 2.0',
     python_requires=">=3.6",
@@ -85,5 +95,6 @@ setup(
                       'multiprocess', 'matplotlib', 'numpy>=1.17',
                       'scikit-learn', 'scipy', 'threadpoolctl'],
     packages=find_packages(),
+    package_data={'bayesfast': ['utils/new-joe-kuo-6.21201']},
     ext_modules=cythonize(ext_modules, language_level="3"),
 )
