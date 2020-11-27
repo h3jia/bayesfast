@@ -9,6 +9,7 @@ __all__ = ['Module', 'Surrogate']
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
 # TODO: check if Surrogate has been fitted?
+# TODO: add some ModuleBa:qse?
 
 
 class Module:
@@ -31,10 +32,10 @@ class Module:
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to `[]` by default.
-    concat_join_input : bool or 1-d array_like of positive int, optional
+    concat_input : bool or 1-d array_like of positive int, optional
         Controlling the recombination of input variables. Set to `False` by
         default.
-    concat_join_output : bool or 1-d array_like of positive int, optional
+    concat_output : bool or 1-d array_like of positive int, optional
         Controlling the recombination of output variables. Set to `False` by
         default.
     input_scales : None or array_like, optional
@@ -50,16 +51,17 @@ class Module:
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
                  input_vars=['__var__'], output_vars=['__var__'],
-                 delete_vars=[], concat_join_input=False,
-                 concat_join_output=False, input_scales=None, label=None,
-                 fun_args=(), fun_kwargs={}, jac_args=(), jac_kwargs={},
-                 fun_and_jac_args=(), fun_and_jac_kwargs={}):
+                 delete_vars=[], concat_input=False, concat_output=False,
+                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
+                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
+                 fun_and_jac_kwargs={}):
+        # we may want to overwrite these in subclasses
         self._fun_jac_init(fun, jac, fun_and_jac)
-        self.input_vars = input_vars
-        self.output_vars = output_vars
+        self._input_output_init(input_vars, output_vars)
+
         self.delete_vars = delete_vars
-        self.concat_join_input = concat_join_input
-        self.concat_join_output = concat_join_output
+        self.concat_input = concat_input
+        self.concat_output = concat_output
         self.input_scales = input_scales
         self.label = label
 
@@ -77,27 +79,31 @@ class Module:
         self.jac = jac
         self.fun_and_jac = fun_and_jac
 
-    def _concat_join(self, args, tag):
+    def _input_output_init(self, input_vars, output_vars):
+        self.input_vars = input_vars
+        self.output_vars = output_vars
+
+    def _concat(self, args, tag):
         if tag == 'input':
-            strategy = self._concat_join_input
+            strategy = self._concat_input
             cum = self._input_cum
             dim = 1
             tag_1 = 'input variables'
-            tag_2 = 'self.concat_join_input'
+            tag_2 = 'self.concat_input'
         elif tag == 'output_fun':
-            strategy = self._concat_join_output
+            strategy = self._concat_output
             cum = self._output_cum
             dim = 1
             tag_1 = 'output of fun'
-            tag_2 = 'self.concat_join_output'
+            tag_2 = 'self.concat_output'
         elif tag == 'output_jac':
-            strategy = self._concat_join_output
+            strategy = self._concat_output
             cum = self._output_cum
             dim = 2
             tag_1 = 'output of jac'
-            tag_2 = 'self.concat_join_output'
+            tag_2 = 'self.concat_output'
         else:
-            raise RuntimeError('unexpected value for tag in self._concat_join.')
+            raise RuntimeError('unexpected value for tag in self._concat.')
 
         args = self._adjust_dim(args, dim, tag_1)
         if strategy is False:
@@ -126,8 +132,8 @@ class Module:
         else:
             raise RuntimeError('unexpected value for {}.'.format(tag_2))
 
-    @classmethod
-    def _adjust_dim(cls, args, dim, tag):
+    @staticmethod
+    def _adjust_dim(args, dim, tag):
         if dim == 1:
             f = np.atleast_1d
         elif dim == 2:
@@ -170,9 +176,9 @@ class Module:
                              'reset it.')
 
     def _fun_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._concat(args, 'input')
         fun_out = self._fun(*args, *self._fun_args, **self._fun_kwargs)
-        return self._concat_join(fun_out, 'output_fun')
+        return self._concat(fun_out, 'output_fun')
 
     @property
     def has_fun(self):
@@ -202,9 +208,9 @@ class Module:
                              'reset it.')
 
     def _jac_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._concat(args, 'input')
         jac_out = self._jac(*args, *self._jac_args, **self._jac_kwargs)
-        jac_out = self._concat_join(jac_out, 'output_jac')
+        jac_out = self._concat(jac_out, 'output_jac')
         return [j / self._input_scales_diff for j in jac_out]
 
     @property
@@ -235,11 +241,11 @@ class Module:
                              'want to reset it.')
 
     def _fun_and_jac_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._concat(args, 'input')
         fun_out, jac_out = self._fun_and_jac(
             *args, *self.fun_and_jac_args, **self.fun_and_jac_kwargs)
-        fun_out = self._concat_join(fun_out, 'output_fun')
-        jac_out = self._concat_join(jac_out, 'output_jac')
+        fun_out = self._concat(fun_out, 'output_fun')
+        jac_out = self._concat(jac_out, 'output_jac')
         return (fun_out, [j / self._input_scales_diff for j in jac_out])
 
     @property
@@ -258,8 +264,8 @@ class Module:
     def ncall_fun_and_jac(self):
         return self._ncall_fun_and_jac
 
-    @classmethod
-    def _var_check(cls, names, tag, allow_empty=False, handle_repeat='remove'):
+    @staticmethod
+    def _var_check(names, tag, allow_empty=False, handle_repeat='remove'):
         if isinstance(names, str):
             names = [names]
         else:
@@ -322,47 +328,47 @@ class Module:
         self._delete_vars = PropertyList(
             names, lambda x: self._var_check(x, 'delete', True, 'remove'))
 
-    def _concat_join_check(self, concat_join, tag):
+    def _concat_check(self, concat, tag):
         try:
-            concat_join = np.asarray(concat_join, dtype=np.int)
-            assert np.all(concat_join > 0) and concat_join.ndim == 1
+            concat = np.asarray(concat, dtype=np.int)
+            assert np.all(concat > 0) and concat.ndim == 1
         except Exception:
             raise ValueError(
-                '{}_concat_join should be a bool or an 1-d array_like of '
-                'int, instead of {}'.format(tag, concat_join))
+                '{}_concat should be a bool or an 1-d array_like of '
+                'int, instead of {}'.format(tag, concat))
         if tag == 'input':
-            self._input_cum = np.cumsum(np.insert(concat_join, 0, 0))
+            self._input_cum = np.cumsum(np.insert(concat, 0, 0))
         elif tag == 'output':
-            self._output_cum = np.cumsum(np.insert(concat_join, 0, 0))
+            self._output_cum = np.cumsum(np.insert(concat, 0, 0))
         else:
             raise RuntimeError('unexpected value {} for tag.'.format(tag))
-        return concat_join
+        return concat
 
     @property
-    def concat_join_input(self):
-        return self._concat_join_input
+    def concat_input(self):
+        return self._concat_input
 
-    @concat_join_input.setter
-    def concat_join_input(self, concat_join):
-        if isinstance(concat_join, bool):
-            self._concat_join_input = concat_join
+    @concat_input.setter
+    def concat_input(self, concat):
+        if isinstance(concat, bool):
+            self._concat_input = concat
             self._input_cum = None
         else:
-            self._concat_join_input = PropertyList(
-                concat_join, lambda x: self._concat_join_check(x, 'input'))
+            self._concat_input = PropertyList(
+                concat, lambda x: self._concat_check(x, 'input'))
 
     @property
-    def concat_join_output(self):
-        return self._concat_join_output
+    def concat_output(self):
+        return self._concat_output
 
-    @concat_join_output.setter
-    def concat_join_output(self, concat_join):
-        if isinstance(concat_join, bool):
-            self._concat_join_output = concat_join
+    @concat_output.setter
+    def concat_output(self, concat):
+        if isinstance(concat, bool):
+            self._concat_output = concat
             self._output_cum = None
         else:
-            self._concat_join_output = PropertyList(
-                concat_join, lambda x: self._concat_join_check(x, 'output'))
+            self._concat_output = PropertyList(
+                concat, lambda x: self._concat_check(x, 'output'))
 
     def _scale_check(self, scales):
         try:
@@ -404,8 +410,8 @@ class Module:
             raise ValueError(
                 'label should be a str or None, instead of {}.'.format(tag))
 
-    @classmethod
-    def _args_setter(cls, args, tag):
+    @staticmethod
+    def _args_setter(args, tag):
         if args is None:
             return ()
         else:
@@ -415,8 +421,8 @@ class Module:
                 raise ValueError('{}_args should be a tuple, instead of '
                                  '{}.'.format(tag, args))
 
-    @classmethod
-    def _kwargs_setter(cls, kwargs, tag):
+    @staticmethod
+    def _kwargs_setter(kwargs, tag):
         if kwargs is None:
             return {}
         else:
@@ -494,10 +500,10 @@ class Surrogate(Module):
     ----------
     input_size : int or None, optional
         The size of input variables. If None, will be inferred from
-        `concat_join_input`.
+        `concat_input`.
     output_size : int or None, optional
         The size of output variables. If None, will be inferred from
-        `concat_join_output`.
+        `concat_output`.
     scope : array_like of 2 ints, optional
         Will be unpacked as `(i_step, n_step)`, where `i_step` represents the
         index where the true `Module` should start to be replaced by the
@@ -512,30 +518,30 @@ class Surrogate(Module):
     
     Notes
     -----
-    Unlike `Module`, the default value of `concat_join_input` will be `True`.
+    Unlike `Module`, the default value of `concat_input` will be `True`.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
                  fit_options={}, *args, **kwargs):
         self._initialized = False
         super().__init__(None, None, None, *args, **kwargs)
-        if len(args) < 6 and not 'concat_join_input' in kwargs:
-            self.concat_join_input = True
+        if len(args) < 6 and not 'concat_input' in kwargs:
+            self.concat_input = True
         if input_size is None:
             try:
-                assert not isinstance(self.concat_join_input, bool)
-                input_size = int(np.sum(self.concat_join_input))
+                assert not isinstance(self.concat_input, bool)
+                input_size = int(np.sum(self.concat_input))
                 assert input_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer input_size from concat_join_input.')
+                    'failed to infer input_size from concat_input.')
         if output_size is None:
             try:
-                assert not isinstance(self.concat_join_output, bool)
-                output_size = int(np.sum(self.concat_join_output))
+                assert not isinstance(self.concat_output, bool)
+                output_size = int(np.sum(self.concat_output))
                 assert output_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer output_size from concat_join_output.')
+                    'failed to infer output_size from concat_output.')
         self.input_size = input_size
         self.output_size = output_size
         self.scope = scope
