@@ -4,60 +4,24 @@ from ..utils.collections import PropertyList
 from ..utils import all_isinstance
 import warnings
 
-__all__ = ['Module', 'Surrogate']
+__all__ = ['ModuleBase', 'Module', 'Surrogate']
 
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
 # TODO: check if Surrogate has been fitted?
-# TODO: add some ModuleBa:qse?
 
 
-class Module:
-    """
-    Basic wrapper for use-definied functions.
-    
-    Parameters
-    ----------
-    fun : callable or None, optional
-        Callable returning the value of function, or `None` if undefined.
-    jac : callable or None, optional
-        Callable returning the value of Jacobian, or `None` if undefined.
-    fun_and_jac : callable or None, optional
-        Callable returning the function and Jacobian at the same time, or `None`
-        if undefined.
-    input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `['__var__']` by default.
-    output_vars : str or 1-d array_like of str, optional
-        Name(s) of output variable(s). Set to `['__var__']` by default.
-    delete_vars : str or 1-d array_like of str, optional
-        Name(s) of variable(s) to be deleted from the dict during runtime. Set
-        to `[]` by default.
-    concat_input : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of input variables. Set to `False` by
-        default.
-    concat_output : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of output variables. Set to `False` by
-        default.
-    input_scales : None or array_like, optional
-        Controlling the scaling of input variables. Set to `None` by default.
-    label : str, optional
-        Label of Module used in the `print_summary` method.
-    fun_args, jac_args, fun_and_jac_args : array_like, optional
-        Additional arguments to be passed to `fun`, `jac` and `fun_and_jac`.
-        Will be stored as tuples.
-    fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
-        Additional keyword arguments to be passed to `fun`, `jac` and
-        `fun_and_jac`.
-    """
-    def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=['__var__'], output_vars=['__var__'],
+class ModuleBase:
+    """Base class for Module. To use it, please manually set its fun etc."""
+    def __init__(self, input_vars=['__var__'], output_vars=['__var__'],
                  delete_vars=[], concat_input=False, concat_output=False,
                  input_scales=None, label=None, fun_args=(), fun_kwargs={},
                  jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
                  fun_and_jac_kwargs={}):
-        # we may want to overwrite these in subclasses
-        self._fun_jac_init(fun, jac, fun_and_jac)
-        self._input_output_init(input_vars, output_vars)
+        if self.__class__.input_vars.fset is not None:
+            self.input_vars = input_vars
+        if self.__class__.output_vars.fset is not None:
+            self.output_vars = output_vars
 
         self.delete_vars = delete_vars
         self.concat_input = concat_input
@@ -73,15 +37,6 @@ class Module:
         self.fun_and_jac_kwargs = fun_and_jac_kwargs
 
         self.reset_counter()
-
-    def _fun_jac_init(self, fun, jac, fun_and_jac):
-        self.fun = fun
-        self.jac = jac
-        self.fun_and_jac = fun_and_jac
-
-    def _input_output_init(self, input_vars, output_vars):
-        self.input_vars = input_vars
-        self.output_vars = output_vars
 
     def _concat(self, args, tag):
         if tag == 'input':
@@ -182,7 +137,10 @@ class Module:
 
     @property
     def has_fun(self):
-        return self._fun is not None
+        try:
+            return self._fun is not None
+        except Exception:
+            return False
 
     __call__ = fun
 
@@ -215,7 +173,10 @@ class Module:
 
     @property
     def has_jac(self):
-        return self._jac is not None
+        try:
+            return self._jac is not None
+        except Exception:
+            return False
 
     @property
     def fun_and_jac(self):
@@ -250,7 +211,10 @@ class Module:
 
     @property
     def has_fun_and_jac(self):
-        return self._fun_and_jac is not None
+        try:
+            return self._fun_and_jac is not None
+        except Exception:
+            return False
 
     @property
     def ncall_fun(self):
@@ -489,10 +453,62 @@ class Module:
         raise NotImplementedError
 
 
+class Module(ModuleBase):
+    """
+    Basic wrapper for use-definied functions.
+    
+    Parameters
+    ----------
+    fun : callable or None, optional
+        Callable returning the value of function, or `None` if undefined.
+    jac : callable or None, optional
+        Callable returning the value of Jacobian, or `None` if undefined.
+    fun_and_jac : callable or None, optional
+        Callable returning the function and Jacobian at the same time, or `None`
+        if undefined.
+    input_vars : str or 1-d array_like of str, optional
+        Name(s) of input variable(s). Set to `['__var__']` by default.
+    output_vars : str or 1-d array_like of str, optional
+        Name(s) of output variable(s). Set to `['__var__']` by default.
+    delete_vars : str or 1-d array_like of str, optional
+        Name(s) of variable(s) to be deleted from the dict during runtime. Set
+        to `[]` by default.
+    concat_input : bool or 1-d array_like of positive int, optional
+        Controlling the recombination of input variables. Set to `False` by
+        default.
+    concat_output : bool or 1-d array_like of positive int, optional
+        Controlling the recombination of output variables. Set to `False` by
+        default.
+    input_scales : None or array_like, optional
+        Controlling the scaling of input variables. Set to `None` by default.
+    label : str, optional
+        Label of Module used in the `print_summary` method.
+    fun_args, jac_args, fun_and_jac_args : array_like, optional
+        Additional arguments to be passed to `fun`, `jac` and `fun_and_jac`.
+        Will be stored as tuples.
+    fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
+        Additional keyword arguments to be passed to `fun`, `jac` and
+        `fun_and_jac`.
+    """
+    def __init__(self, fun=None, jac=None, fun_and_jac=None,
+                 input_vars=['__var__'], output_vars=['__var__'],
+                 delete_vars=[], concat_input=False, concat_output=False,
+                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
+                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
+                 fun_and_jac_kwargs={}):
+        self.fun = fun
+        self.jac = jac
+        self.fun_and_jac = fun_and_jac
+        super().__init__(input_vars, output_vars, delete_vars, concat_input,
+                         concat_output, input_scales, label, fun_args,
+                         fun_kwargs, jac_args, jac_kwargs, fun_and_jac_args,
+                         fun_and_jac_kwargs)
+
+
 SurrogateScope = namedtuple('SurrogateScope', ['i_step', 'n_step'])
 
 
-class Surrogate(Module):
+class Surrogate(ModuleBase):
     """
     Base class for surrogate modules.
     
@@ -511,8 +527,6 @@ class Surrogate(Module):
         replaced.
     fit_options : dict, optional
         Additional keyword arguments for fitting the surrogate model.
-    args : array_like, optional
-        Additional arguments to be passed to `Module.__init__`.
     kwargs : dict, optional
         Additional keyword arguments to be passed to `Module.__init__`.
     
@@ -521,11 +535,11 @@ class Surrogate(Module):
     Unlike `Module`, the default value of `concat_input` will be `True`.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
-                 fit_options={}, *args, **kwargs):
+                 fit_options={}, **kwargs):
         self._initialized = False
-        super().__init__(None, None, None, *args, **kwargs)
-        if len(args) < 6 and not 'concat_input' in kwargs:
-            self.concat_input = True
+        if not 'concat_input' in kwargs:
+            kwargs['concat_input'] = True
+        super().__init__(**kwargs)
         if input_size is None:
             try:
                 assert not isinstance(self.concat_input, bool)
@@ -553,9 +567,6 @@ class Surrogate(Module):
         if not hasattr(self, '_fun_and_jac'):
             self._fun_and_jac = None
         self._initialized = True
-
-    def _fun_jac_init(self, fun, jac, fun_and_jac):
-        pass
 
     @property
     def scope(self):

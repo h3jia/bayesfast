@@ -4,7 +4,7 @@ from ..utils.collections import VariableDict, PropertyList
 from ..utils import all_isinstance
 from copy import deepcopy
 import warnings
-from .module import Module, Surrogate
+from .module import ModuleBase, Surrogate
 from ..transforms._constraint import *
 
 __all__ = ['Pipeline', 'Density', 'DensityLite']
@@ -209,7 +209,8 @@ class Pipeline(_PipelineBase):
     Parameters
     ----------
     module_list : Module or 1-d array_like of Module, optional
-        List of `Module`(s) constituting the `Pipeline`. Set to `[]` by default.
+        Each element should be a subclass object derived from `ModuleBase`. Set
+        to `[]` by default.
     surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
         List of surrogate modules. Set to `[]` by default.
     input_vars : str or 1-d array_like of str, optional
@@ -272,20 +273,19 @@ class Pipeline(_PipelineBase):
 
     @module_list.setter
     def module_list(self, ml):
-        if isinstance(ml, Module):
+        if isinstance(ml, ModuleBase):
             ml = [ml]
         if hasattr(ml, '__iter__'):
             self._module_list = PropertyList(ml, self._ml_check)
         else:
-            raise ValueError('module_list should be a Module, or consist of '
-                             'Module(s).')
+            raise ValueError('invalid value for module_list.')
 
     @staticmethod
     def _ml_check(ml):
         for i, m in enumerate(ml):
-            if not isinstance(m, Module):
-                raise ValueError(
-                    'element #{} of module_list is not a Module.'.format(i))
+            if not isinstance(m, ModuleBase):
+                raise ValueError('element #{} of module_list is not a subclass '
+                                 'object of ModuleBase.'.format(i))
         return ml
 
     @property
@@ -365,7 +365,7 @@ class Pipeline(_PipelineBase):
                                  'of {}.'.format(tag, step))
         return step
 
-    _var_check = Module._var_check
+    _var_check = staticmethod(ModuleBase._var_check)
 
     @property
     def n_module(self):
@@ -1018,9 +1018,9 @@ class DensityLite(_PipelineBase, _DensityBase):
     def vectorized(self, vec):
         self._vectorized = bool(vec)
 
-    _args_setter = Module._args_setter
+    _args_setter = staticmethod(ModuleBase._args_setter)
 
-    _kwargs_setter = Module._kwargs_setter
+    _kwargs_setter = staticmethod(ModuleBase._kwargs_setter)
 
     @property
     def logp_args(self):
