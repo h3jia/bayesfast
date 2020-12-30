@@ -83,7 +83,7 @@ class PropertyList:
         if isinstance(iterable, PropertyList):
             self._list = iterable._list.copy()
         else:
-            self._list = iterable
+            self._list = list(iterable)
         self._check = check
         if callable(self._check):
             self.check()

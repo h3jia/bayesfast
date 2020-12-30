@@ -20,7 +20,7 @@ def make_positive(A, max_cond=1e5):
 
 class SystematicResampler:
 
-    def __init__(self, nodes=[1, 100], weights=None, require_unique=True):
+    def __init__(self, nodes=(1, 100), weights=None, require_unique=True):
         try:
             self._nodes = np.asarray(nodes, dtype=np.float)
             assert self._nodes.ndim == 1 and self._nodes.size > 1

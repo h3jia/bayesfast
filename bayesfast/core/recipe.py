@@ -34,7 +34,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 
 class BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
-    def __init__(self, surrogate_list=[], alpha_n=2, fitted=False,
+    def __init__(self, surrogate_list=(), alpha_n=2, fitted=False,
                  sample_trace=None, x_0=None, random_generator=None,
                  reuse_metric=True):
         self.surrogate_list = surrogate_list
@@ -150,7 +150,7 @@ class BaseStep:
 
 class OptimizeStep(BaseStep):
     """Configuring a step for optimization."""
-    def __init__(self, surrogate_list=[], alpha_n=2., laplace=None, eps_pp=0.1,
+    def __init__(self, surrogate_list=(), alpha_n=2., laplace=None, eps_pp=0.1,
                  eps_pq=0.1, max_iter=5, x_0=None, random_generator=None,
                  fitted=False, run_sampling=True, sample_trace=None,
                  reuse_metric=True):
@@ -228,7 +228,7 @@ class OptimizeStep(BaseStep):
 
 class SampleStep(BaseStep):
     """Configuring a step for sampling."""
-    def __init__(self, surrogate_list=[], alpha_n=2., sample_trace=None,
+    def __init__(self, surrogate_list=(), alpha_n=2., sample_trace=None,
                  resampler={}, reuse_samples=0, reuse_step_size=True,
                  reuse_metric=True, random_generator=None, logp_cutoff=True,
                  alpha_min=0.75, alpha_supp=1.25, x_0=None, fitted=False):
@@ -386,7 +386,7 @@ RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
 
 class RecipeTrace:
     """Recording the process of running a Recipe."""
-    def __init__(self, optimize=None, sample=[], post={}):
+    def __init__(self, optimize=None, sample=(), post={}):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = deepcopy(optimize)
         elif isinstance(optimize, dict):
@@ -498,7 +498,7 @@ PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
 class Recipe:
 
     def __init__(self, density, parallel_backend=None, recipe_trace=None,
-                 optimize=None, sample=[], post={}, copy_density=True):
+                 optimize=None, sample=(), post={}, copy_density=True):
         if isinstance(density, (Density, DensityLite)):
             self._density = deepcopy(density) if copy_density else density
         else:
@@ -705,7 +705,7 @@ class Recipe:
 
             laplace_samples = self.density.to_original(laplace_result.samples)
             result.append(
-                OptimizeResult(x_max=x_max, f_max=f_max, surrogate_list=[],
+                OptimizeResult(x_max=x_max, f_max=f_max, surrogate_list=(),
                 var_dicts=None, laplace_samples=laplace_samples,
                 laplace_result=laplace_result, samples=None, sample_trace=None))
 
@@ -936,7 +936,7 @@ class Recipe:
                 t = sample(self.density, sample_trace=sample_trace,
                            parallel_backend=self.parallel_backend)
                 x = t.get(flatten=True)
-                result.append(SampleResult(samples=x, surrogate_list=[],
+                result.append(SampleResult(samples=x, surrogate_list=(),
                                            var_dicts=None, sample_trace=t))
 
             recipe_trace._i_sample += 1

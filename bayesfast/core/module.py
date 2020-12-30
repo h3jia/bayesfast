@@ -13,8 +13,8 @@ __all__ = ['ModuleBase', 'Module', 'Surrogate']
 
 class ModuleBase:
     """Base class for Module. To use it, please manually set its fun etc."""
-    def __init__(self, input_vars=['__var__'], output_vars=['__var__'],
-                 delete_vars=[], concat_input=False, concat_output=False,
+    def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
+                 delete_vars=(), concat_input=False, concat_output=False,
                  input_scales=None, label=None, fun_args=(), fun_kwargs={},
                  jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
                  fun_and_jac_kwargs={}):
@@ -467,12 +467,12 @@ class Module(ModuleBase):
         Callable returning the function and Jacobian at the same time, or `None`
         if undefined.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `['__var__']` by default.
+        Name(s) of input variable(s). Set to `('__var__',)` by default.
     output_vars : str or 1-d array_like of str, optional
-        Name(s) of output variable(s). Set to `['__var__']` by default.
+        Name(s) of output variable(s). Set to `('__var__',)` by default.
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
-        to `[]` by default.
+        to `()` by default.
     concat_input : bool or 1-d array_like of positive int, optional
         Controlling the recombination of input variables. Set to `False` by
         default.
@@ -491,8 +491,8 @@ class Module(ModuleBase):
         `fun_and_jac`.
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=['__var__'], output_vars=['__var__'],
-                 delete_vars=[], concat_input=False, concat_output=False,
+                 input_vars=('__var__',), output_vars=('__var__',),
+                 delete_vars=(), concat_input=False, concat_output=False,
                  input_scales=None, label=None, fun_args=(), fun_kwargs={},
                  jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
                  fun_and_jac_kwargs={}):

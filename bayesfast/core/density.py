@@ -210,11 +210,11 @@ class Pipeline(_PipelineBase):
     ----------
     module_list : Module or 1-d array_like of Module, optional
         Each element should be a subclass object derived from `ModuleBase`. Set
-        to `[]` by default.
+        to `()` by default.
     surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
-        List of surrogate modules. Set to `[]` by default.
+        List of surrogate modules. Set to `()` by default.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `['__var__']` by default.
+        Name(s) of input variable(s). Set to `('__var__',)` by default.
     input_dims : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
         array_like, should have the same shape as `input_vars`. If `None`, will
@@ -251,8 +251,8 @@ class Pipeline(_PipelineBase):
     -----
     See the tutorial for more information of usage.
     """
-    def __init__(self, module_list=[], surrogate_list=[],
-                 input_vars=['__var__'], input_dims=None, input_scales=None,
+    def __init__(self, module_list=(), surrogate_list=(),
+                 input_vars=('__var__',), input_dims=None, input_scales=None,
                  hard_bounds=True, copy_input=False, module_start=None,
                  module_stop=None, original_space=True, use_surrogate=False):
         self.module_list = module_list
