@@ -177,7 +177,7 @@ class PolyModel(Surrogate):
     kwargs : dict, optional
         Additional keyword arguments to be passed to `Surrogate.__init__`.
     """
-    def __init__(self, configs, bound_options={}, *args, **kwargs):
+    def __init__(self, configs, bound_options=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if isinstance(configs, str):
             if configs == 'linear':
@@ -211,6 +211,8 @@ class PolyModel(Surrogate):
             raise ValueError('invalid value for configs.')
         self._configs = tuple(self._configs)
         self._build_recipe()
+        if bound_options is None:
+            bound_options = {}
         if isinstance(bound_options, dict):
             self.set_bound_options(**bound_options)
         else:

@@ -15,9 +15,9 @@ class ModuleBase:
     """Base class for Module. To use it, please manually set its fun etc."""
     def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
                  delete_vars=(), concat_input=False, concat_output=False,
-                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
-                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
-                 fun_and_jac_kwargs={}):
+                 input_scales=None, label=None, fun_args=(), fun_kwargs=None,
+                 jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
+                 fun_and_jac_kwargs=None):
         if self.__class__.input_vars.fset is not None:
             self.input_vars = input_vars
         if self.__class__.output_vars.fset is not None:
@@ -493,9 +493,9 @@ class Module(ModuleBase):
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
                  input_vars=('__var__',), output_vars=('__var__',),
                  delete_vars=(), concat_input=False, concat_output=False,
-                 input_scales=None, label=None, fun_args=(), fun_kwargs={},
-                 jac_args=(), jac_kwargs={}, fun_and_jac_args=(),
-                 fun_and_jac_kwargs={}):
+                 input_scales=None, label=None, fun_args=(), fun_kwargs=None,
+                 jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
+                 fun_and_jac_kwargs=None):
         self.fun = fun
         self.jac = jac
         self.fun_and_jac = fun_and_jac
@@ -535,7 +535,7 @@ class Surrogate(ModuleBase):
     Unlike `Module`, the default value of `concat_input` will be `True`.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
-                 fit_options={}, **kwargs):
+                 fit_options=None, **kwargs):
         self._initialized = False
         if not 'concat_input' in kwargs:
             kwargs['concat_input'] = True
@@ -587,7 +587,10 @@ class Surrogate(ModuleBase):
 
     @fit_options.setter
     def fit_options(self, options):
-        self._fit_options = dict(options)
+        if options is None:
+            self._fit_options = {}
+        else:
+            self._fit_options = dict(options)
 
     @property
     def input_size(self):

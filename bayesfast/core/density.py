@@ -630,10 +630,12 @@ class Density(Pipeline, _DensityBase):
     See the docstring of `Pipeline`. Here the `output_vars` should be a str,
     and will be set to `'__var__'` by default.
     """
-    def __init__(self, density_name='__var__', decay_options={}, *args,
+    def __init__(self, density_name='__var__', decay_options=None, *args,
                  **kwargs):
         self.density_name = density_name
         super().__init__(*args, **kwargs)
+        if decay_options is None:
+            decay_options = {}
         self.set_decay_options(**decay_options)
 
     @property
@@ -834,8 +836,8 @@ class DensityLite(_PipelineBase, _DensityBase):
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
                  input_size=None, input_scales=None, hard_bounds=True,
                  copy_input=False, vectorized=False, original_space=True,
-                 logp_args=(), logp_kwargs={}, grad_args=(), grad_kwargs={},
-                 logp_and_grad_args=(), logp_and_grad_kwargs={}):
+                 logp_args=(), logp_kwargs=None, grad_args=(), grad_kwargs=None,
+                 logp_and_grad_args=(), logp_and_grad_kwargs=None):
         self.logp = logp
         self.grad = grad
         self.logp_and_grad = logp_and_grad

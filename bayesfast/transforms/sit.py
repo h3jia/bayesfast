@@ -59,8 +59,8 @@ class SIT:
         `bayesfast.utils.sobol.multivariate_normal`. Set to `None` by default.
     """
     def __init__(self, n_iter=10, parallel_backend=None, bw_factor=1.,
-                 m_ica=20000, random_generator=None, m_plot=8, cubic_options={},
-                 ica_options={'max_iter': 100}, mvn_generator=None):
+                 m_ica=20000, random_generator=None, m_plot=8,
+                 cubic_options=None, ica_options=None, mvn_generator=None):
         self._data = None
         self._cubic = []
         self.n_iter = n_iter
@@ -188,6 +188,8 @@ class SIT:
     @cubic_options.setter
     def cubic_options(self, co):
         try:
+            if co is None:
+                co = {}
             self._cubic_options = dict(co)
         except Exception:
             raise ValueError('cubic_options should be a dict.')
@@ -199,6 +201,8 @@ class SIT:
     @ica_options.setter
     def ica_options(self, io):
         try:
+            if io is None:
+                io = {'max_iter': 100}
             self._ica_options = dict(io)
         except Exception:
             raise ValueError('ica_options should be a dict.')

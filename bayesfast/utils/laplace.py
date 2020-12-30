@@ -55,8 +55,8 @@ class Laplace:
         `run`. Set to `{}` by default.
     """
     def __init__(self, optimize_method='Newton-CG', optimize_tol=1e-5,
-                 optimize_options={}, max_cond=1e5, n_sample=2000, beta=1.,
-                 mvn_generator=None, grad_options={}, hess_options={}):
+                 optimize_options=None, max_cond=1e5, n_sample=2000, beta=1.,
+                 mvn_generator=None, grad_options=None, hess_options=None):
         if callable(optimize_method):
             self._optimize_method = optimize_method
         else:
@@ -76,6 +76,8 @@ class Laplace:
         self._optimize_tol = optimize_tol
 
         try:
+            if optimize_options is None:
+                optimize_options = {}
             self._optimize_options = dict(optimize_options)
         except Exception:
             raise ValueError('invalid value for optimize_options.')
@@ -112,11 +114,15 @@ class Laplace:
             raise ValueError('invalid value for mvn_generator.')
 
         try:
+            if grad_options is None:
+                grad_options = {}
             self._grad_options = dict(grad_options)
         except Exception:
             raise ValueError('invalid value for grad_options.')
 
         try:
+            if hess_options is None:
+                hess_options = {}
             self._hess_options = dict(hess_options)
         except Exception:
             raise ValueError('invalid value for hess_options.')
