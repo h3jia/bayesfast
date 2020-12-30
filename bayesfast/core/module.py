@@ -229,15 +229,14 @@ class ModuleBase:
         return self._ncall_fun_and_jac
 
     @staticmethod
-    def _var_check(names, tag, allow_empty=False, handle_repeat='remove'):
+    def _var_check(names, tag, handle_repeat='remove', min_length=1,
+                   max_length=np.inf):
         if isinstance(names, str):
             names = [names]
         else:
             try:
                 names = list(names)
                 assert all_isinstance(names, str)
-                if not allow_empty:
-                    assert len(names) > 0
             except Exception:
                 raise ValueError(
                     '{}_vars should be a str or an array_like of str, instead '
@@ -263,6 +262,13 @@ class ModuleBase:
                         'some elements in {}_vars are not unique.'.format(tag))
                 else:
                     raise RuntimeError('unexpected value for handle_repeat.')
+
+        if len(names) < min_length:
+            raise ValueError('the length of this var list is smaller than '
+                             'min_length={}.'.format(min_length))
+        if len(names) > max_length:
+            raise ValueError('the length of this var list is larger than '
+                             'max_length={}.'.format(max_length))
         return names
 
     @property
@@ -272,7 +278,12 @@ class ModuleBase:
     @input_vars.setter
     def input_vars(self, names):
         self._input_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'input', False, 'ignore'))
+            names, lambda x: self._var_check(x, 'input', 'ignore',
+            self._input_min_length, self._input_max_length))
+
+    _input_min_length = 1
+
+    _input_max_length = np.inf
 
     @property
     def output_vars(self):
@@ -281,7 +292,12 @@ class ModuleBase:
     @output_vars.setter
     def output_vars(self, names):
         self._output_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'output', False, 'raise'))
+            names, lambda x: self._var_check(x, 'output', 'raise',
+            self._output_min_length, self._output_max_length))
+
+    _output_min_length = 1
+
+    _output_max_length = np.inf
 
     @property
     def delete_vars(self):
@@ -290,7 +306,12 @@ class ModuleBase:
     @delete_vars.setter
     def delete_vars(self, names):
         self._delete_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'delete', True, 'remove'))
+            names, lambda x: self._var_check(x, 'delete', 'remove',
+            self._delete_min_length, self._delete_max_length))
+
+    _delete_min_length = 0
+
+    _delete_max_length = np.inf
 
     def _concat_check(self, concat, tag):
         try:

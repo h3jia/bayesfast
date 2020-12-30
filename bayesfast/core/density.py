@@ -562,19 +562,12 @@ class Pipeline(_PipelineBase):
     @input_vars.setter
     def input_vars(self, names):
         self._input_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'input', False, 'raise'))
+            names, lambda x: self._var_check(x, 'input', 'raise',
+            self._input_min_length, self._input_max_length))
 
-    @property
-    def output_vars(self):
-        return self._output_vars
+    _input_min_length = 1
 
-    @output_vars.setter
-    def output_vars(self, names):
-        if names is None or isinstance(names, str):
-            self._output_vars = names
-        else:
-            self._output_vars = PropertyList(
-                names, lambda x: self._var_check(x, 'output', False, 'remove'))
+    _input_max_length = np.inf
 
     @property
     def input_dims(self):
@@ -627,8 +620,7 @@ class Density(Pipeline, _DensityBase):
     
     Notes
     -----
-    See the docstring of `Pipeline`. Here the `output_vars` should be a str,
-    and will be set to `'__var__'` by default.
+    See the docstring of `Pipeline`.
     """
     def __init__(self, density_name='__var__', decay_options=None, *args,
                  **kwargs):
