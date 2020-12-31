@@ -28,7 +28,7 @@ import os
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc', 'recommonmark']
+extensions = ['sphinx.ext.autodoc', 'm2r2'] # 'recommonmark'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -196,8 +196,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'bayesfast.tex', u'bayesfast documentation', u'bayesfast',
-   'manual'),
+  ('index', 'bayesfast.tex', u'bayesfast documentation',
+   u'He Jia and Uros Seljak', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -226,7 +226,8 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'bayesfast', u'bayesfast documentation', [u'bayesfast'], 1)
+    ('index', 'bayesfast', u'bayesfast documentation',
+     [u'He Jia and Uros Seljak'], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -239,9 +240,9 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'bayesfast', u'bayesfast documentation', u'bayesfast', 'bayesfast',
-   'Next generation Bayesian analysis tools for efficient posterior sampling '
-   'and evidence estimation. ', 'Scientific/Engineering'),
+  ('index', 'bayesfast', u'bayesfast documentation', u'He Jia and Uros Seljak',
+   'bayesfast', 'Next generation Bayesian analysis tools for efficient '
+   'posterior sampling and evidence estimation. ', 'Scientific/Engineering'),
 ]
 
 # Documents to append as an appendix to all manuals.
