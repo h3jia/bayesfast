@@ -12,7 +12,7 @@ class Sum(ModuleBase):
                  label=None):
         super().__init__(
             input_vars=input_vars, output_vars=output_vars,
-            delete_vars=delete_vars, concat_input=True, concat_output=False,
+            delete_vars=delete_vars, input_shapes=-1, output_shapes=None,
             input_scales=None, label=label)
         self.b = b
 

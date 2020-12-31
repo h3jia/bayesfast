@@ -14,7 +14,7 @@ __all__ = ['ModuleBase', 'Module', 'Surrogate']
 class ModuleBase:
     """Base class for Module. To use it, please manually set its fun etc."""
     def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
-                 delete_vars=(), concat_input=False, concat_output=False,
+                 delete_vars=(), input_shapes=None, output_shapes=None,
                  input_scales=None, label=None, fun_args=(), fun_kwargs=None,
                  jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
                  fun_and_jac_kwargs=None):
@@ -24,8 +24,8 @@ class ModuleBase:
             self.output_vars = output_vars
 
         self.delete_vars = delete_vars
-        self.concat_input = concat_input
-        self.concat_output = concat_output
+        self.input_shapes = input_shapes
+        self.output_shapes = output_shapes
         self.input_scales = input_scales
         self.label = label
 
@@ -38,30 +38,30 @@ class ModuleBase:
 
         self.reset_counter()
 
-    def _concat(self, args, tag):
+    def _reshape(self, args, tag):
         if tag == 'input':
-            strategy = self._concat_input
+            strategy = self._input_shapes
             cum = self._input_cum
             dim = 1
             tag_1 = 'input variables'
-            tag_2 = 'self.concat_input'
+            tag_2 = 'self.input_shapes'
         elif tag == 'output_fun':
-            strategy = self._concat_output
+            strategy = self._output_shapes
             cum = self._output_cum
             dim = 1
             tag_1 = 'output of fun'
-            tag_2 = 'self.concat_output'
+            tag_2 = 'self.output_shapes'
         elif tag == 'output_jac':
-            strategy = self._concat_output
+            strategy = self._output_shapes
             cum = self._output_cum
             dim = 2
             tag_1 = 'output of jac'
-            tag_2 = 'self.concat_output'
+            tag_2 = 'self.output_shapes'
         else:
-            raise RuntimeError('unexpected value for tag in self._concat.')
+            raise RuntimeError('unexpected value for tag in self._reshape.')
 
         args = self._adjust_dim(args, dim, tag_1)
-        if strategy is False:
+        if strategy is None:
             if tag == 'input' and self._input_scales is not None:
                 strategy = np.array([a.shape[0] for a in args], dtype=np.int)
                 cum = np.cumsum(np.insert(strategy, 0, 0))
@@ -77,13 +77,15 @@ class ModuleBase:
                          self._input_scales_diff)
             except Exception:
                 raise ValueError('failed to rescale the input variables.')
-        if strategy is True:
-            return [cargs]
-        elif isinstance(strategy, np.ndarray):
-            try:
-                return [cargs[cum[i]:cum[i + 1]] for i in range(strategy.size)]
-            except Exception:
-                raise ValueError('failed to split {}.'.format(tag_1))
+        if isinstance(strategy, np.ndarray):
+            if strategy.size > 1:
+                try:
+                    return [cargs[cum[i]:cum[i + 1]] for i in
+                            range(strategy.size)]
+                except Exception:
+                    raise ValueError('failed to split {}.'.format(tag_1))
+            else:
+                return [cargs]
         else:
             raise RuntimeError('unexpected value for {}.'.format(tag_2))
 
@@ -131,9 +133,9 @@ class ModuleBase:
                              'reset it.')
 
     def _fun_wrapped(self, *args):
-        args = self._concat(args, 'input')
+        args = self._reshape(args, 'input')
         fun_out = self._fun(*args, *self._fun_args, **self._fun_kwargs)
-        return self._concat(fun_out, 'output_fun')
+        return self._reshape(fun_out, 'output_fun')
 
     @property
     def has_fun(self):
@@ -166,9 +168,9 @@ class ModuleBase:
                              'reset it.')
 
     def _jac_wrapped(self, *args):
-        args = self._concat(args, 'input')
+        args = self._reshape(args, 'input')
         jac_out = self._jac(*args, *self._jac_args, **self._jac_kwargs)
-        jac_out = self._concat(jac_out, 'output_jac')
+        jac_out = self._reshape(jac_out, 'output_jac')
         return [j / self._input_scales_diff for j in jac_out]
 
     @property
@@ -202,11 +204,11 @@ class ModuleBase:
                              'want to reset it.')
 
     def _fun_and_jac_wrapped(self, *args):
-        args = self._concat(args, 'input')
+        args = self._reshape(args, 'input')
         fun_out, jac_out = self._fun_and_jac(
             *args, *self.fun_and_jac_args, **self.fun_and_jac_kwargs)
-        fun_out = self._concat(fun_out, 'output_fun')
-        jac_out = self._concat(jac_out, 'output_jac')
+        fun_out = self._reshape(fun_out, 'output_fun')
+        jac_out = self._reshape(jac_out, 'output_jac')
         return (fun_out, [j / self._input_scales_diff for j in jac_out])
 
     @property
@@ -313,47 +315,51 @@ class ModuleBase:
 
     _delete_max_length = np.inf
 
-    def _concat_check(self, concat, tag):
+    def _shape_check(self, shapes, tag):
         try:
-            concat = np.asarray(concat, dtype=np.int)
-            assert np.all(concat > 0) and concat.ndim == 1
+            shapes = np.atleast_1d(shapes).astype(np.int)
+            assert shapes.ndim == 1 and shapes.size > 0
+            if shapes.size > 1:
+                assert np.all(shapes > 0)
         except Exception:
-            raise ValueError(
-                '{}_concat should be a bool or an 1-d array_like of '
-                'int, instead of {}'.format(tag, concat))
+            raise ValueError('invalid value for {}_shapes.'.format(tag))
         if tag == 'input':
-            self._input_cum = np.cumsum(np.insert(concat, 0, 0))
+            self._input_cum = np.cumsum(np.insert(shapes, 0, 0))
         elif tag == 'output':
-            self._output_cum = np.cumsum(np.insert(concat, 0, 0))
+            self._output_cum = np.cumsum(np.insert(shapes, 0, 0))
         else:
             raise RuntimeError('unexpected value {} for tag.'.format(tag))
-        return concat
+        return shapes
 
     @property
-    def concat_input(self):
-        return self._concat_input
+    def input_shapes(self):
+        return self._input_shapes
 
-    @concat_input.setter
-    def concat_input(self, concat):
-        if isinstance(concat, bool):
-            self._concat_input = concat
+    @input_shapes.setter
+    def input_shapes(self, shapes):
+        if shapes is None:
+            self._input_shapes = None
             self._input_cum = None
         else:
-            self._concat_input = PropertyList(
-                concat, lambda x: self._concat_check(x, 'input'))
+            self._input_shapes = self._shape_check(shapes, 'input')
+            # we do not allow directly modify the elements of input_shapes here
+            # as it cannot trigger the update of input_cum
+            self._input_shapes.flags.writeable = False # TODO: PropertyArray?
 
     @property
-    def concat_output(self):
-        return self._concat_output
+    def output_shapes(self):
+        return self._output_shapes
 
-    @concat_output.setter
-    def concat_output(self, concat):
-        if isinstance(concat, bool):
-            self._concat_output = concat
+    @output_shapes.setter
+    def output_shapes(self, shapes):
+        if shapes is None:
+            self._output_shapes = None
             self._output_cum = None
         else:
-            self._concat_output = PropertyList(
-                concat, lambda x: self._concat_check(x, 'output'))
+            self._output_shapes = self._shape_check(shapes, 'output')
+            # we do not allow directly modify the elements of output_shapes here
+            # as it cannot trigger the update of output_cum
+            self._output_shapes.flags.writeable = False # TODO: PropertyArray?
 
     def _scale_check(self, scales):
         try:
@@ -494,12 +500,18 @@ class Module(ModuleBase):
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to `()` by default.
-    concat_input : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of input variables. Set to `False` by
-        default.
-    concat_output : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of output variables. Set to `False` by
-        default.
+    input_shapes : None or 1-d array_like of int, optional
+        Controlling the reshaping of input variables. If `None`, the input
+        variable(s) will be directly fed to `fun` etc. Otherwise, the input
+        variable(s) will first be concatenated as a 1-d array, and then if the
+        size of `input_shapes` is larger than 1, the input variables will be
+        splitted accordingly. Set to `None` by default.
+    output_shapes : None or 1-d array_like of int, optional
+        Controlling the reshaping of output variables. If `None`, the output
+        variable(s) will be directly fetched from `fun` etc. Otherwise, the
+        output variable(s) will first be concatenated as a 1-d array, and then
+        if the size of `output_shapes` is larger than 1, the output variables
+        will be splitted accordingly. Set to `None` by default.
     input_scales : None or array_like, optional
         Controlling the scaling of input variables. Set to `None` by default.
     label : str, optional
@@ -513,15 +525,15 @@ class Module(ModuleBase):
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None,
                  input_vars=('__var__',), output_vars=('__var__',),
-                 delete_vars=(), concat_input=False, concat_output=False,
+                 delete_vars=(), input_shapes=False, output_shapes=False,
                  input_scales=None, label=None, fun_args=(), fun_kwargs=None,
                  jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
                  fun_and_jac_kwargs=None):
         self.fun = fun
         self.jac = jac
         self.fun_and_jac = fun_and_jac
-        super().__init__(input_vars, output_vars, delete_vars, concat_input,
-                         concat_output, input_scales, label, fun_args,
+        super().__init__(input_vars, output_vars, delete_vars, input_shapes,
+                         output_shapes, input_scales, label, fun_args,
                          fun_kwargs, jac_args, jac_kwargs, fun_and_jac_args,
                          fun_and_jac_kwargs)
 
@@ -537,10 +549,10 @@ class Surrogate(ModuleBase):
     ----------
     input_size : int or None, optional
         The size of input variables. If None, will be inferred from
-        `concat_input`.
+        `input_shapes`.
     output_size : int or None, optional
         The size of output variables. If None, will be inferred from
-        `concat_output`.
+        `output_shapes`.
     scope : array_like of 2 ints, optional
         Will be unpacked as `(i_step, n_step)`, where `i_step` represents the
         index where the true `Module` should start to be replaced by the
@@ -553,30 +565,32 @@ class Surrogate(ModuleBase):
     
     Notes
     -----
-    Unlike `Module`, the default value of `concat_input` will be `True`.
+    Unlike `Module`, the default value of `input_shapes` will be `-1`.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
                  fit_options=None, **kwargs):
         self._initialized = False
-        if not 'concat_input' in kwargs:
-            kwargs['concat_input'] = True
+        if not 'input_shapes' in kwargs:
+            kwargs['input_shapes'] = -1
         super().__init__(**kwargs)
         if input_size is None:
             try:
-                assert not isinstance(self.concat_input, bool)
-                input_size = int(np.sum(self.concat_input))
+                assert self.input_shapes is not None
+                assert self.input_shapes.size > 1
+                input_size = int(np.sum(self.input_shapes))
                 assert input_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer input_size from concat_input.')
+                    'failed to infer input_size from input_shapes.')
         if output_size is None:
             try:
-                assert not isinstance(self.concat_output, bool)
-                output_size = int(np.sum(self.concat_output))
+                assert self.output_shapes is not None
+                assert self.output_shapes.size > 1
+                output_size = int(np.sum(self.output_shapes))
                 assert output_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer output_size from concat_output.')
+                    'failed to infer output_size from output_shapes.')
         self.input_size = input_size
         self.output_size = output_size
         self.scope = scope
