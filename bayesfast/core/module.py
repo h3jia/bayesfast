@@ -12,7 +12,19 @@ __all__ = ['ModuleBase', 'Module', 'Surrogate']
 
 
 class ModuleBase:
-    """Base class for Module. To use it, please manually set its fun etc."""
+    """
+    Base class for Module.
+    
+    Notes
+    -----
+    ``ModuleBase`` differs from ``Module`` in that, you should use it as a base
+    class and define ``_fun`` (**not** ``fun``) etc in your own derived class,
+    instead of passing those functions to the initializer. It is more convenient
+    when you want to write some pre-defined modules; see e.g. the ``camb`` and
+    ``planck_18`` modules in ``cosmofast``. See the docstring of ``Module`` for
+    more information about its usage. As mentioned above, you don't need to
+    specify ``fun``, ``jac`` and ``fun_and_jac`` in the initializer.
+    """
     def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
                  delete_vars=(), input_shapes=None, output_shapes=None,
                  input_scales=None, label=None, fun_args=(), fun_kwargs=None,
@@ -113,6 +125,9 @@ class ModuleBase:
 
     @property
     def fun(self):
+        """
+        Wrapper of the callable to evaluate the function value.
+        """
         if self.has_fun:
             self._ncall_fun += 1
             return self._fun_wrapped
@@ -148,6 +163,9 @@ class ModuleBase:
 
     @property
     def jac(self):
+        """
+        Wrapper of the callable to evaluate the Jacobian value.
+        """
         if self.has_jac:
             self._ncall_jac += 1
             return self._jac_wrapped
@@ -182,6 +200,9 @@ class ModuleBase:
 
     @property
     def fun_and_jac(self):
+        """
+        Wrapper of the callable to evaluate the function and Jacobian values.
+        """
         if self.has_fun_and_jac:
             self._ncall_fun_and_jac += 1
             return self._fun_and_jac_wrapped
@@ -487,55 +508,47 @@ class Module(ModuleBase):
     Parameters
     ----------
     fun : callable or None, optional
-        Callable returning the value of function, or `None` if undefined.
+        Callable returning the value of function, or ``None`` if undefined.
     jac : callable or None, optional
-        Callable returning the value of Jacobian, or `None` if undefined.
+        Callable returning the value of Jacobian, or ``None`` if undefined.
     fun_and_jac : callable or None, optional
-        Callable returning the function and Jacobian at the same time, or `None`
-        if undefined.
+        Callable returning the function and Jacobian at the same time, or
+        ``None`` if undefined.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `('__var__',)` by default.
+        Name(s) of input variable(s). Set to ``('__var__',)`` by default.
     output_vars : str or 1-d array_like of str, optional
-        Name(s) of output variable(s). Set to `('__var__',)` by default.
+        Name(s) of output variable(s). Set to ``('__var__',)`` by default.
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
-        to `()` by default.
+        to ``()`` by default.
     input_shapes : None or 1-d array_like of int, optional
-        Controlling the reshaping of input variables. If `None`, the input
-        variable(s) will be directly fed to `fun` etc. Otherwise, the input
+        Controlling the reshaping of input variables. If ``None``, the input
+        variable(s) will be directly fed to ``fun`` etc. Otherwise, the input
         variable(s) will first be concatenated as a 1-d array, and then if the
-        size of `input_shapes` is larger than 1, the input variables will be
-        splitted accordingly. Set to `None` by default.
+        size of ``input_shapes`` is larger than 1, the input variables will be
+        splitted accordingly. Set to ``None`` by default.
     output_shapes : None or 1-d array_like of int, optional
-        Controlling the reshaping of output variables. If `None`, the output
-        variable(s) will be directly fetched from `fun` etc. Otherwise, the
+        Controlling the reshaping of output variables. If ``None``, the output
+        variable(s) will be directly fetched from ``fun`` etc. Otherwise, the
         output variable(s) will first be concatenated as a 1-d array, and then
-        if the size of `output_shapes` is larger than 1, the output variables
-        will be splitted accordingly. Set to `None` by default.
+        if the size of ``output_shapes`` is larger than 1, the output variables
+        will be splitted accordingly. Set to ``None`` by default.
     input_scales : None or array_like, optional
-        Controlling the scaling of input variables. Set to `None` by default.
+        Controlling the scaling of input variables. Set to ``None`` by default.
     label : str, optional
-        Label of Module used in the `print_summary` method.
+        Label of Module used in the ``print_summary`` method.
     fun_args, jac_args, fun_and_jac_args : array_like, optional
-        Additional arguments to be passed to `fun`, `jac` and `fun_and_jac`.
-        Will be stored as tuples.
+        Additional arguments to be passed to ``fun``, ``jac`` and
+        ``fun_and_jac``. Will be stored as tuples.
     fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
-        Additional keyword arguments to be passed to `fun`, `jac` and
-        `fun_and_jac`.
+        Additional keyword arguments to be passed to ``fun``, ``jac`` and
+        ``fun_and_jac``.
     """
-    def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=('__var__',), output_vars=('__var__',),
-                 delete_vars=(), input_shapes=False, output_shapes=False,
-                 input_scales=None, label=None, fun_args=(), fun_kwargs=None,
-                 jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
-                 fun_and_jac_kwargs=None):
+    def __init__(self, fun=None, jac=None, fun_and_jac=None, **kwargs):
         self.fun = fun
         self.jac = jac
         self.fun_and_jac = fun_and_jac
-        super().__init__(input_vars, output_vars, delete_vars, input_shapes,
-                         output_shapes, input_scales, label, fun_args,
-                         fun_kwargs, jac_args, jac_kwargs, fun_and_jac_args,
-                         fun_and_jac_kwargs)
+        super().__init__(**kwargs)
 
 
 SurrogateScope = namedtuple('SurrogateScope', ['i_step', 'n_step'])
@@ -549,23 +562,23 @@ class Surrogate(ModuleBase):
     ----------
     input_size : int or None, optional
         The size of input variables. If None, will be inferred from
-        `input_shapes`.
+        ``input_shapes``.
     output_size : int or None, optional
         The size of output variables. If None, will be inferred from
-        `output_shapes`.
+        ``output_shapes``.
     scope : array_like of 2 ints, optional
-        Will be unpacked as `(i_step, n_step)`, where `i_step` represents the
-        index where the true `Module` should start to be replaced by the
-        `Surrogate`, and `n_step` represents the number of `Module`s to be
+        Will be unpacked as ``(i_step, n_step)``, where ``i_step`` represents
+        the index where the true ``Module`` should start to be replaced by the
+        ``Surrogate``, and ``n_step`` represents the number of ``Module``s to be
         replaced.
     fit_options : dict, optional
         Additional keyword arguments for fitting the surrogate model.
     kwargs : dict, optional
-        Additional keyword arguments to be passed to `Module.__init__`.
+        Additional keyword arguments to be passed to ``Module.__init__``.
     
     Notes
     -----
-    Unlike `Module`, the default value of `input_shapes` will be `-1`.
+    Unlike ``Module``, the default value of ``input_shapes`` will be ``-1``.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
                  fit_options=None, **kwargs):
@@ -662,6 +675,9 @@ class Surrogate(ModuleBase):
             self._output_size = size
 
     def fit(self, *args, **kwargs):
+        """
+        Fitting the surrogate model.
+        """
         raise NotImplementedError('Abstract Method.')
 
     @property
