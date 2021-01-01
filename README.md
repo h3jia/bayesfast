@@ -51,8 +51,8 @@ pytest # for this you will need to have pytest installed
 
 ## Dependencies
 
-BayesFast requires python>=3.6, cython, extension-helpers, numdifftools,
-multiprocess, matplotlib, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
+BayesFast requires python>=3.6, cython, extension-helpers, matplotlib,
+multiprocess, numdifftools, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
 Currently, it has been tested on Ubuntu and MacOS, with python 3.6-3.8.
 
 ## License
