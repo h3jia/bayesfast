@@ -23,6 +23,13 @@ open an issue / pull request, or email [He Jia](mailto:he.jia.phy@gmail.com).
 We also have a roadmap for features to implement in the future.
 Your contributions would be greatly appreciated!
 
+## Links
+
+* Website: https://www.bayesfast.org/
+* Documentation: https://bayesfast.readthedocs.io/en/latest/
+* Source Code: https://github.com/HerculesJack/bayesfast
+* Bug Reports: https://github.com/HerculesJack/bayesfast/issues
+
 ## Installation
 
 We plan to add pypi and conda-forge support later.
