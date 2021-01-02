@@ -300,6 +300,8 @@ class ModuleBase:
 
     @input_vars.setter
     def input_vars(self, names):
+        if isinstance(names, str):
+            names = [names]
         self._input_vars = PropertyList(
             names, lambda x: self._var_check(x, 'input', 'ignore',
             self._input_min_length, self._input_max_length))
@@ -314,6 +316,8 @@ class ModuleBase:
 
     @output_vars.setter
     def output_vars(self, names):
+        if isinstance(names, str):
+            names = [names]
         self._output_vars = PropertyList(
             names, lambda x: self._var_check(x, 'output', 'raise',
             self._output_min_length, self._output_max_length))

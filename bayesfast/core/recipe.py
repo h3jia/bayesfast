@@ -410,6 +410,7 @@ class StaticSample(SampleStrategy):
                     warnings.warn('multiplicity is ignored since I failed to'
                                   'interpret it.', RuntimeWarning)
         self.sample_steps = sample_steps
+        self.verbose = verbose
 
     @property
     def sample_steps(self):
@@ -450,12 +451,12 @@ class StaticSample(SampleStrategy):
         if i_step < self.n_step:
             if self.verbose:
                 print('\n *** StaticSample: returning the #{} SampleStep. *** '
-                      '\n'.format(self.i_step))
+                      '\n'.format(i_step))
             return deepcopy(self.sample_steps[i_step])
         else:
             if self.verbose:
-                print('\n *** StaticSample: i={}, no more SampleStep. *** '
-                      '\n'.format(self.i_step))
+                print('\n *** StaticSample: iter #{}, no more SampleStep. *** '
+                      '\n'.format(i_step))
             return None
 
 
@@ -469,8 +470,15 @@ RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
 
 
 class RecipeTrace:
-    """Recording the process of running a Recipe."""
-    def __init__(self, optimize=None, sample=None, post=None):
+    """
+    Recording the process of running a Recipe.
+
+    Notes
+    -----
+    The default behavior of SampleStrategy initialization may change later.
+    """
+    def __init__(self, optimize=None, sample=None, post=None,
+                 sample_multiplicity=None):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = deepcopy(optimize)
         elif isinstance(optimize, dict):
@@ -480,18 +488,18 @@ class RecipeTrace:
 
         if isinstance(sample, SampleStrategy):
             self._strategy = sample
-        elif isinstance(sample, dict):
-            # TODO: update this when DynamicSample is ready
-            self._strategy = StaticSample(**sample)
         else:
             try:
-                self._strategy = StaticSample(sample_steps=sample)
+                # TODO: update this when DynamicSample is ready
+                self._strategy = StaticSample(sample, sample_multiplicity)
             except:
                 raise ValueError('failed to initialize a StaticSample.')
 
         self._s_sample = []
 
-        if isinstance(post, PostStep) or post is None:
+        if post is None:
+            post = {}
+        if isinstance(post, PostStep):
             self._s_post = deepcopy(post)
         elif isinstance(post, dict):
             self._s_post = PostStep(**deepcopy(post))
@@ -586,7 +594,8 @@ PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
 class Recipe:
 
     def __init__(self, density, parallel_backend=None, recipe_trace=None,
-                 optimize=None, sample=None, post=None, copy_density=True):
+                 optimize=None, sample=None, post=None,
+                 sample_multiplicity=None, copy_density=True):
         if isinstance(density, (Density, DensityLite)):
             self._density = deepcopy(density) if copy_density else density
         else:
@@ -595,7 +604,8 @@ class Recipe:
         self.parallel_backend = parallel_backend
 
         if recipe_trace is None:
-            recipe_trace = RecipeTrace(optimize, sample, post)
+            recipe_trace = RecipeTrace(optimize, sample, post,
+                                       sample_multiplicity)
         elif isinstance(recipe_trace, RecipeTrace):
             pass
         elif isinstance(recipe_trace, dict):
@@ -758,7 +768,7 @@ class Recipe:
 
             result.append(result[i_max])
             print(' OptimizeStep proceeding: we will use iter #{} as it has '
-                  'the highest logp_trans.'.format(i_max))
+                  'the highest logp_trans.\n'.format(i_max))
 
         else:
             if step.x_0 is None:
@@ -832,7 +842,7 @@ class Recipe:
         recipe_trace = self.recipe_trace
 
         i = recipe_trace._i_sample
-        this_step = self._strategy.update(results)
+        this_step = recipe_trace._strategy.update(results)
 
         while this_step is not None:
             sample_trace = this_step.sample_trace
@@ -1030,14 +1040,14 @@ class Recipe:
                                             var_dicts=None, sample_trace=t))
 
             steps.append(this_step)
-            recipe_trace._i_sample += 1
-
-            i = recipe_trace._i_sample
-            this_step = self._strategy.update(results)
-
             print('\n *** SampleStep proceeding: iter #{} finished. *** '
                   '\n'.format(i))
-        print(' ***** SampleStep finished. ***** \n')
+
+            recipe_trace._i_sample += 1
+            i = recipe_trace._i_sample
+            this_step = recipe_trace._strategy.update(results)
+
+        print('\n ***** SampleStep finished. ***** \n')
 
     def _pos_step(self):
         step = self.recipe_trace._s_post
@@ -1189,7 +1199,7 @@ class Recipe:
             samples, weights, weights_trunc, logp, logq, logz, logz_err, x_p,
             x_q, logp_p, logq_q, trace_p, trace_q, n_call, x_max, f_max)
         recipe_trace._i_post = 1
-        print(' ***** PostStep finished. ***** \n')
+        print('\n ***** PostStep finished. ***** \n')
 
     def _f_logp(self, x):
         return self.density.logp(x, original_space=True, use_surrogate=False)
