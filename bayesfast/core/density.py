@@ -4,7 +4,7 @@ from ..utils.collections import VariableDict, PropertyList
 from ..utils import all_isinstance
 from copy import deepcopy
 import warnings
-from .module import Module, Surrogate
+from .module import ModuleBase, Surrogate
 from ..transforms._constraint import *
 
 __all__ = ['Pipeline', 'Density', 'DensityLite']
@@ -209,11 +209,12 @@ class Pipeline(_PipelineBase):
     Parameters
     ----------
     module_list : Module or 1-d array_like of Module, optional
-        List of `Module`(s) constituting the `Pipeline`. Set to `[]` by default.
+        Each element should be a subclass object derived from `ModuleBase`. Set
+        to `()` by default.
     surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
-        List of surrogate modules. Set to `[]` by default.
+        List of surrogate modules. Set to `()` by default.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `['__var__']` by default.
+        Name(s) of input variable(s). Set to `('__var__',)` by default.
     input_dims : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
         array_like, should have the same shape as `input_vars`. If `None`, will
@@ -250,8 +251,8 @@ class Pipeline(_PipelineBase):
     -----
     See the tutorial for more information of usage.
     """
-    def __init__(self, module_list=[], surrogate_list=[],
-                 input_vars=['__var__'], input_dims=None, input_scales=None,
+    def __init__(self, module_list=(), surrogate_list=(),
+                 input_vars=('__var__',), input_dims=None, input_scales=None,
                  hard_bounds=True, copy_input=False, module_start=None,
                  module_stop=None, original_space=True, use_surrogate=False):
         self.module_list = module_list
@@ -272,20 +273,19 @@ class Pipeline(_PipelineBase):
 
     @module_list.setter
     def module_list(self, ml):
-        if isinstance(ml, Module):
+        if isinstance(ml, ModuleBase):
             ml = [ml]
         if hasattr(ml, '__iter__'):
             self._module_list = PropertyList(ml, self._ml_check)
         else:
-            raise ValueError('module_list should be a Module, or consist of '
-                             'Module(s).')
+            raise ValueError('invalid value for module_list.')
 
     @staticmethod
     def _ml_check(ml):
         for i, m in enumerate(ml):
-            if not isinstance(m, Module):
-                raise ValueError(
-                    'element #{} of module_list is not a Module.'.format(i))
+            if not isinstance(m, ModuleBase):
+                raise ValueError('element #{} of module_list is not a subclass '
+                                 'object of ModuleBase.'.format(i))
         return ml
 
     @property
@@ -365,7 +365,7 @@ class Pipeline(_PipelineBase):
                                  'of {}.'.format(tag, step))
         return step
 
-    _var_check = Module._var_check
+    _var_check = staticmethod(ModuleBase._var_check)
 
     @property
     def n_module(self):
@@ -562,19 +562,12 @@ class Pipeline(_PipelineBase):
     @input_vars.setter
     def input_vars(self, names):
         self._input_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'input', False, 'raise'))
+            names, lambda x: self._var_check(x, 'input', 'raise',
+            self._input_min_length, self._input_max_length))
 
-    @property
-    def output_vars(self):
-        return self._output_vars
+    _input_min_length = 1
 
-    @output_vars.setter
-    def output_vars(self, names):
-        if names is None or isinstance(names, str):
-            self._output_vars = names
-        else:
-            self._output_vars = PropertyList(
-                names, lambda x: self._var_check(x, 'output', False, 'remove'))
+    _input_max_length = np.inf
 
     @property
     def input_dims(self):
@@ -627,13 +620,14 @@ class Density(Pipeline, _DensityBase):
     
     Notes
     -----
-    See the docstring of `Pipeline`. Here the `output_vars` should be a str,
-    and will be set to `'__var__'` by default.
+    See the docstring of `Pipeline`.
     """
-    def __init__(self, density_name='__var__', decay_options={}, *args,
+    def __init__(self, density_name='__var__', decay_options=None, *args,
                  **kwargs):
         self.density_name = density_name
         super().__init__(*args, **kwargs)
+        if decay_options is None:
+            decay_options = {}
         self.set_decay_options(**decay_options)
 
     @property
@@ -834,8 +828,8 @@ class DensityLite(_PipelineBase, _DensityBase):
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
                  input_size=None, input_scales=None, hard_bounds=True,
                  copy_input=False, vectorized=False, original_space=True,
-                 logp_args=(), logp_kwargs={}, grad_args=(), grad_kwargs={},
-                 logp_and_grad_args=(), logp_and_grad_kwargs={}):
+                 logp_args=(), logp_kwargs=None, grad_args=(), grad_kwargs=None,
+                 logp_and_grad_args=(), logp_and_grad_kwargs=None):
         self.logp = logp
         self.grad = grad
         self.logp_and_grad = logp_and_grad
@@ -1018,9 +1012,9 @@ class DensityLite(_PipelineBase, _DensityBase):
     def vectorized(self, vec):
         self._vectorized = bool(vec)
 
-    _args_setter = Module._args_setter
+    _args_setter = staticmethod(ModuleBase._args_setter)
 
-    _kwargs_setter = Module._kwargs_setter
+    _kwargs_setter = staticmethod(ModuleBase._kwargs_setter)
 
     @property
     def logp_args(self):

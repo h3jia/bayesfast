@@ -23,6 +23,13 @@ open an issue / pull request, or email [He Jia](mailto:he.jia.phy@gmail.com).
 We also have a roadmap for features to implement in the future.
 Your contributions would be greatly appreciated!
 
+## Links
+
+* Website: https://www.bayesfast.org/
+* Documentation: https://bayesfast.readthedocs.io/en/latest/
+* Source Code: https://github.com/HerculesJack/bayesfast
+* Bug Reports: https://github.com/HerculesJack/bayesfast/issues
+
 ## Installation
 
 We plan to add pypi and conda-forge support later.
@@ -44,8 +51,8 @@ pytest # for this you will need to have pytest installed
 
 ## Dependencies
 
-BayesFast requires python>=3.6, cython, extension-helpers, numdifftools,
-multiprocess, matplotlib, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
+BayesFast requires python>=3.6, cython, extension-helpers, matplotlib,
+multiprocess, numdifftools, numpy>=1.17, scikit-learn, scipy and threadpoolctl.
 Currently, it has been tested on Ubuntu and MacOS, with python 3.6-3.8.
 
 ## License

@@ -4,62 +4,40 @@ from ..utils.collections import PropertyList
 from ..utils import all_isinstance
 import warnings
 
-__all__ = ['Module', 'Surrogate']
+__all__ = ['ModuleBase', 'Module', 'Surrogate']
 
 # TODO: implement `Module.print_summary()`
 # TODO: PropertyArray?
 # TODO: check if Surrogate has been fitted?
 
 
-class Module:
+class ModuleBase:
     """
-    Basic wrapper for use-definied functions.
+    Base class for Module.
     
-    Parameters
-    ----------
-    fun : callable or None, optional
-        Callable returning the value of function, or `None` if undefined.
-    jac : callable or None, optional
-        Callable returning the value of Jacobian, or `None` if undefined.
-    fun_and_jac : callable or None, optional
-        Callable returning the function and Jacobian at the same time, or `None`
-        if undefined.
-    input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `['__var__']` by default.
-    output_vars : str or 1-d array_like of str, optional
-        Name(s) of output variable(s). Set to `['__var__']` by default.
-    delete_vars : str or 1-d array_like of str, optional
-        Name(s) of variable(s) to be deleted from the dict during runtime. Set
-        to `[]` by default.
-    concat_join_input : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of input variables. Set to `False` by
-        default.
-    concat_join_output : bool or 1-d array_like of positive int, optional
-        Controlling the recombination of output variables. Set to `False` by
-        default.
-    input_scales : None or array_like, optional
-        Controlling the scaling of input variables. Set to `None` by default.
-    label : str, optional
-        Label of Module used in the `print_summary` method.
-    fun_args, jac_args, fun_and_jac_args : array_like, optional
-        Additional arguments to be passed to `fun`, `jac` and `fun_and_jac`.
-        Will be stored as tuples.
-    fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
-        Additional keyword arguments to be passed to `fun`, `jac` and
-        `fun_and_jac`.
+    Notes
+    -----
+    ``ModuleBase`` differs from ``Module`` in that, you should use it as a base
+    class and define ``_fun`` (**not** ``fun``) etc in your own derived class,
+    instead of passing those functions to the initializer. It is more convenient
+    when you want to write some pre-defined modules; see e.g. the ``camb`` and
+    ``planck_18`` modules in ``cosmofast``. See the docstring of ``Module`` for
+    more information about its usage. As mentioned above, you don't need to
+    specify ``fun``, ``jac`` and ``fun_and_jac`` in the initializer.
     """
-    def __init__(self, fun=None, jac=None, fun_and_jac=None,
-                 input_vars=['__var__'], output_vars=['__var__'],
-                 delete_vars=[], concat_join_input=False,
-                 concat_join_output=False, input_scales=None, label=None,
-                 fun_args=(), fun_kwargs={}, jac_args=(), jac_kwargs={},
-                 fun_and_jac_args=(), fun_and_jac_kwargs={}):
-        self._fun_jac_init(fun, jac, fun_and_jac)
-        self.input_vars = input_vars
-        self.output_vars = output_vars
+    def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
+                 delete_vars=(), input_shapes=None, output_shapes=None,
+                 input_scales=None, label=None, fun_args=(), fun_kwargs=None,
+                 jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
+                 fun_and_jac_kwargs=None):
+        if self.__class__.input_vars.fset is not None:
+            self.input_vars = input_vars
+        if self.__class__.output_vars.fset is not None:
+            self.output_vars = output_vars
+
         self.delete_vars = delete_vars
-        self.concat_join_input = concat_join_input
-        self.concat_join_output = concat_join_output
+        self.input_shapes = input_shapes
+        self.output_shapes = output_shapes
         self.input_scales = input_scales
         self.label = label
 
@@ -72,35 +50,30 @@ class Module:
 
         self.reset_counter()
 
-    def _fun_jac_init(self, fun, jac, fun_and_jac):
-        self.fun = fun
-        self.jac = jac
-        self.fun_and_jac = fun_and_jac
-
-    def _concat_join(self, args, tag):
+    def _reshape(self, args, tag):
         if tag == 'input':
-            strategy = self._concat_join_input
+            strategy = self._input_shapes
             cum = self._input_cum
             dim = 1
             tag_1 = 'input variables'
-            tag_2 = 'self.concat_join_input'
+            tag_2 = 'self.input_shapes'
         elif tag == 'output_fun':
-            strategy = self._concat_join_output
+            strategy = self._output_shapes
             cum = self._output_cum
             dim = 1
             tag_1 = 'output of fun'
-            tag_2 = 'self.concat_join_output'
+            tag_2 = 'self.output_shapes'
         elif tag == 'output_jac':
-            strategy = self._concat_join_output
+            strategy = self._output_shapes
             cum = self._output_cum
             dim = 2
             tag_1 = 'output of jac'
-            tag_2 = 'self.concat_join_output'
+            tag_2 = 'self.output_shapes'
         else:
-            raise RuntimeError('unexpected value for tag in self._concat_join.')
+            raise RuntimeError('unexpected value for tag in self._reshape.')
 
         args = self._adjust_dim(args, dim, tag_1)
-        if strategy is False:
+        if strategy is None:
             if tag == 'input' and self._input_scales is not None:
                 strategy = np.array([a.shape[0] for a in args], dtype=np.int)
                 cum = np.cumsum(np.insert(strategy, 0, 0))
@@ -116,18 +89,20 @@ class Module:
                          self._input_scales_diff)
             except Exception:
                 raise ValueError('failed to rescale the input variables.')
-        if strategy is True:
-            return [cargs]
-        elif isinstance(strategy, np.ndarray):
-            try:
-                return [cargs[cum[i]:cum[i + 1]] for i in range(strategy.size)]
-            except Exception:
-                raise ValueError('failed to split {}.'.format(tag_1))
+        if isinstance(strategy, np.ndarray):
+            if strategy.size > 1:
+                try:
+                    return [cargs[cum[i]:cum[i + 1]] for i in
+                            range(strategy.size)]
+                except Exception:
+                    raise ValueError('failed to split {}.'.format(tag_1))
+            else:
+                return [cargs]
         else:
             raise RuntimeError('unexpected value for {}.'.format(tag_2))
 
-    @classmethod
-    def _adjust_dim(cls, args, dim, tag):
+    @staticmethod
+    def _adjust_dim(args, dim, tag):
         if dim == 1:
             f = np.atleast_1d
         elif dim == 2:
@@ -150,6 +125,9 @@ class Module:
 
     @property
     def fun(self):
+        """
+        Wrapper of the callable to evaluate the function value.
+        """
         if self.has_fun:
             self._ncall_fun += 1
             return self._fun_wrapped
@@ -170,18 +148,24 @@ class Module:
                              'reset it.')
 
     def _fun_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._reshape(args, 'input')
         fun_out = self._fun(*args, *self._fun_args, **self._fun_kwargs)
-        return self._concat_join(fun_out, 'output_fun')
+        return self._reshape(fun_out, 'output_fun')
 
     @property
     def has_fun(self):
-        return self._fun is not None
+        try:
+            return self._fun is not None
+        except Exception:
+            return False
 
     __call__ = fun
 
     @property
     def jac(self):
+        """
+        Wrapper of the callable to evaluate the Jacobian value.
+        """
         if self.has_jac:
             self._ncall_jac += 1
             return self._jac_wrapped
@@ -202,17 +186,23 @@ class Module:
                              'reset it.')
 
     def _jac_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._reshape(args, 'input')
         jac_out = self._jac(*args, *self._jac_args, **self._jac_kwargs)
-        jac_out = self._concat_join(jac_out, 'output_jac')
+        jac_out = self._reshape(jac_out, 'output_jac')
         return [j / self._input_scales_diff for j in jac_out]
 
     @property
     def has_jac(self):
-        return self._jac is not None
+        try:
+            return self._jac is not None
+        except Exception:
+            return False
 
     @property
     def fun_and_jac(self):
+        """
+        Wrapper of the callable to evaluate the function and Jacobian values.
+        """
         if self.has_fun_and_jac:
             self._ncall_fun_and_jac += 1
             return self._fun_and_jac_wrapped
@@ -235,16 +225,19 @@ class Module:
                              'want to reset it.')
 
     def _fun_and_jac_wrapped(self, *args):
-        args = self._concat_join(args, 'input')
+        args = self._reshape(args, 'input')
         fun_out, jac_out = self._fun_and_jac(
             *args, *self.fun_and_jac_args, **self.fun_and_jac_kwargs)
-        fun_out = self._concat_join(fun_out, 'output_fun')
-        jac_out = self._concat_join(jac_out, 'output_jac')
+        fun_out = self._reshape(fun_out, 'output_fun')
+        jac_out = self._reshape(jac_out, 'output_jac')
         return (fun_out, [j / self._input_scales_diff for j in jac_out])
 
     @property
     def has_fun_and_jac(self):
-        return self._fun_and_jac is not None
+        try:
+            return self._fun_and_jac is not None
+        except Exception:
+            return False
 
     @property
     def ncall_fun(self):
@@ -258,16 +251,15 @@ class Module:
     def ncall_fun_and_jac(self):
         return self._ncall_fun_and_jac
 
-    @classmethod
-    def _var_check(cls, names, tag, allow_empty=False, handle_repeat='remove'):
+    @staticmethod
+    def _var_check(names, tag, handle_repeat='remove', min_length=1,
+                   max_length=np.inf):
         if isinstance(names, str):
             names = [names]
         else:
             try:
                 names = list(names)
                 assert all_isinstance(names, str)
-                if not allow_empty:
-                    assert len(names) > 0
             except Exception:
                 raise ValueError(
                     '{}_vars should be a str or an array_like of str, instead '
@@ -293,6 +285,13 @@ class Module:
                         'some elements in {}_vars are not unique.'.format(tag))
                 else:
                     raise RuntimeError('unexpected value for handle_repeat.')
+
+        if len(names) < min_length:
+            raise ValueError('the length of this var list is smaller than '
+                             'min_length={}.'.format(min_length))
+        if len(names) > max_length:
+            raise ValueError('the length of this var list is larger than '
+                             'max_length={}.'.format(max_length))
         return names
 
     @property
@@ -301,8 +300,15 @@ class Module:
 
     @input_vars.setter
     def input_vars(self, names):
+        if isinstance(names, str):
+            names = [names]
         self._input_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'input', False, 'ignore'))
+            names, lambda x: self._var_check(x, 'input', 'ignore',
+            self._input_min_length, self._input_max_length))
+
+    _input_min_length = 1
+
+    _input_max_length = np.inf
 
     @property
     def output_vars(self):
@@ -310,8 +316,15 @@ class Module:
 
     @output_vars.setter
     def output_vars(self, names):
+        if isinstance(names, str):
+            names = [names]
         self._output_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'output', False, 'raise'))
+            names, lambda x: self._var_check(x, 'output', 'raise',
+            self._output_min_length, self._output_max_length))
+
+    _output_min_length = 1
+
+    _output_max_length = np.inf
 
     @property
     def delete_vars(self):
@@ -320,49 +333,58 @@ class Module:
     @delete_vars.setter
     def delete_vars(self, names):
         self._delete_vars = PropertyList(
-            names, lambda x: self._var_check(x, 'delete', True, 'remove'))
+            names, lambda x: self._var_check(x, 'delete', 'remove',
+            self._delete_min_length, self._delete_max_length))
 
-    def _concat_join_check(self, concat_join, tag):
+    _delete_min_length = 0
+
+    _delete_max_length = np.inf
+
+    def _shape_check(self, shapes, tag):
         try:
-            concat_join = np.asarray(concat_join, dtype=np.int)
-            assert np.all(concat_join > 0) and concat_join.ndim == 1
+            shapes = np.atleast_1d(shapes).astype(np.int)
+            assert shapes.ndim == 1 and shapes.size > 0
+            if shapes.size > 1:
+                assert np.all(shapes > 0)
         except Exception:
-            raise ValueError(
-                '{}_concat_join should be a bool or an 1-d array_like of '
-                'int, instead of {}'.format(tag, concat_join))
+            raise ValueError('invalid value for {}_shapes.'.format(tag))
         if tag == 'input':
-            self._input_cum = np.cumsum(np.insert(concat_join, 0, 0))
+            self._input_cum = np.cumsum(np.insert(shapes, 0, 0))
         elif tag == 'output':
-            self._output_cum = np.cumsum(np.insert(concat_join, 0, 0))
+            self._output_cum = np.cumsum(np.insert(shapes, 0, 0))
         else:
             raise RuntimeError('unexpected value {} for tag.'.format(tag))
-        return concat_join
+        return shapes
 
     @property
-    def concat_join_input(self):
-        return self._concat_join_input
+    def input_shapes(self):
+        return self._input_shapes
 
-    @concat_join_input.setter
-    def concat_join_input(self, concat_join):
-        if isinstance(concat_join, bool):
-            self._concat_join_input = concat_join
+    @input_shapes.setter
+    def input_shapes(self, shapes):
+        if shapes is None:
+            self._input_shapes = None
             self._input_cum = None
         else:
-            self._concat_join_input = PropertyList(
-                concat_join, lambda x: self._concat_join_check(x, 'input'))
+            self._input_shapes = self._shape_check(shapes, 'input')
+            # we do not allow directly modify the elements of input_shapes here
+            # as it cannot trigger the update of input_cum
+            self._input_shapes.flags.writeable = False # TODO: PropertyArray?
 
     @property
-    def concat_join_output(self):
-        return self._concat_join_output
+    def output_shapes(self):
+        return self._output_shapes
 
-    @concat_join_output.setter
-    def concat_join_output(self, concat_join):
-        if isinstance(concat_join, bool):
-            self._concat_join_output = concat_join
+    @output_shapes.setter
+    def output_shapes(self, shapes):
+        if shapes is None:
+            self._output_shapes = None
             self._output_cum = None
         else:
-            self._concat_join_output = PropertyList(
-                concat_join, lambda x: self._concat_join_check(x, 'output'))
+            self._output_shapes = self._shape_check(shapes, 'output')
+            # we do not allow directly modify the elements of output_shapes here
+            # as it cannot trigger the update of output_cum
+            self._output_shapes.flags.writeable = False # TODO: PropertyArray?
 
     def _scale_check(self, scales):
         try:
@@ -404,8 +426,8 @@ class Module:
             raise ValueError(
                 'label should be a str or None, instead of {}.'.format(tag))
 
-    @classmethod
-    def _args_setter(cls, args, tag):
+    @staticmethod
+    def _args_setter(args, tag):
         if args is None:
             return ()
         else:
@@ -415,8 +437,8 @@ class Module:
                 raise ValueError('{}_args should be a tuple, instead of '
                                  '{}.'.format(tag, args))
 
-    @classmethod
-    def _kwargs_setter(cls, kwargs, tag):
+    @staticmethod
+    def _kwargs_setter(kwargs, tag):
         if kwargs is None:
             return {}
         else:
@@ -483,10 +505,60 @@ class Module:
         raise NotImplementedError
 
 
+class Module(ModuleBase):
+    """
+    Basic wrapper for use-definied functions.
+    
+    Parameters
+    ----------
+    fun : callable or None, optional
+        Callable returning the value of function, or ``None`` if undefined.
+    jac : callable or None, optional
+        Callable returning the value of Jacobian, or ``None`` if undefined.
+    fun_and_jac : callable or None, optional
+        Callable returning the function and Jacobian at the same time, or
+        ``None`` if undefined.
+    input_vars : str or 1-d array_like of str, optional
+        Name(s) of input variable(s). Set to ``('__var__',)`` by default.
+    output_vars : str or 1-d array_like of str, optional
+        Name(s) of output variable(s). Set to ``('__var__',)`` by default.
+    delete_vars : str or 1-d array_like of str, optional
+        Name(s) of variable(s) to be deleted from the dict during runtime. Set
+        to ``()`` by default.
+    input_shapes : None or 1-d array_like of int, optional
+        Controlling the reshaping of input variables. If ``None``, the input
+        variable(s) will be directly fed to ``fun`` etc. Otherwise, the input
+        variable(s) will first be concatenated as a 1-d array, and then if the
+        size of ``input_shapes`` is larger than 1, the input variables will be
+        splitted accordingly. Set to ``None`` by default.
+    output_shapes : None or 1-d array_like of int, optional
+        Controlling the reshaping of output variables. If ``None``, the output
+        variable(s) will be directly fetched from ``fun`` etc. Otherwise, the
+        output variable(s) will first be concatenated as a 1-d array, and then
+        if the size of ``output_shapes`` is larger than 1, the output variables
+        will be splitted accordingly. Set to ``None`` by default.
+    input_scales : None or array_like, optional
+        Controlling the scaling of input variables. Set to ``None`` by default.
+    label : str, optional
+        Label of Module used in the ``print_summary`` method.
+    fun_args, jac_args, fun_and_jac_args : array_like, optional
+        Additional arguments to be passed to ``fun``, ``jac`` and
+        ``fun_and_jac``. Will be stored as tuples.
+    fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
+        Additional keyword arguments to be passed to ``fun``, ``jac`` and
+        ``fun_and_jac``.
+    """
+    def __init__(self, fun=None, jac=None, fun_and_jac=None, **kwargs):
+        self.fun = fun
+        self.jac = jac
+        self.fun_and_jac = fun_and_jac
+        super().__init__(**kwargs)
+
+
 SurrogateScope = namedtuple('SurrogateScope', ['i_step', 'n_step'])
 
 
-class Surrogate(Module):
+class Surrogate(ModuleBase):
     """
     Base class for surrogate modules.
     
@@ -494,48 +566,48 @@ class Surrogate(Module):
     ----------
     input_size : int or None, optional
         The size of input variables. If None, will be inferred from
-        `concat_join_input`.
+        ``input_shapes``.
     output_size : int or None, optional
         The size of output variables. If None, will be inferred from
-        `concat_join_output`.
+        ``output_shapes``.
     scope : array_like of 2 ints, optional
-        Will be unpacked as `(i_step, n_step)`, where `i_step` represents the
-        index where the true `Module` should start to be replaced by the
-        `Surrogate`, and `n_step` represents the number of `Module`s to be
+        Will be unpacked as ``(i_step, n_step)``, where ``i_step`` represents
+        the index where the true ``Module`` should start to be replaced by the
+        ``Surrogate``, and ``n_step`` represents the number of ``Module``s to be
         replaced.
     fit_options : dict, optional
         Additional keyword arguments for fitting the surrogate model.
-    args : array_like, optional
-        Additional arguments to be passed to `Module.__init__`.
     kwargs : dict, optional
-        Additional keyword arguments to be passed to `Module.__init__`.
+        Additional keyword arguments to be passed to ``Module.__init__``.
     
     Notes
     -----
-    Unlike `Module`, the default value of `concat_join_input` will be `True`.
+    Unlike ``Module``, the default value of ``input_shapes`` will be ``-1``.
     """
     def __init__(self, input_size=None, output_size=None, scope=(0, 1),
-                 fit_options={}, *args, **kwargs):
+                 fit_options=None, **kwargs):
         self._initialized = False
-        super().__init__(None, None, None, *args, **kwargs)
-        if len(args) < 6 and not 'concat_join_input' in kwargs:
-            self.concat_join_input = True
+        if not 'input_shapes' in kwargs:
+            kwargs['input_shapes'] = -1
+        super().__init__(**kwargs)
         if input_size is None:
             try:
-                assert not isinstance(self.concat_join_input, bool)
-                input_size = int(np.sum(self.concat_join_input))
+                assert self.input_shapes is not None
+                assert self.input_shapes.size > 1
+                input_size = int(np.sum(self.input_shapes))
                 assert input_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer input_size from concat_join_input.')
+                    'failed to infer input_size from input_shapes.')
         if output_size is None:
             try:
-                assert not isinstance(self.concat_join_output, bool)
-                output_size = int(np.sum(self.concat_join_output))
+                assert self.output_shapes is not None
+                assert self.output_shapes.size > 1
+                output_size = int(np.sum(self.output_shapes))
                 assert output_size > 0
             except Exception:
                 raise ValueError(
-                    'failed to infer output_size from concat_join_output.')
+                    'failed to infer output_size from output_shapes.')
         self.input_size = input_size
         self.output_size = output_size
         self.scope = scope
@@ -547,9 +619,6 @@ class Surrogate(Module):
         if not hasattr(self, '_fun_and_jac'):
             self._fun_and_jac = None
         self._initialized = True
-
-    def _fun_jac_init(self, fun, jac, fun_and_jac):
-        pass
 
     @property
     def scope(self):
@@ -570,7 +639,10 @@ class Surrogate(Module):
 
     @fit_options.setter
     def fit_options(self, options):
-        self._fit_options = dict(options)
+        if options is None:
+            self._fit_options = {}
+        else:
+            self._fit_options = dict(options)
 
     @property
     def input_size(self):
@@ -607,6 +679,9 @@ class Surrogate(Module):
             self._output_size = size
 
     def fit(self, *args, **kwargs):
+        """
+        Fitting the surrogate model.
+        """
         raise NotImplementedError('Abstract Method.')
 
     @property

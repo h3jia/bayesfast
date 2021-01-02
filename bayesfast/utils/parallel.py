@@ -1,7 +1,7 @@
 try:
     from ray.util.multiprocessing import Pool as RayPool
     HAS_RAY = True
-except:
+except Exception:
     HAS_RAY = False
 try:
     from distributed import Client
