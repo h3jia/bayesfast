@@ -123,6 +123,12 @@ class PropertyList:
     def __next__(self):
         return self._list.__next__()
 
+    def __str__(self):
+        return self._list.__str__()
+
+    def __repr__(self):
+        return self._list.__repr__()
+
     def check(self):
         if self._check is not None:
             self._list = self._check(self._list)
