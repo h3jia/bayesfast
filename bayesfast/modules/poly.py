@@ -499,7 +499,7 @@ class PolyModel(Surrogate):
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
 
-    def fit(self, x, y, logp=None):
+    def fit(self, x, y, logp=None, w=None):
         x = np.asarray(x)
         y = np.asarray(y)
         if not (x.ndim == 2 and x.shape[-1] == self._input_size):
@@ -515,6 +515,11 @@ class PolyModel(Surrogate):
         if x.shape[0] < self.n_param:
             raise ValueError('I need at least {} points, but you only gave me '
                              '{}.'.format(self.n_param, x.shape[0]))
+        if w is not None:
+            w = np.atleast_1d(w)
+            if not (w.ndim == 1 and w.shape[0] == x.shape[0]):
+                raise ValueError('invalid shape for w.')
+
         for ii in range(self._output_size):
             A = np.empty((x.shape[0], 0))
             jj_l, jj_q, jj_c2, jj_c3 = self._recipe[ii]
@@ -552,6 +557,10 @@ class PolyModel(Surrogate):
                 kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
             b = np.copy(y[:, ii])
+            if w is not None:
+                b *= w
+                A *= w[:, np.newaxis]
+
             lsq = lstsq(A, b)[0]
             pp = 0
             if jj_l >= 0:
