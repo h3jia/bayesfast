@@ -30,6 +30,7 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 #       https://arxiv.org/pdf/1804.00154.pdf
 # TODO: add checkpoint facility
 # TODO: review Recipe.__getstate__
+# TODO: recover the initial values of original_space, use_surrogate, return_dict
 
 
 class BaseStep:

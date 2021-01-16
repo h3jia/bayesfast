@@ -617,6 +617,10 @@ class Density(Pipeline, _DensityBase):
     decay_options : dict, optional
         Keyword arguments to be passed to ``self.set_decay_options``. Set to
         ``{}`` by default.
+    return_dict : bool, optional
+        Whether to also return the full VariableDict. Will be
+        overwritten if the `return_dict` argument of ``logp``, ``grad`` and
+        ``logp_and_grad`` is not None. Set to ``False`` by default.
     kwargs : dict, optional
         Additional keyword arguments to be passed to ``Pipeline.__init__``.
     
@@ -625,8 +629,9 @@ class Density(Pipeline, _DensityBase):
     See the docstring of ``Pipeline``.
     """
     def __init__(self, density_name='__var__', decay_options=None,
-                 **kwargs):
+                 return_dict=False, **kwargs):
         self.density_name = density_name
+        self.return_dict = return_dict
         super().__init__(**kwargs)
         if decay_options is None:
             decay_options = {}
@@ -643,13 +648,23 @@ class Density(Pipeline, _DensityBase):
         except Exception:
             raise ValueError('invalid value for density_name.')
 
-    def logp(self, x, original_space=None, use_surrogate=None):
+    @property
+    def return_dict(self):
+        return self._return_dict
+
+    @return_dict.setter
+    def return_dict(self, rd):
+        self._return_dict = bool(rd)
+
+    def logp(self, x, original_space=None, use_surrogate=None,
+             return_dict=None):
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
                                       'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
+        return_dict = self.return_dict if (return_dict is None) else return_dict
         _fun = self.fun(x, original_space, use_surrogate)
         _logp = VariableDict.get(_fun, self.density_name, 'fun')[..., 0]
         if self._use_decay and use_surrogate:
@@ -659,17 +674,22 @@ class Density(Pipeline, _DensityBase):
             _logp -= self._gamma * np.clip(beta2 - self._alpha_2, 0, np.inf)
         if not original_space:
             _logp += self._get_diff(x_trans=x)
-        return _logp
+        if return_dict:
+            return _logp, _fun
+        else:
+            return _logp
 
     __call__ = logp
 
-    def grad(self, x, original_space=None, use_surrogate=None):
+    def grad(self, x, original_space=None, use_surrogate=None,
+             return_dict=None):
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
                                       'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
+        return_dict = self.return_dict if (return_dict is None) else return_dict
         _jac = self.jac(x, original_space, use_surrogate)
         _grad = VariableDict.get(_jac, self.density_name, 'jac')[..., 0, :]
         if self._use_decay and use_surrogate:
@@ -681,15 +701,20 @@ class Density(Pipeline, _DensityBase):
         if not original_space:
             _tog = self.to_original_grad(x)
             _grad += self.to_original_grad2(x) / _tog
-        return _grad
+        if return_dict:
+            return _grad, _jac
+        else:
+            return _grad
 
-    def logp_and_grad(self, x, original_space=None, use_surrogate=None):
+    def logp_and_grad(self, x, original_space=None, use_surrogate=None,
+                      return_dict=None):
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
                                       'float.')
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
+        return_dict = self.return_dict if (return_dict is None) else return_dict
         _fun_and_jac = self.fun_and_jac(x, original_space, use_surrogate)
         _logp = VariableDict.get(_fun_and_jac, self.density_name, 'fun')[..., 0]
         _grad = VariableDict.get(
@@ -705,7 +730,10 @@ class Density(Pipeline, _DensityBase):
             _logp += self._get_diff(x_trans=x)
             _tog = self.to_original_grad(x)
             _grad += self.to_original_grad2(x) / _tog
-        return _logp, _grad
+        if return_dict:
+            return _logp, _grad, _fun_and_jac
+        else:
+            return _logp, _grad
 
     @property
     def decay_options(self):
