@@ -22,7 +22,7 @@ DecayOptions = namedtuple('DecayOptions',
 
 
 class _PipelineBase:
-    """Utilities shared by `Pipeline`, `Density` and `DensityLite`."""
+    """Utilities shared by ``Pipeline``, ``Density`` and ``DensityLite``."""
     @property
     def input_scales(self):
         return self._input_scales
@@ -174,7 +174,7 @@ class _PipelineBase:
 
 
 class _DensityBase:
-    """Utilities shared by `Density` and `DensityLite`."""
+    """Utilities shared by ``Density`` and ``DensityLite``."""
     def _get_diff(self, x=None, x_trans=None):
         # Returning log |dx / dx_trans|.
         if x is not None:
@@ -204,48 +204,49 @@ class _DensityBase:
 
 class Pipeline(_PipelineBase):
     """
-    Constructing composite functions from basic `Module`(s).
+    Constructing composite functions from basic modules.
     
     Parameters
     ----------
     module_list : Module or 1-d array_like of Module, optional
-        Each element should be a subclass object derived from `ModuleBase`. Set
-        to `()` by default.
+        Each element should be a subclass object derived from ``ModuleBase``.
+        Set to ``()`` by default.
     surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
-        List of surrogate modules. Set to `()` by default.
+        Each element should be a subclass object derived from ``Surrogate``.
+        Set to ``()`` by default.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to `('__var__',)` by default.
+        Name(s) of input variable(s). Set to ``('__var__',)`` by default.
     input_dims : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
-        array_like, should have the same shape as `input_vars`. If `None`, will
-        be interpreted as there is only one input variable. Set to `None` by
-        default.
-    input_scales : None or array_like of float(s), optional
-        Controlling the scaling of input variables. Set to `None` by default.
+        array_like, should have the same shape as ``input_vars``. If ``None``,
+        will be interpreted as there is only one input variable. Set to ``None``
+        by default.
+    input_scales : None or array_like of float, optional
+        Controlling the scaling of input variables. Set to ``None`` by default.
     hard_bounds : bool or array_like, optional
-        Controlling whether `input_scales` should be interpreted as hard bounds,
-        or just used to rescale the variables. If bool, will be applied to all
-        the variables. If array_like, should have shape of `(input_size,)` or
-        `(input_size, 2)`. Set to `False` by default.
+        Controlling whether ``input_scales`` should be interpreted as hard
+        bounds, or just used to rescale the variables. If bool, will be applied
+        to all the variables. If array_like, should have shape of
+        ``(input_size,)`` or ``(input_size, 2)``. Set to ``False`` by default.
     copy_input : bool, optional
         Whether to make a copy of the input before evaluating the Pipeline. Set
         to False by default.
     module_start : int or None, optional
-        The index of the `Module` in `module_list` at which to start the
-        evaluation. If `None`, will be interpreted as `0`, i.e. the first
-        `Module`. Set to `None` by default.
+        The index of the ``Module`` in ``module_list`` at which to start the
+        evaluation. If ``None``, will be interpreted as ``0``, i.e. the first
+        ``Module``. Set to ``None`` by default.
     module_stop : int or None, optional
-        The index of the `Module` in `module_list` after which to end the
-        evaluation. If `None`, will be interpreted as `n_module - 1`, i.e. the
-        last `Module`. Set to `None` by default.
+        The index of the ``Module`` in ``module_list`` after which to end the
+        evaluation. If ``None``, will be interpreted as ``n_module - 1``, i.e.
+        the last ``Module``. Set to ``None`` by default.
     original_space : bool, optional
         Whether the input variables are in the original, untransformed space.
-        Will be overwritten if the `original_space` argument of `fun`, `jac` and
-        `fun_and_jac` is not None. Set to `True` by default.
+        Will be overwritten if the ``original_space`` argument of ``fun``,
+        ``jac`` and ``fun_and_jac`` is not None. Set to ``True`` by default.
     use_surrogate : bool, optional
         Whether to use surrogate modules during the evaluation. Will be
-        overwritten if the `use_surrogate` argument of `fun`, `jac` and
-        `fun_and_jac` is not None. Set to `False` by default.
+        overwritten if the ``use_surrogate`` argument of ``fun``, ``jac`` and
+        ``fun_and_jac`` is not None. Set to ``False`` by default.
     
     Notes
     -----
@@ -603,29 +604,27 @@ class Pipeline(_PipelineBase):
 
 class Density(Pipeline, _DensityBase):
     """
-    Specialized `Pipeline` for probability densities.
+    Specialized ``Pipeline`` for probability densities.
     
     Parameters
     ----------
     density_name : str, optional
-        The name of the variable that stands for the density. Set to `__var__`
+        The name of the variable that stands for the density. Set to ``__var__``
         by default.
     decay_options : dict, optional
-        Keyword arguments to be passed to `self.set_decay_options`. Set to `{}`
-        by default.
-    args : array_like, optional
-        Additional arguments to be passed to `Pipeline.__init__`.
+        Keyword arguments to be passed to ``self.set_decay_options``. Set to
+        ``{}`` by default.
     kwargs : dict, optional
-        Additional keyword arguments to be passed to `Pipeline.__init__`.
+        Additional keyword arguments to be passed to ``Pipeline.__init__``.
     
     Notes
     -----
-    See the docstring of `Pipeline`.
+    See the docstring of ``Pipeline``.
     """
-    def __init__(self, density_name='__var__', decay_options=None, *args,
+    def __init__(self, density_name='__var__', decay_options=None,
                  **kwargs):
         self.density_name = density_name
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         if decay_options is None:
             decay_options = {}
         self.set_decay_options(**decay_options)
@@ -791,39 +790,39 @@ class DensityLite(_PipelineBase, _DensityBase):
     Parameters
     ----------
     logp : callable or None, optional
-        Callable returning the value of logp, or `None` if undefined.
+        Callable returning the value of logp, or ``None`` if undefined.
     grad : callable or None, optional
-        Callable returning the value of grad_logp, or `None` if undefined.
+        Callable returning the value of grad_logp, or ``None`` if undefined.
     logp_and_grad : callable or None, optional
-        Callable returning the logp and grad_logp at the same time, or `None`
+        Callable returning the logp and grad_logp at the same time, or ``None``
         if undefined.
     input_size : None or positive int, optional
-        The size of input variables. Only used to generate starting points when
-        no x_0 is given during sampling. Set to `None` by default.
-    input_scales : None or array_like of float(s), optional
-        Controlling the scaling of input variables. Set to `None` by default.
+        The size of input variables. Only used to generate starting points for
+        sampling, when no ``x_0`` is given. Set to ``None`` by default.
+    input_scales : None or array_like of float, optional
+        Controlling the scaling of input variables. Set to ``None`` by default.
     hard_bounds : bool or array_like, optional
-        Controlling whether `input_scales` should be interpreted as hard bounds,
-        or just used to rescale the variables. If bool, will be applied to all
-        the variables. If array_like, should have shape of `(input_size,)` or
-        `(input_size, 2)`. Set to `False` by default.
+        Controlling whether ``input_scales`` should be interpreted as hard
+        bounds, or just used to rescale the variables. If bool, will be applied
+        to all the variables. If array_like, should have shape of
+        ``(input_size,)`` or ``(input_size, 2)``. Set to ``False`` by default.
     copy_input : bool, optional
         Whether to make a copy of the input before evaluating the Pipeline. Set
-        to False by default.
+        to ``False`` by default.
     vectorized : bool, optional
-        Whether the original definitions of `logp`, `grad` and `logp_and_grad`
-        are vectorized. If not, a wrapper will be used to enable vectorization.
-        Set to False by default.
+        Whether the original definitions of ``logp``, ``grad`` and
+        ``logp_and_grad`` are vectorized. If not, a wrapper will be used to
+        enable vectorization. Set to ``False`` by default.
     original_space : bool, optional
         Whether the input variables are in the original, untransformed space.
-        Will be overwritten if the `original_space` argument of `logp`, `grad`
-        and `logp_and_grad` is not None. Set to `True` by default.
+        Will be overwritten if the ``original_space`` argument of ``logp``,
+        ``grad`` and ``logp_and_grad`` is not None. Set to ``True`` by default.
     logp_args, grad_args, logp_and_grad_args : array_like, optional
-        Additional arguments to be passed to `logp`, `grad` and `logp_and_grad`.
-        Will be stored as tuples.
+        Additional arguments to be passed to ``logp``, ``grad`` and
+        ``logp_and_grad``. Will be stored as tuples.
     logp_kwargs, grad_kwargs, logp_and_grad_kwargs : dict, optional
-        Additional keyword arguments to be passed to `logp`, `grad` and
-        `logp_and_grad`.
+        Additional keyword arguments to be passed to ``logp``, ``grad`` and
+        ``logp_and_grad``.
     """
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
                  input_size=None, input_scales=None, hard_bounds=True,

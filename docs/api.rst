@@ -8,6 +8,9 @@ core
    bayesfast.ModuleBase
    bayesfast.Module
    bayesfast.Surrogate
+   bayesfast.Pipeline
+   bayesfast.Density
+   bayesfast.DensityLite
 
 .. autoclass:: bayesfast.ModuleBase
 
@@ -18,4 +21,18 @@ core
 
 .. autoclass:: bayesfast.Surrogate
    :members:
+   :show-inheritance:
+
+.. autoclass:: bayesfast.Pipeline
+   :members:
+   :inherited-members:
+   :show-inheritance:
+
+.. autoclass:: bayesfast.Density
+   :members:
+   :show-inheritance:
+
+.. autoclass:: bayesfast.DensityLite
+   :members:
+   :inherited-members:
    :show-inheritance:
