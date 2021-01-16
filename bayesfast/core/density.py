@@ -216,7 +216,7 @@ class Pipeline(_PipelineBase):
         Set to ``()`` by default.
     input_vars : str or 1-d array_like of str, optional
         Name(s) of input variable(s). Set to ``('__var__',)`` by default.
-    input_dims : 1-d array_like of int, or None, optional
+    input_shapes : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
         array_like, should have the same shape as ``input_vars``. If ``None``,
         will be interpreted as there is only one input variable. Set to ``None``
@@ -253,13 +253,13 @@ class Pipeline(_PipelineBase):
     See the tutorial for more information of usage.
     """
     def __init__(self, module_list=(), surrogate_list=(),
-                 input_vars=('__var__',), input_dims=None, input_scales=None,
+                 input_vars=('__var__',), input_shapes=None, input_scales=None,
                  hard_bounds=True, copy_input=False, module_start=None,
                  module_stop=None, original_space=True, use_surrogate=False):
         self.module_list = module_list
         self.surrogate_list = surrogate_list
         self.input_vars = input_vars
-        self.input_dims = input_dims
+        self.input_shapes = input_shapes
         self.input_scales = input_scales
         self.hard_bounds = hard_bounds
         self.copy_input = copy_input
@@ -571,35 +571,38 @@ class Pipeline(_PipelineBase):
     _input_max_length = np.inf
 
     @property
-    def input_dims(self):
-        return self._input_dims
+    def input_shapes(self):
+        return self._input_shapes
 
-    @input_dims.setter
-    def input_dims(self, dims):
-        if dims is None:
-            self._input_dims = None
+    @input_shapes.setter
+    def input_shapes(self, shapes):
+        if shapes is None:
+            self._input_shapes = None
             self._input_cum = None
         else:
-            self._input_dims = self._dim_check(dims)
-            # we do not allow directly modify the elements of input_dims here
+            self._input_shapes = self._shape_check(shapes)
+            # we do not allow directly modify the elements of input_shapes here
             # as it cannot trigger the update of input_cum
-            self._input_dims.flags.writeable = False # TODO: PropertyArray?
+            self._input_shapes.flags.writeable = False # TODO: PropertyArray?
 
-    def _dim_check(self, dims):
+    def _shape_check(self, shapes):
         try:
-            dims = np.atleast_1d(dims).astype(np.int)
-            assert np.all(dims > 0)
-            assert dims.size > 0 and dims.ndim == 1
+            shapes = np.atleast_1d(shapes).astype(np.int)
+            assert np.all(shapes > 0)
+            assert shapes.size > 0 and shapes.ndim == 1
         except Exception:
             raise ValueError(
-                'input_dims should be a 1-d array_like of positive int(s), or '
-                'None, instead of {}.'.format(dims))
-        self._input_cum = np.cumsum(np.insert(dims, 0, 0))
-        return dims
+                'input_shapes should be a 1-d array_like of positive int(s), or'
+                ' None, instead of {}.'.format(shapes))
+        self._input_cum = np.cumsum(np.insert(shapes, 0, 0))
+        return shapes
 
     @property
     def input_size(self):
-        return np.sum(self.input_dims) if self.input_dims is not None else None
+        if self.input_shapes is None:
+            return None
+        else:
+            return np.sum(self.input_shapes)
 
 
 class Density(Pipeline, _DensityBase):

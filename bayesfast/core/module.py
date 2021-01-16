@@ -13,7 +13,7 @@ __all__ = ['ModuleBase', 'Module', 'Surrogate']
 
 class ModuleBase:
     """
-    Base class for Module.
+    Base class for ``Module``.
     
     Notes
     -----
