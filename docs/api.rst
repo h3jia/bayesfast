@@ -11,6 +11,7 @@ core
    bayesfast.Pipeline
    bayesfast.Density
    bayesfast.DensityLite
+   bayesfast.sample
 
 .. autoclass:: bayesfast.ModuleBase
 
@@ -36,3 +37,5 @@ core
    :members:
    :inherited-members:
    :show-inheritance:
+
+.. autofunction:: bayesfast.sample

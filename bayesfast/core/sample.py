@@ -25,6 +25,37 @@ __all__ = ['sample']
 
 def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
            parallel_backend=None, verbose=True):
+    """
+    Sampling a probability density.
+    
+    Parameters
+    ----------
+    density : Density or DensityLite
+        The probability density to sample.
+    sample_trace : SampleTrace, dict, or None, optional
+        Configuring the sampler parameters. If not a subclass of
+        ``SampleTrace``, will be passed to initialize a ``SampleTrace`` object
+        corresponding to the type indicated by ``sampler`` (i.e. will get a
+        ``NTrace`` if ``sampler='NUTS'``). Set to ``None`` by default.
+    sampler : str, optional
+        Specifying the type of sampler to use. Should be one of ``'NUTS'``,
+        ``'HMC'``, ``'TNUTS'``, ``'THMC'`` and ``'Ensemble'`` (not implemented
+        yet). Will be ignored if ``sample_trace`` is a subclass of
+        ``SampleTrace``. Set to ``'NUTS'`` by default.
+    n_run : int or None, optional
+        The number of steps to run. If ``None``, will do the number indicated in
+        ``sample_trace``. Set to ``None`` by default.
+    parallel_backend : None, ParallelBackend, int, Pool, Client or MapReduce, optional
+        If ``None``, will use the global bayesfast parallel backend. Otherwise,
+        will be passed to construct a ``ParallelBackend`` for parallelization.
+    verbose : bool or array_like, optional
+        Whether to print the progress messages during the sampling. Set to
+        ``True`` by default.
+    
+    Notes
+    -----
+    See the tutorial for more information of usage.
+    """
     if not isinstance(density, (Density, DensityLite)):
         raise ValueError('density should be a Density or DensityLite.')
 
