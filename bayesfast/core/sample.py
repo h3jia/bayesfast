@@ -32,11 +32,11 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
     ----------
     density : Density or DensityLite
         The probability density to sample.
-    sample_trace : SampleTrace, dict, or None, optional
-        Configuring the sampler parameters. If not a subclass of
-        ``SampleTrace``, will be passed to initialize a ``SampleTrace`` object
-        corresponding to the type indicated by ``sampler`` (i.e. will get a
-        ``NTrace`` if ``sampler='NUTS'``). Set to ``None`` by default.
+    sample_trace : SampleTrace or dict, optional
+        Configuring the sampler parameters. If dict, will be passed to
+        initialize a ``SampleTrace`` object corresponding to the type indicated
+        by ``sampler`` (i.e. will get a ``NTrace`` if ``sampler='NUTS'``). Set
+        to ``{}`` by default.
     sampler : str, optional
         Specifying the type of sampler to use. Should be one of ``'NUTS'``,
         ``'HMC'``, ``'TNUTS'``, ``'THMC'`` and ``'Ensemble'`` (not implemented
@@ -51,6 +51,11 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
     verbose : bool or array_like, optional
         Whether to print the progress messages during the sampling. Set to
         ``True`` by default.
+    
+    Returns
+    -------
+    tt : TraceTuple
+        The parallel sampling results.
     
     Notes
     -----

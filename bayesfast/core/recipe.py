@@ -4,9 +4,8 @@ from .sample import sample
 from ..modules.poly import PolyConfig, PolyModel
 from ..samplers import SampleTrace, NTrace, _HTrace, TraceTuple
 from ..samplers import _get_step_size, _get_metric
-from ..utils import all_isinstance, Laplace, untemper_laplace_samples
+from ..utils import all_isinstance, Laplace
 from ..utils.parallel import ParallelBackend, get_backend
-from ..utils.random import get_generator
 from ..utils.sobol import multivariate_normal
 from ..utils import SystematicResampler, integrated_time
 from ..utils.collections import VariableDict, PropertyList
@@ -17,14 +16,14 @@ import warnings
 from copy import deepcopy
 from scipy.special import logsumexp
 
-__all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
+__all__ = ['OptimizeStep', 'SampleStep', 'PostStep', 'StaticSample',
+           'RecipeTrace', 'Recipe']
 
 # TODO: RecipeTrace.n_call
 # TODO: early stop in pipeline evaluation
 # TODO: early stop by comparing KL
 # TODO: use tqdm to add progress bar for map
 # TODO: better control when we don't have enough points before resampling
-# TODO: {} as default value
 # TODO: monitor the progress of IS
 # TODO: improve optimization with trust region?
 #       https://arxiv.org/pdf/1804.00154.pdf
@@ -33,17 +32,15 @@ __all__ = ['BaseStep', 'OptimizeStep', 'SampleStep', 'PostStep', 'Recipe']
 # TODO: recover the initial values of original_space, use_surrogate, return_dict
 
 
-class BaseStep:
+class _BaseStep:
     """Utilities shared by `OptimizeStep` and `SampleStep`."""
     def __init__(self, surrogate_list=(), alpha_n=2, fitted=False,
-                 sample_trace=None, x_0=None, random_generator=None,
-                 reuse_metric=True):
+                 sample_trace=None, x_0=None, reuse_metric=True):
         self.surrogate_list = surrogate_list
         self.alpha_n = alpha_n
         self.fitted = fitted
         self.sample_trace = sample_trace
         self.x_0 = x_0
-        self.random_generator = random_generator
         self.reuse_metric = reuse_metric
 
     @property
@@ -127,20 +124,6 @@ class BaseStep:
         self._sample_trace = t
 
     @property
-    def random_generator(self):
-        if self._random_generator is None:
-            return get_generator()
-        else:
-            return self._random_generator
-
-    @random_generator.setter
-    def random_generator(self, generator):
-        if generator is None:
-            self._random_generator = None
-        else:
-            self._random_generator = np.random.default_rng(generator)
-
-    @property
     def reuse_metric(self):
         return self._reuse_metric
 
@@ -149,14 +132,55 @@ class BaseStep:
         self._reuse_metric = bool(rm)
 
 
-class OptimizeStep(BaseStep):
-    """Configuring a step for optimization."""
+class OptimizeStep(_BaseStep):
+    """
+    Configuring a step for optimization.
+    
+    Parameters
+    ----------
+    surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
+        Each element should be a subclass object derived from ``Surrogate``.
+        Set to ``()`` by default.
+    alpha_n : int, optional
+        Controlling the number of samples used to fit the surrogate models, so
+        that for a surrogate model with ``n`` parameters, we will evaluate the
+        true model at ``alpha_n * n`` points during each iteration. If negative,
+        will use all the samples available. Set to ``2`` by default.
+    laplace : Laplace or dict, optional
+        Configuring the Laplace sampler. Set to ``{'beta': 100.}`` by default.
+    eps_pp : positive float, optional
+        The convergence threshold for |logp_i - logp_i-1|. Set to ``0.1`` by
+        default.
+    eps_pq : positive float, optional
+        The convergence threshold for |logp_i - logq_i|. Set to ``0.1`` by
+        default.
+    max_iter : positive int, optional
+        The maximum number of iterations allowed. Set to ``5`` by default.
+    x_0 : 2-d array of float or None, optional
+        The starting points to fit the first surrogate model. If None, will draw
+        from standard multivariate Gaussian via Sobol sequence. Set to ``None``
+        by default.
+    fitted : bool, optional
+        If True, will assume that the surrogate models have already been fitted.
+        Set to ``False`` by default.
+    run_sampling : bool, optional
+        Whether to do a real MCMC sampling in the end. This can be beneficial
+        since it can provide a better starting point for the subsequent
+        SampleStep. Set to ``True`` by default.
+    sample_trace : SampleTrace or dict, optional
+        Configuring the sampler parameters. Only used if ``run_sampling`` is
+        True. If dict, will be used to initialize an ``NTrace``. Set to ``{}``
+        by default.
+    reuse_metric : bool, optional
+        If True, will use the cov information of previous (Laplace) samples to
+        set up the MCMC metric, or its starting point if the metric is adaptive.
+        Set to ``True`` by default.
+    """
     def __init__(self, surrogate_list=(), alpha_n=2., laplace=None, eps_pp=0.1,
-                 eps_pq=0.1, max_iter=5, x_0=None, random_generator=None,
-                 fitted=False, run_sampling=True, sample_trace=None,
-                 reuse_metric=True):
+                 eps_pq=0.1, max_iter=5, x_0=None, fitted=False,
+                 run_sampling=True, sample_trace=None, reuse_metric=True):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
-                         random_generator, reuse_metric)
+                         reuse_metric)
         self.laplace = laplace
         self.eps_pp = eps_pp
         self.eps_pq = eps_pq
@@ -176,7 +200,7 @@ class OptimizeStep(BaseStep):
         elif isinstance(lap, Laplace):
             pass
         else:
-            raise ValueError('laplace should be a Laplace')
+            raise ValueError('invalid value for laplace.')
         self._laplace = lap
 
     @property
@@ -227,14 +251,79 @@ class OptimizeStep(BaseStep):
         self._run_sampling = bool(run)
 
 
-class SampleStep(BaseStep):
-    """Configuring a step for sampling."""
+class SampleStep(_BaseStep):
+    """
+    Configuring a step for sampling.
+    
+    Parameters
+    ----------
+    surrogate_list : Surrogate or 1-d array_like of Surrogate, optional
+        Each element should be a subclass object derived from ``Surrogate``.
+        Set to ``()`` by default.
+    alpha_n : int, optional
+        Controlling the number of samples used to fit the surrogate models, so
+        that for a surrogate model with ``n`` parameters, we will evaluate the
+        true model at ``alpha_n * n`` points during each iteration. If negative,
+        will use all the samples available. See the notes below for more details
+        about the case where ``logp_cutoff`` is True. Set to ``2`` by default.
+    sample_trace : SampleTrace or dict, optional
+        Configuring the sampler parameters. If dict, will be used to initialize
+        a ``NTrace``. Set to ``{}`` by default.
+    resampler : callable or dict, optional
+        Given the previous surrogate samples, deciding where to evaluate the
+        true model for the next iteration. If dict, will be used to initilize a
+        ``SystematicResampler``. If callable, should have the same signature as
+        ``SystematicResampler.run``. Set to ``{}`` by default.
+    reuse_samples : int, optional
+        If positive, will also use the existing (adequate) samples from this
+        number of previous SampleStep(s) to fit the surrogate models. If
+        negative, will use all the previous SampleStep(s). Set to ``0`` by
+        default.
+    reuse_step_size : bool, optional
+        If True, will use the previous SampleStep to set up the MCMC step size,
+        or its starting point if the step size is adaptive. Set to ``True`` by
+        default.
+    reuse_metric : bool, optional
+        If True, will use the cov information of previous samples to set up the
+        MCMC metric, or its starting point if the metric is adaptive. Set to
+        ``True`` by default.
+    logp_cutoff : bool, optional
+        Whether to abandon the samples with too small logp. See the notes below
+        for more details.
+    alpha_min : float, optional
+        Only used when ``logp_cutoff`` is True. See the notes below for more
+        details.
+    alpha_supp : float, optional
+        Only used when ``logp_cutoff`` is True. See the notes below for more
+        details.
+    x_0 : 2-d array of float or None, optional
+        The starting points to fit the first surrogate model. If None, will
+        first try to get from previous steps; if failed, will then draw from
+        standard multivariate Gaussian via Sobol sequence. Set to ``None`` by
+        default.
+    fitted : bool, optional
+        If True, will assume that the surrogate models have already been fitted.
+        Set to ``False`` by default.
+    
+    Notes
+    -----
+    If ``logp_cutoff`` is False, we will just evaluate the true model at
+    ``alpha_n * n`` points and use them to fit the surrogate model. If
+    ``logp_cutoff`` is True, we will compare the logp and (previous) logq values
+    of these ``alpha_n * n`` points, and abandon the points whose logp is
+    smaller than the smallest logq. Then, we require that the number of
+    remaining adequate samples is larger than ``alpha_n * alpha_supp * n``,
+    otherwise we will continue to draw more samples until this requirement is
+    satisfied. ``alpha_supp`` controls how many supplemental samples to draw at
+    each time. It might be useful to use some value larger than ``1``, since
+    some of the new samples may also be rejected.
+    """
     def __init__(self, surrogate_list=(), alpha_n=2., sample_trace=None,
-                 resampler={}, reuse_samples=0, reuse_step_size=True,
-                 reuse_metric=True, random_generator=None, logp_cutoff=True,
-                 alpha_min=0.75, alpha_supp=1.25, x_0=None, fitted=False):
+                 resampler=None, reuse_samples=0, reuse_step_size=True,
+                 reuse_metric=True, logp_cutoff=True, alpha_min=0.75,
+                 alpha_supp=1.25, x_0=None, fitted=False):
         super().__init__(surrogate_list, alpha_n, fitted, sample_trace, x_0,
-                         random_generator, reuse_metric)
+                         reuse_metric)
         self.resampler = resampler
         self.reuse_samples = reuse_samples
         self.reuse_step_size = reuse_step_size
@@ -248,9 +337,11 @@ class SampleStep(BaseStep):
 
     @resampler.setter
     def resampler(self, rs):
+        if rs is None:
+            rs = {}
         if isinstance(rs, dict):
             rs = SystematicResampler(**rs)
-        elif rs is None or callable(rs):
+        elif callable(rs):
             pass
         else:
             raise ValueError('invalid value for resampler.')
@@ -315,13 +406,27 @@ class SampleStep(BaseStep):
 
 
 class PostStep:
-    """Configuring a step for post-processing."""
-    def __init__(self, n_is=0, k_trunc=0.25, evidence_method=None,
-                 random_generator=None):
+    """
+    Configuring a step for post-processing.
+    
+    Parameters
+    ----------
+    n_is : int, optional
+        The number of samples to do Importance Sampling (IS). If negative, will
+        use all the samples available. Set to ``0`` by default.
+    k_trunc : float, optional
+        Truncating the IS weights w at ``<w> * n_IS**k_trunc``. Set to ``0.25``
+        by default.
+    evidence_method : str, None, or specified object, optional
+        If None, will not compute the evidence. If str, should be one of
+        ``GBS``, ``GIS`` and ``GHM``. If dict, will be used to initialize a
+        ``GBS`` object. Otherwise, should have a valid ``run`` method, with
+        the same signature as ``GBS.run``. Set to ``None`` by default.
+    """
+    def __init__(self, n_is=0, k_trunc=0.25, evidence_method=None):
         self.n_is = n_is
         self.k_trunc = k_trunc
         self.evidence_method = evidence_method
-        self.random_generator = random_generator
 
     @property
     def n_is(self):
@@ -367,22 +472,8 @@ class PostStep:
             raise ValueError('invalid value for evidence_method.')
         self._evidence_method = em
 
-    @property
-    def random_generator(self):
-        if self._random_generator is None:
-            return get_generator()
-        else:
-            return self._random_generator
 
-    @random_generator.setter
-    def random_generator(self, generator):
-        if generator is None:
-            self._random_generator = None
-        else:
-            self._random_generator = np.random.default_rng(generator)
-
-
-class SampleStrategy:
+class _SampleStrategy:
     """Configuring a multi-step sample strategy."""
     def __init__(self):
         self._i = 0
@@ -395,20 +486,34 @@ class SampleStrategy:
         raise NotImplementedError('abstract property.')
 
 
-class StaticSample(SampleStrategy):
-    """Configuring a static multi-step sample strategy."""
-    def __init__(self, sample_steps, multiplicity=None, verbose=True):
+class StaticSample(_SampleStrategy):
+    """
+    Configuring a static multi-step sample strategy.
+    
+    Parameters
+    ----------
+    sample_steps : SampleStep, 1-d array-like of SampleStep, or None, optional
+        Specifying how to perform surrogate sampling in each step. If ``None``,
+        will be interpreted as ``()``, i.e. no steps.
+    repeat : 1-d array-like of positive int, or None, optional
+        If not None, will be interpreted as the number of times to repeat each
+        element of ``sample_steps``. Set to ``None`` by default.
+    verbose : bool, optional
+        Whether to print a message before each iteration. Set to ``True`` by
+        default.
+    """
+    def __init__(self, sample_steps=None, repeat=None, verbose=True):
         super().__init__()
-        if multiplicity is not None:
+        if repeat is not None:
             if not hasattr(sample_steps, '__iter__'):
-                warnings.warn('multiplicity is ignored since sample_steps is '
-                              'not iterable.', RuntimeWarning)
+                warnings.warn('repeat is ignored since sample_steps is not '
+                              'iterable.', RuntimeWarning)
             else:
                 try:
                     sample_steps = [x for i, x in enumerate(sample_steps) for j
-                                    in range(multiplicity[i])]
+                                    in range(repeat[i])]
                 except Exception:
-                    warnings.warn('multiplicity is ignored since I failed to'
+                    warnings.warn('repeat is ignored since I failed to '
                                   'interpret it.', RuntimeWarning)
         self.sample_steps = sample_steps
         self.verbose = verbose
@@ -421,6 +526,8 @@ class StaticSample(SampleStrategy):
     def sample_steps(self, steps):
         if isinstance(steps, SampleStep):
             self._sample_steps = (deepcopy(steps),)
+        elif steps is None:
+            self._sample_steps = ()
         elif isinstance(steps, dict):
             self._sample_steps = (SampleStep(**deepcopy(steps)),)
         elif all_isinstance(steps, (SampleStep, dict)) and len(steps) > 0:
@@ -461,8 +568,8 @@ class StaticSample(SampleStrategy):
             return None
 
 
-class DynamicSample(SampleStrategy):
-    """Configuring a static multi-step sample strategy."""
+class DynamicSample(_SampleStrategy):
+    """Configuring a dynamic multi-step sample strategy."""
     def __init__(self, *args):
         raise NotImplementedError
 
@@ -473,13 +580,28 @@ RecipePhases = namedtuple('RecipePhases', 'optimize, sample, post')
 class RecipeTrace:
     """
     Recording the process of running a Recipe.
-
+    
+    Parameters
+    ----------
+    optimize : OptimizeStep, dict or None, optional
+        If None, no OptimizeStep will be performed. If dict, will be used to
+        initialize an OptimizeStep. Set to ``None`` by default.
+    sample : StaticSample, SampleStep, 1-d array-like of SampleStep, or None, optional
+        If not StaticSample, will be used to initialize a StaticSample. Set to
+        ``None`` by default.
+    post : PostStep or dict, optional
+        If dict, will be used to initialize a SampleStep. Set to ``{}`` by
+        default.
+    sample_repeat : 1-d array-like of positive int, or None, optional
+        If ``sample`` is not a StaticSample, will be used to initialize a
+        StaticSample (as the ``repeat`` argument). Set to ``None`` by default.
+    
     Notes
     -----
     The default behavior of SampleStrategy initialization may change later.
     """
     def __init__(self, optimize=None, sample=None, post=None,
-                 sample_multiplicity=None):
+                 sample_repeat=None):
         if isinstance(optimize, OptimizeStep) or optimize is None:
             self._s_optimize = deepcopy(optimize)
         elif isinstance(optimize, dict):
@@ -487,12 +609,12 @@ class RecipeTrace:
         else:
             raise ValueError('invalid value for optimize.')
 
-        if isinstance(sample, SampleStrategy):
+        if isinstance(sample, _SampleStrategy):
             self._strategy = sample
         else:
             try:
                 # TODO: update this when DynamicSample is ready
-                self._strategy = StaticSample(sample, sample_multiplicity)
+                self._strategy = StaticSample(sample, sample_repeat)
             except:
                 raise ValueError('failed to initialize a StaticSample.')
 
@@ -593,10 +715,38 @@ PostResult = namedtuple('PostResult', 'samples, weights, weights_trunc, logp, '
 
 
 class Recipe:
-
+    """
+    Unified recipe to run the whole BayesFast surrogate sampling process.
+    
+    Parameters
+    ----------
+    density : Density or DensityLite
+        The probability density to sample.
+    parallel_backend : None, ParallelBackend, int, Pool, Client or MapReduce, optional
+        If ``None``, will use the global bayesfast parallel backend. Otherwise,
+        will be passed to construct a ``ParallelBackend`` for parallelization.
+    recipe_trace : RecipeTrace, dict or None, optional
+        If dict, will be used to initialize a RecipeTrace. If ``None``, will use
+        the arguments below to initialize a RecipeTrace. Set to ``None`` by
+        default.
+    optimize : OptimizeStep, dict or None, optional
+        The ``optimize`` parameter to initialize a RecipeTrace. Only used if
+        ``recipe_trace`` is None. Set to ``None`` by default.
+    sample : StaticSample, SampleStep, 1-d array-like of SampleStep, or None, optional
+        The ``sample`` parameter to initialize a RecipeTrace. Only used if
+        ``recipe_trace`` is None. Set to ``None`` by default.
+    post : PostStep or dict, optional
+        The ``post`` parameter to initialize a RecipeTrace. Only used if
+        ``recipe_trace`` is None. Set to ``None`` by default.
+    sample_repeat : 1-d array-like of positive int, or None, optional
+        The ``sample_repeat`` parameter to initialize a RecipeTrace. Only used
+        if ``recipe_trace`` is None. Set to ``None`` by default.
+    copy_density : bool, optional
+        Whether to make a deepcopy of ``density``. Set to ``True`` by default.
+    """
     def __init__(self, density, parallel_backend=None, recipe_trace=None,
-                 optimize=None, sample=None, post=None,
-                 sample_multiplicity=None, copy_density=True):
+                 optimize=None, sample=None, post=None, sample_repeat=None,
+                 copy_density=True):
         if isinstance(density, (Density, DensityLite)):
             self._density = deepcopy(density) if copy_density else density
         else:
@@ -605,8 +755,7 @@ class Recipe:
         self.parallel_backend = parallel_backend
 
         if recipe_trace is None:
-            recipe_trace = RecipeTrace(optimize, sample, post,
-                                       sample_multiplicity)
+            recipe_trace = RecipeTrace(optimize, sample, post, sample_repeat)
         elif isinstance(recipe_trace, RecipeTrace):
             pass
         elif isinstance(recipe_trace, dict):
@@ -790,8 +939,6 @@ class Recipe:
             except Exception:
                 _grad = None
             # TODO: allow user-defined hessian for optimizer?
-            # TODO: if generating pseudo random numbers in Laplace
-            #       use the random generator of the OptimizeStep?
             laplace_result = step.laplace.run(logp=_logp, x_0=x_0, grad=_grad)
 
             x_trans = laplace_result.x_max
@@ -864,7 +1011,7 @@ class Recipe:
             if get_prev_samples:
                 if this_step.x_0 is None:
                     if prev_result.samples is None:
-                        prev_samples = untemper_laplace_samples(
+                        prev_samples = Laplace.untemper_laplace_samples(
                             prev_result.laplace_result)
                         prev_transformed = True
                     else:
@@ -925,18 +1072,9 @@ class Recipe:
                             'you want.', RuntimeWarning)
 
                     if get_prev_density:
-                        if this_step.resampler is None:
-                            i_resample = np.arange(this_step.n_eval)
-                        else:
-                            i_resample = this_step.resampler(prev_density,
-                                                             this_step.n_eval)
-
+                        i_resample = this_step.resampler(prev_density,
+                                                         this_step.n_eval)
                     else:
-                        if (this_step.resampler is not None or
-                            this_step.logp_cutoff):
-                            warnings.warn('resampler and logp_cutoff will be '
-                                          'ignored, when get_prev_density is '
-                                          'False.', RuntimeWarning)
                         if this_step.n_eval > 0:
                             i_resample = np.arange(this_step.n_eval)
                         else:
@@ -989,11 +1127,8 @@ class Recipe:
                             if prev_samples.shape[0] < n_eval_supp:
                                 raise RuntimeError('I do not have enough '
                                                    'supplementary points.')
-                            if this_step.resampler is None:
-                                i_resample = np.arange(n_eval_supp)
-                            else:
-                                i_resample = this_step.resampler(
-                                    prev_density, n_eval_supp)
+                            i_resample = this_step.resampler(prev_density,
+                                                             n_eval_supp)
 
                             x_fit = prev_samples[i_resample]
                             self.density.use_surrogate = False
@@ -1209,6 +1344,7 @@ class Recipe:
         return self.density.logp(x, original_space=True, use_surrogate=True)
 
     def run(self):
+        """Running the Recipe."""
         f_opt, f_sam, f_pos = self.recipe_trace.finished
         if not f_opt:
             self._opt_step()
@@ -1218,6 +1354,14 @@ class Recipe:
             self._pos_step()
 
     def get(self):
+        """
+        Getting the results of the Recipe.
+        
+        Returns
+        -------
+        result : PostResult
+            The results of the Recipe.
+        """
         try:
             return self.recipe_trace._r_post
         except Exception:
