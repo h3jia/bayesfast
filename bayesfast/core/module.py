@@ -25,7 +25,7 @@ class ModuleBase:
     more information about its usage. As mentioned above, you don't need to
     specify ``fun``, ``jac`` and ``fun_and_jac`` in the initializer.
     """
-    def __init__(self, input_vars=('__var__',), output_vars=('__var__',),
+    def __init__(self, input_vars='__var__', output_vars='__var__',
                  delete_vars=(), input_shapes=None, output_shapes=None,
                  input_scales=None, label=None, fun_args=(), fun_kwargs=None,
                  jac_args=(), jac_kwargs=None, fun_and_jac_args=(),
@@ -519,9 +519,9 @@ class Module(ModuleBase):
         Callable returning the function and Jacobian at the same time, or
         ``None`` if undefined.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to ``('__var__',)`` by default.
+        Name(s) of input variable(s). Set to ``'__var__'`` by default.
     output_vars : str or 1-d array_like of str, optional
-        Name(s) of output variable(s). Set to ``('__var__',)`` by default.
+        Name(s) of output variable(s). Set to ``'__var__'`` by default.
     delete_vars : str or 1-d array_like of str, optional
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to ``()`` by default.

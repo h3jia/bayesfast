@@ -93,7 +93,7 @@ setup(
     python_requires=">=3.6",
     install_requires=['cython', 'extension-helpers', 'matplotlib',
                       'multiprocess', 'numdifftools', 'numpy>=1.17',
-                      'scikit-learn', 'scipy', 'threadpoolctl'],
+                      'scikit-learn', 'scipy>=1.0', 'threadpoolctl'],
     packages=find_packages(),
     package_data={'bayesfast': ['utils/new-joe-kuo-6.21201']},
     ext_modules=cythonize(ext_modules, language_level="3"),
