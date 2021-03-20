@@ -8,6 +8,31 @@ __all__ = ['Gaussian']
 class Gaussian(ModuleBase):
     """
     A univariate or multivariate Gaussian distribution.
+    
+    Parameters
+    ----------
+    mean : 1-d array_like of float
+        The mean of the Gaussian.
+    cov : 1-d or 2-d array_like of float
+        If 1-d, will be interpreted as the diagonal of the covariance matrix.
+        If 2-d, will be interpreted as the full covariance matrix.
+    input_vars : str or 1-d array_like of str, optional
+        Name(s) of input variable(s). Will first be concatenated as one single
+        variable. Set to ``'__var__'`` by default.
+    output_vars : str or 1-d array_like of str, optional
+        Name of output variable. Should contain only 1 variable here. Set to
+        ``'__var__'`` by default.
+    delete_vars : str or 1-d array_like of str, optional
+        Name(s) of variable(s) to be deleted from the dict during runtime. Set
+        to ``()`` by default.
+    lower : 1-d array_like of float, or None, optional
+        If not None, will be used to compute the correct normalization of a
+        truncated Gaussian. Set to `None` by default.
+    upper : 1-d array_like of float, or None, optional
+        If not None, will be used to compute the correct normalization of a
+        truncated Gaussian. Set to `None` by default.
+    label : str, optional
+        Label of Module used in the ``print_summary`` method.
     """
     def __init__(self, mean, cov, input_vars='__var__', output_vars='__var__',
                  delete_vars=(), lower=None, upper=None, label=None):

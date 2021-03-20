@@ -25,11 +25,11 @@ class PolyConfig:
     order : str
         Specifying the order of the polynomial model. Should be one of 'linear',
         'quadratic', 'cubic-2' and 'cubic-3'.
-    input_mask : None or 1-d array_like, optional
+    input_mask : None or 1-d array_like of int, optional
         The indice of input variables that are activated. If `None`, will be
         understood as np.arange(input_size), i.e. all the variables are
         activated. Set to `None` by default.
-    output_mask : None or 1-d array_like, optional
+    output_mask : None or 1-d array_like of int, optional
         The indice of output variables that are activated. If `None`, will be
         understood as np.arange(output_size), i.e. all the variables are
         activated. Set to `None` by default.

@@ -70,6 +70,30 @@ core
 .. autoclass:: bayesfast.Recipe
    :members:
 
+modules
+-------
+
+.. autosummary::
+   bayesfast.modules.PolyConfig
+   bayesfast.modules.PolyModel
+   bayesfast.modules.Sum
+   bayesfast.modules.Gaussian
+
+.. autoclass:: bayesfast.modules.PolyConfig
+   :members:
+
+.. autoclass:: bayesfast.modules.PolyModel
+   :members:
+   :show-inheritance:
+
+.. autoclass:: bayesfast.modules.Sum
+   :members:
+   :show-inheritance:
+
+.. autoclass:: bayesfast.modules.Gaussian
+   :members:
+   :show-inheritance:
+
 utils
 -----
 
