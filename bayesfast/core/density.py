@@ -421,9 +421,9 @@ class Pipeline(_PipelineBase):
                         x = self.to_original(x)
                     var_dict = VariableDict()
                     if self._input_cum is None:
-                        var_dict._fun[self._input_vars[0]] = x
+                        var_dict._fun[self.input_vars[0]] = x
                     else:
-                        for i, n in enumerate(self._input_vars):
+                        for i, n in enumerate(self.input_vars):
                             var_dict._fun[n] = x[
                                 self._input_cum[i]:self._input_cum[i + 1]]
                 elif x.dtype.kind == 'O':
@@ -460,9 +460,9 @@ class Pipeline(_PipelineBase):
                 else:
                     _module = self._module_list[i]
                     di = 1
-                _input = [var_dict._fun[n] for n in _module._input_vars]
+                _input = [var_dict._fun[n] for n in _module.input_vars]
                 _output = _module.fun(*_input)
-                for j, n in enumerate(_module._output_vars):
+                for j, n in enumerate(_module.output_vars):
                     var_dict._fun[n] = _output[j]
                 for n in _module._delete_vars:
                     del var_dict._fun[n]
@@ -498,10 +498,10 @@ class Pipeline(_PipelineBase):
                         j = np.eye(x.shape[-1])
                     var_dict = VariableDict()
                     if self._input_cum is None:
-                        var_dict._fun[self._input_vars[0]] = x
-                        var_dict._jac[self._input_vars[0]] = j
+                        var_dict._fun[self.input_vars[0]] = x
+                        var_dict._jac[self.input_vars[0]] = j
                     else:
-                        for i, n in enumerate(self._input_vars):
+                        for i, n in enumerate(self.input_vars):
                             var_dict._fun[n] = x[
                                 self._input_cum[i]:self._input_cum[i + 1]]
                             var_dict._jac[n] = j[
@@ -540,11 +540,11 @@ class Pipeline(_PipelineBase):
                 else:
                     _module = self._module_list[i]
                     di = 1
-                _input = [var_dict._fun[n] for n in _module._input_vars]
+                _input = [var_dict._fun[n] for n in _module.input_vars]
                 _input_jac =  np.concatenate(
-                    [var_dict._jac[n] for n in _module._input_vars], axis=0)
+                    [var_dict._jac[n] for n in _module.input_vars], axis=0)
                 _output, _output_jac = _module.fun_and_jac(*_input)
-                for j, n in enumerate(_module._output_vars):
+                for j, n in enumerate(_module.output_vars):
                     var_dict._fun[n] = _output[j]
                     var_dict._jac[n] = np.dot(_output_jac[j], _input_jac)
                 for n in _module._delete_vars:
@@ -793,16 +793,16 @@ class Density(Pipeline, _DensityBase):
         if not all_isinstance(var_dicts, VariableDict):
             raise ValueError('var_dicts should consist of VariableDict(s).')
 
-        x = self._get_var(var_dicts, self._input_vars)
+        x = self._get_var(var_dicts, self.input_vars)
         if self._use_decay:
             self._set_decay(x)
         logp = self._get_logp(var_dicts)
 
         for i, su in enumerate(self._surrogate_list):
-            x = self._get_var(var_dicts, su._input_vars)
+            x = self._get_var(var_dicts, su.input_vars)
             if su._input_scales is not None:
                 x = (x - su._input_scales[:, 0]) / su._input_scales_diff
-            y = self._get_var(var_dicts, su._output_vars)
+            y = self._get_var(var_dicts, su.output_vars)
             su.fit(x, y, logp)
 
     @classmethod
