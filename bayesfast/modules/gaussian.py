@@ -27,12 +27,13 @@ class Gaussian(ModuleBase):
         to ``()`` by default.
     lower : 1-d array_like of float, or None, optional
         If not None, will be used to compute the correct normalization of a
-        truncated Gaussian. Set to `None` by default.
+        truncated Gaussian. Set to ``None`` by default.
     upper : 1-d array_like of float, or None, optional
         If not None, will be used to compute the correct normalization of a
-        truncated Gaussian. Set to `None` by default.
-    label : str, optional
-        Label of Module used in the ``print_summary`` method.
+        truncated Gaussian. Set to ``None`` by default.
+    label : str or None, optional
+        The label of the module used in ``print_summary``. Set to ``None`` by
+        default.
     """
     def __init__(self, mean, cov, input_vars='__var__', output_vars='__var__',
                  delete_vars=(), lower=None, upper=None, label=None):

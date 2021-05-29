@@ -120,7 +120,7 @@ class ModuleBase:
     @property
     def fun(self):
         """
-        Wrapper of the callable to evaluate the function value.
+        Wrapper of the callable to evaluate the function.
         """
         if self.has_fun:
             self._ncall_fun += 1
@@ -158,7 +158,7 @@ class ModuleBase:
     @property
     def jac(self):
         """
-        Wrapper of the callable to evaluate the Jacobian value.
+        Wrapper of the callable to evaluate the Jacobian.
         """
         if self.has_jac:
             self._ncall_jac += 1
@@ -195,7 +195,7 @@ class ModuleBase:
     @property
     def fun_and_jac(self):
         """
-        Wrapper of the callable to evaluate the function and Jacobian values.
+        Wrapper of the callable to evaluate the function and Jacobian.
         """
         if self.has_fun_and_jac:
             self._ncall_fun_and_jac += 1
@@ -501,17 +501,19 @@ class ModuleBase:
 
 class Module(ModuleBase):
     """
-    Basic wrapper for use-definied functions.
+    Basic wrapper for user-definied functions.
     
     Parameters
     ----------
     fun : callable or None, optional
-        Callable returning the value of function, or ``None`` if undefined.
+        Callable returning the value of function, or None if undefined. Set to
+        ``None`` by default.
     jac : callable or None, optional
-        Callable returning the value of Jacobian, or ``None`` if undefined.
+        Callable returning the value of Jacobian, or None if undefined. Set to
+        ``None`` by default.
     fun_and_jac : callable or None, optional
         Callable returning the function and Jacobian at the same time, or
-        ``None`` if undefined.
+        None if undefined. Set to ``None`` by default.
     input_vars : str or 1-d array_like of str, optional
         Name(s) of input variable(s). Set to ``'__var__'`` by default.
     output_vars : str or 1-d array_like of str, optional
@@ -520,27 +522,28 @@ class Module(ModuleBase):
         Name(s) of variable(s) to be deleted from the dict during runtime. Set
         to ``()`` by default.
     input_shapes : None or 1-d array_like of int, optional
-        Controlling the reshaping of input variables. If ``None``, the input
+        Controlling the reshaping of input variables. If None, the input
         variable(s) will be directly fed to ``fun`` etc. Otherwise, the input
         variable(s) will first be concatenated as a 1-d array, and then if the
         size of ``input_shapes`` is larger than 1, the input variables will be
         splitted accordingly. Set to ``None`` by default.
     output_shapes : None or 1-d array_like of int, optional
-        Controlling the reshaping of output variables. If ``None``, the output
+        Controlling the reshaping of output variables. If None, the output
         variable(s) will be directly fetched from ``fun`` etc. Otherwise, the
         output variable(s) will first be concatenated as a 1-d array, and then
         if the size of ``output_shapes`` is larger than 1, the output variables
         will be splitted accordingly. Set to ``None`` by default.
     input_scales : None or array_like, optional
         Controlling the scaling of input variables. Set to ``None`` by default.
-    label : str, optional
-        Label of Module used in the ``print_summary`` method.
+    label : str or None, optional
+        The label of the module used in ``print_summary``. Set to ``None`` by
+        default.
     fun_args, jac_args, fun_and_jac_args : array_like, optional
         Additional arguments to be passed to ``fun``, ``jac`` and
-        ``fun_and_jac``. Will be stored as tuples.
+        ``fun_and_jac``. Set to ``()`` by default.
     fun_kwargs, jac_kwargs, fun_and_jac_kwargs : dict, optional
         Additional keyword arguments to be passed to ``fun``, ``jac`` and
-        ``fun_and_jac``.
+        ``fun_and_jac``. Set to ``{}`` by default.
     """
     def __init__(self, fun=None, jac=None, fun_and_jac=None, **kwargs):
         self.fun = fun
@@ -560,17 +563,18 @@ class Surrogate(ModuleBase):
     ----------
     input_size : int or None, optional
         The size of input variables. If None, will be inferred from
-        ``input_shapes``.
+        ``input_shapes``. Set to ``None`` by default.
     output_size : int or None, optional
         The size of output variables. If None, will be inferred from
-        ``output_shapes``.
+        ``output_shapes``. Set to ``None`` by default.
     scope : array_like of 2 ints, optional
-        Will be unpacked as ``(i_step, n_step)``, where ``i_step`` represents
-        the index where the true ``Module`` should start to be replaced by the
-        ``Surrogate``, and ``n_step`` represents the number of ``Module``s to be
-        replaced.
+        Will be unpacked as ``(i_step, n_step)``, where i_step represents the
+        index where the true module should start to be replaced by the surrogate
+        module, and n_step represents the number of module(s) to be replaced.
+        Set to ``(0, 1)`` by default.
     fit_options : dict, optional
-        Additional keyword arguments for fitting the surrogate model.
+        Additional keyword arguments for fitting the surrogate module. Set to
+        ``{}`` by default.
     kwargs : dict, optional
         Additional keyword arguments to be passed to ``Module.__init__``.
     
@@ -674,7 +678,7 @@ class Surrogate(ModuleBase):
 
     def fit(self, *args, **kwargs):
         """
-        Fitting the surrogate model.
+        Base method for fitting the surrogate module.
         """
         raise NotImplementedError('Abstract Method.')
 

@@ -312,7 +312,7 @@ class SampleStep(_BaseStep):
     ``logp_cutoff`` is True, we will compare the logp and (previous) logq values
     of these ``alpha_n * n`` points, and abandon the points whose logp is
     smaller than the smallest logq. Then, we require that the number of
-    remaining adequate samples is larger than ``alpha_n * alpha_supp * n``,
+    remaining adequate samples is larger than ``alpha_n * alpha_min * n``,
     otherwise we will continue to draw more samples until this requirement is
     satisfied. ``alpha_supp`` controls how many supplemental samples to draw at
     each time. It might be useful to use some value larger than ``1``, since
@@ -590,7 +590,7 @@ class RecipeTrace:
         If not StaticSample, will be used to initialize a StaticSample. Set to
         ``None`` by default.
     post : PostStep or dict, optional
-        If dict, will be used to initialize a SampleStep. Set to ``{}`` by
+        If dict, will be used to initialize a PostStep. Set to ``{}`` by
         default.
     sample_repeat : 1-d array-like of positive int, or None, optional
         If ``sample`` is not a StaticSample, will be used to initialize a
@@ -723,12 +723,11 @@ class Recipe:
     density : Density or DensityLite
         The probability density to sample.
     parallel_backend : None, ParallelBackend, int, Pool, Client or MapReduce, optional
-        If ``None``, will use the global bayesfast parallel backend. Otherwise,
-        will be passed to construct a ``ParallelBackend`` for parallelization.
+        If None, will use the global bayesfast parallel backend. Otherwise, will
+        be passed to construct a ``ParallelBackend`` for parallelization.
     recipe_trace : RecipeTrace, dict or None, optional
-        If dict, will be used to initialize a RecipeTrace. If ``None``, will use
-        the arguments below to initialize a RecipeTrace. Set to ``None`` by
-        default.
+        If dict, will be used to initialize a RecipeTrace. If None, will use the
+        arguments below to initialize a RecipeTrace. Set to ``None`` by default.
     optimize : OptimizeStep, dict or None, optional
         The ``optimize`` parameter to initialize a RecipeTrace. Only used if
         ``recipe_trace`` is None. Set to ``None`` by default.

@@ -35,7 +35,7 @@ class Laplace:
         truncated at this value. Set to ``1e5`` by default.
     n_sample : positive int or None, optional
         The number of samples to draw from the approximated Gaussian
-        distribution. If ``None``, will be determined by
+        distribution. If None, will be determined by
         ``min(1000, x_0.shape[-1] * 10)`` during runtime. Set to ``None`` by
         default.
     beta : positive float, optional
@@ -43,7 +43,7 @@ class Laplace:
         will come from ``beta * logq``. Set to ``1.`` by default.
     mvn_generator : None or callable, optional
         Random number generator for the multivairate normal distribution. Should
-        have signature ``(mean, cov, size) -> samples``. If ``None``, will use
+        have signature ``(mean, cov, size) -> samples``. If None, will use
         ``bayesfast.utils.sobol.multivariate_normal``. Set to ``None`` by
         default.
     grad_options : dict, optional
@@ -135,16 +135,16 @@ class Laplace:
         Parameters
         ----------
         logp : callable
-            The probability density to sample.
+            The logarithmic probability density to sample.
         x_0 : 1-d array_like of float
             The starting point for optimization.
         grad : callable or None, optional
             The gradient of the target density. If not callable, will use finite
-            difference methods in ``numdifftools``.
+            difference methods in ``numdifftools``. Set to ``None`` by default.
         hess : callable or None, optional
             The Hessian of the target density. If not callable, will use finite
             difference methods in ``numdifftools`` (by computing the Jacobian of
-            ``grad``).
+            gradient). Set to ``None`` by default.
         """
         if not callable(logp):
             raise ValueError('logp should be callable.')
@@ -190,7 +190,7 @@ class Laplace:
         Parameters
         ----------
         laplace_result : LaplaceResult
-            The returned results of a previous run.
+            The results returned by a previous run.
         
         Returns
         -------

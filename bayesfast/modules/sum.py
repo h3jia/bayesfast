@@ -11,7 +11,7 @@ class Sum(ModuleBase):
     Parameters
     ----------
     input_vars : str or 1-d array_like of str
-        Names of input variable(s). Will first be concatenated as one single
+        Name(s) of input variable(s). Will first be concatenated as one single
         variable.
     output_vars : str or 1-d array_like of str
         Name of output variable. Should contain only 1 variable here.
@@ -22,8 +22,9 @@ class Sum(ModuleBase):
         If not None, should match the shape of (concatenated) ``input_vars``,
         and then the summation of ``b * x_input`` will be computed. Set to
         ``None`` by default.
-    label : str, optional
-        Label of Module used in the ``print_summary`` method.
+    label : str or None, optional
+        The label of the module used in ``print_summary``. Set to ``None`` by
+        default.
     """
     def __init__(self, input_vars, output_vars, delete_vars=(), b=None,
                  label=None):

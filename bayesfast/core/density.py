@@ -12,7 +12,7 @@ __all__ = ['Pipeline', 'Density', 'DensityLite']
 # TODO: add call counter?
 # TODO: review the behavior of out
 # TODO: do we need logq information in fit?
-# TODO: use jacobian information to fit
+# TODO: use jacobian information in fit
 # TODO: return -inf when outside the bound
 # TODO: implement decay and logp transform for VariableDict
 
@@ -215,12 +215,12 @@ class Pipeline(_PipelineBase):
         Each element should be a subclass object derived from ``Surrogate``.
         Set to ``()`` by default.
     input_vars : str or 1-d array_like of str, optional
-        Name(s) of input variable(s). Set to ``('__var__',)`` by default.
+        Name(s) of input variable(s). Set to ``'__var__'`` by default.
     input_shapes : 1-d array_like of int, or None, optional
         Used to divide and extract the variable(s) from the input. If 1-d
-        array_like, should have the same shape as ``input_vars``. If ``None``,
-        will be interpreted as there is only one input variable. Set to ``None``
-        by default.
+        array_like, should have the same shape as ``input_vars``. If None, will
+        be interpreted as there is only one input variable. Set to ``None`` by
+        default.
     input_scales : None or array_like of float, optional
         Controlling the scaling of input variables. Set to ``None`` by default.
     hard_bounds : bool or array_like, optional
@@ -229,16 +229,16 @@ class Pipeline(_PipelineBase):
         to all the variables. If array_like, should have shape of
         ``(input_size,)`` or ``(input_size, 2)``. Set to ``False`` by default.
     copy_input : bool, optional
-        Whether to make a copy of the input before evaluating the Pipeline. Set
-        to False by default.
+        Whether to make a copy of the input before evaluating the pipeline. Set
+        to ``False`` by default.
     module_start : int or None, optional
-        The index of the ``Module`` in ``module_list`` at which to start the
-        evaluation. If ``None``, will be interpreted as ``0``, i.e. the first
-        ``Module``. Set to ``None`` by default.
+        The index of the module in ``module_list`` at which to start the
+        evaluation. If None, will be interpreted as ``0``, i.e. the first
+        module. Set to ``None`` by default.
     module_stop : int or None, optional
-        The index of the ``Module`` in ``module_list`` after which to end the
-        evaluation. If ``None``, will be interpreted as ``n_module - 1``, i.e.
-        the last ``Module``. Set to ``None`` by default.
+        The index of the module in ``module_list`` after which to end the
+        evaluation. If None, will be interpreted as ``n_module - 1``, i.e. the
+        last module. Set to ``None`` by default.
     original_space : bool, optional
         Whether the input variables are in the original, untransformed space.
         Will be overwritten if the ``original_space`` argument of ``fun``,
@@ -253,8 +253,8 @@ class Pipeline(_PipelineBase):
     See the tutorial for more information of usage.
     """
     def __init__(self, module_list=(), surrogate_list=(),
-                 input_vars=('__var__',), input_shapes=None, input_scales=None,
-                 hard_bounds=True, copy_input=False, module_start=None,
+                 input_vars='__var__', input_shapes=None, input_scales=None,
+                 hard_bounds=False, copy_input=False, module_start=None,
                  module_stop=None, original_space=True, use_surrogate=False):
         self.module_list = module_list
         self.surrogate_list = surrogate_list
@@ -405,6 +405,9 @@ class Pipeline(_PipelineBase):
         self._use_surrogate = bool(us)
 
     def fun(self, x, original_space=None, use_surrogate=None):
+        """
+        Evaluate the function of the pipeline.
+        """
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
         # vectorization using recursions
@@ -475,10 +478,16 @@ class Pipeline(_PipelineBase):
     __call__ = fun
 
     def jac(self, x, original_space=None, use_surrogate=None):
+        """
+        Evaluate the Jacobian of the pipeline.
+        """
         _faj = self.fun_and_jac(x, original_space, use_surrogate)
         return _faj
 
     def fun_and_jac(self, x, original_space=None, use_surrogate=None):
+        """
+        Evaluate the function and Jacobian of the pipeline.
+        """
         original_space, use_surrogate = self._check_os_us(original_space,
                                                           use_surrogate)
         # vectorization using recursions
@@ -612,14 +621,14 @@ class Density(Pipeline, _DensityBase):
     Parameters
     ----------
     density_name : str, optional
-        The name of the variable that stands for the density. Set to ``__var__``
-        by default.
+        The name of the variable that stands for the logarithmic probability
+        density. Set to ``__var__`` by default.
     decay_options : dict, optional
-        Keyword arguments to be passed to ``self.set_decay_options``. Set to
-        ``{}`` by default.
+        Keyword arguments to be passed to ``self.set_decay_options`` during
+        initialization. Set to ``{}`` by default.
     return_dict : bool, optional
-        Whether to also return the full VariableDict. Will be
-        overwritten if the `return_dict` argument of ``logp``, ``grad`` and
+        Whether to also return the full ``VariableDict``. Will be
+        overwritten if the ``return_dict`` argument of ``logp``, ``grad`` and
         ``logp_and_grad`` is not None. Set to ``False`` by default.
     kwargs : dict, optional
         Additional keyword arguments to be passed to ``Pipeline.__init__``.
@@ -658,6 +667,9 @@ class Density(Pipeline, _DensityBase):
 
     def logp(self, x, original_space=None, use_surrogate=None,
              return_dict=None):
+        """
+        Evaluate the logarithmic probability density.
+        """
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
@@ -683,6 +695,9 @@ class Density(Pipeline, _DensityBase):
 
     def grad(self, x, original_space=None, use_surrogate=None,
              return_dict=None):
+        """
+        Evaluate the gradient of logp.
+        """
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
@@ -708,6 +723,9 @@ class Density(Pipeline, _DensityBase):
 
     def logp_and_grad(self, x, original_space=None, use_surrogate=None,
                       return_dict=None):
+        """
+        Evaluate the logp and grad at the same time.
+        """
         x = np.asarray(x)
         if x.dtype.kind != 'f':
             raise NotImplementedError('currently x should be a numpy array of '
@@ -742,6 +760,9 @@ class Density(Pipeline, _DensityBase):
 
     def set_decay_options(self, use_decay=False, alpha=None, alpha_p=150.,
                           gamma=0.1):
+        """
+        Set the decay options when far away from current samples.
+        """
         self._use_decay = bool(use_decay)
         if alpha is None:
             self._alpha = None
@@ -790,6 +811,9 @@ class Density(Pipeline, _DensityBase):
             self._alpha_2 = self._alpha**2
 
     def fit(self, var_dicts):
+        """
+        Fit all the surrogate modules.
+        """
         if not all_isinstance(var_dicts, VariableDict):
             raise ValueError('var_dicts should consist of VariableDict(s).')
 
@@ -821,12 +845,14 @@ class DensityLite(_PipelineBase, _DensityBase):
     Parameters
     ----------
     logp : callable or None, optional
-        Callable returning the value of logp, or ``None`` if undefined.
+        Callable returning the logarithmic probability density, or None if
+        undefined. Set to ``None`` by default.
     grad : callable or None, optional
-        Callable returning the value of grad_logp, or ``None`` if undefined.
+        Callable returning the gradient of logp, or None if undefined. Set to
+        ``None`` bu default.
     logp_and_grad : callable or None, optional
-        Callable returning the logp and grad_logp at the same time, or ``None``
-        if undefined.
+        Callable returning the logp and grad at the same time, or None if
+        undefined. Set to ``None`` by default.
     input_size : None or positive int, optional
         The size of input variables. Only used to generate starting points for
         sampling, when no ``x_0`` is given. Set to ``None`` by default.
@@ -838,7 +864,7 @@ class DensityLite(_PipelineBase, _DensityBase):
         to all the variables. If array_like, should have shape of
         ``(input_size,)`` or ``(input_size, 2)``. Set to ``False`` by default.
     copy_input : bool, optional
-        Whether to make a copy of the input before evaluating the Pipeline. Set
+        Whether to make a copy of the input before evaluating the pipeline. Set
         to ``False`` by default.
     vectorized : bool, optional
         Whether the original definitions of ``logp``, ``grad`` and
@@ -850,13 +876,13 @@ class DensityLite(_PipelineBase, _DensityBase):
         ``grad`` and ``logp_and_grad`` is not None. Set to ``True`` by default.
     logp_args, grad_args, logp_and_grad_args : array_like, optional
         Additional arguments to be passed to ``logp``, ``grad`` and
-        ``logp_and_grad``. Will be stored as tuples.
+        ``logp_and_grad``. Set to ``()`` by default.
     logp_kwargs, grad_kwargs, logp_and_grad_kwargs : dict, optional
         Additional keyword arguments to be passed to ``logp``, ``grad`` and
-        ``logp_and_grad``.
+        ``logp_and_grad``. Set to ``{}`` by default.
     """
     def __init__(self, logp=None, grad=None, logp_and_grad=None,
-                 input_size=None, input_scales=None, hard_bounds=True,
+                 input_size=None, input_scales=None, hard_bounds=False,
                  copy_input=False, vectorized=False, original_space=True,
                  logp_args=(), logp_kwargs=None, grad_args=(), grad_kwargs=None,
                  logp_and_grad_args=(), logp_and_grad_kwargs=None):
@@ -880,6 +906,9 @@ class DensityLite(_PipelineBase, _DensityBase):
 
     @property
     def logp(self):
+        """
+        Wrapper of the callable to evaluate the logarithmic probability density.
+        """
         if self.has_logp:
             return self._logp_wrapped
         elif self.has_logp_and_grad:
@@ -923,6 +952,9 @@ class DensityLite(_PipelineBase, _DensityBase):
 
     @property
     def grad(self):
+        """
+        Wrapper of the callable to evaluate the gradient of logp.
+        """
         if self.has_grad:
             return self._grad_wrapped
         elif self.has_logp_and_grad:
@@ -966,6 +998,9 @@ class DensityLite(_PipelineBase, _DensityBase):
 
     @property
     def logp_and_grad(self):
+        """
+        Wrapper of the callable to evaluate the logp and grad at the same time.
+        """
         if self.has_logp_and_grad:
             return self._logp_and_grad_wrapped
         elif self.has_logp and self.has_grad:

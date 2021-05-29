@@ -43,11 +43,11 @@ def sample(density, sample_trace=None, sampler='NUTS', n_run=None,
         yet). Will be ignored if ``sample_trace`` is a subclass of
         ``SampleTrace``. Set to ``'NUTS'`` by default.
     n_run : int or None, optional
-        The number of steps to run. If ``None``, will do the number indicated in
+        The number of steps to run. If None, will do the number indicated in
         ``sample_trace``. Set to ``None`` by default.
     parallel_backend : None, ParallelBackend, int, Pool, Client or MapReduce, optional
-        If ``None``, will use the global bayesfast parallel backend. Otherwise,
-        will be passed to construct a ``ParallelBackend`` for parallelization.
+        If None, will use the global bayesfast parallel backend. Otherwise, will
+        be passed to construct a ``ParallelBackend`` for parallelization.
     verbose : bool or array_like, optional
         Whether to print the progress messages during the sampling. Set to
         ``True`` by default.
