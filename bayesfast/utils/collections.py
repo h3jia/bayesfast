@@ -82,6 +82,8 @@ class PropertyList:
     def __init__(self, iterable=(), check=None):
         if isinstance(iterable, PropertyList):
             self._list = iterable._list.copy()
+        elif isinstance(iterable, str):
+            self._list = [iterable]
         else:
             self._list = list(iterable)
         self._check = check
