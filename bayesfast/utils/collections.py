@@ -82,6 +82,8 @@ class PropertyList:
     def __init__(self, iterable=(), check=None):
         if isinstance(iterable, PropertyList):
             self._list = iterable._list.copy()
+        elif isinstance(iterable, str):
+            self._list = [iterable]
         else:
             self._list = list(iterable)
         self._check = check
@@ -122,6 +124,12 @@ class PropertyList:
 
     def __next__(self):
         return self._list.__next__()
+
+    def __str__(self):
+        return self._list.__str__()
+
+    def __repr__(self):
+        return self._list.__repr__()
 
     def check(self):
         if self._check is not None:

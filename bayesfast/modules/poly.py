@@ -23,16 +23,16 @@ class PolyConfig:
     Parameters
     ----------
     order : str
-        Specifying the order of the polynomial model. Should be one of 'linear',
-        'quadratic', 'cubic-2' and 'cubic-3'.
-    input_mask : None or 1-d array_like, optional
-        The indice of input variables that are activated. If `None`, will be
-        understood as np.arange(input_size), i.e. all the variables are
-        activated. Set to `None` by default.
-    output_mask : None or 1-d array_like, optional
-        The indice of output variables that are activated. If `None`, will be
-        understood as np.arange(output_size), i.e. all the variables are
-        activated. Set to `None` by default.
+        Specifying the order of the polynomial model. Should be one of
+        ``'linear'``, ``'quadratic'``, ``'cubic-2'`` and ``'cubic-3'``.
+    input_mask : None or 1-d array_like of int, optional
+        The indice of input variables that are activated. If None, will be
+        interpreted as np.arange(input_size), i.e. all the variables are
+        activated. Set to ``None`` by default.
+    output_mask : None or 1-d array_like of int, optional
+        The indice of output variables that are activated. If None, will be
+        interpreted as np.arange(output_size), i.e. all the variables are
+        activated. Set to ``None`` by default.
     """
     def __init__(self, order, input_mask=None, output_mask=None):
         if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
@@ -166,16 +166,16 @@ class PolyModel(Surrogate):
     ----------
     configs : str, PolyConfig, or 1-d array_like of them
         Determining the configuration of the model. If str, should be one of
-        ('linear', 'quadratic', 'cubic-2', 'cubic-3'). Note that 'quadratic'
-        will be interpreted as ['linear', 'quadratic'], i.e. up to quadratic
-        order; similar for `cubic-2` and `cubic-3`.
+        ``'linear'``, ``'quadratic'``, ``'cubic-2'`` and ``'cubic-3'``. Note
+        that ``'quadratic'`` will be interpreted as ``['linear', 'quadratic']``,
+        i.e. up to quadratic order; similar for ``'cubic-2'`` and ``'cubic-3'``.
     bound_options : dict, optional
-        Keyword arguments to be passed to `self.set_bound_options`. Set to `{}`
-        by default.
+        Keyword arguments to be passed to ``self.set_bound_options``. Set to
+        ``{}`` by default.
     args : array_like, optional
-        Additional arguments to be passed to `Surrogate.__init__`.
+        Additional arguments to be passed to ``Surrogate.__init__``.
     kwargs : dict, optional
-        Additional keyword arguments to be passed to `Surrogate.__init__`.
+        Additional keyword arguments to be passed to ``Surrogate.__init__``.
     """
     def __init__(self, configs, bound_options=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,6 +233,9 @@ class PolyModel(Surrogate):
 
     def set_bound_options(self, use_bound=True, alpha=None, alpha_p=100.,
                           center_max=True):
+        """
+        Set the linear extrapolation options when far away from current samples.
+        """
         self._use_bound = bool(use_bound)
         if alpha is None:
             self._alpha = None
@@ -499,7 +502,10 @@ class PolyModel(Surrogate):
                 'target should be one of ("fun", "jac", "fun_and_jac"), '
                 'instead of "{}".'.format(target))
 
-    def fit(self, x, y, logp=None):
+    def fit(self, x, y, logp=None, w=None):
+        """
+        Fit the polynomial model.
+        """
         x = np.asarray(x)
         y = np.asarray(y)
         if not (x.ndim == 2 and x.shape[-1] == self._input_size):
@@ -515,6 +521,11 @@ class PolyModel(Surrogate):
         if x.shape[0] < self.n_param:
             raise ValueError('I need at least {} points, but you only gave me '
                              '{}.'.format(self.n_param, x.shape[0]))
+        if w is not None:
+            w = np.atleast_1d(w)
+            if not (w.ndim == 1 and w.shape[0] == x.shape[0]):
+                raise ValueError('invalid shape for w.')
+
         for ii in range(self._output_size):
             A = np.empty((x.shape[0], 0))
             jj_l, jj_q, jj_c2, jj_c3 = self._recipe[ii]
@@ -552,6 +563,10 @@ class PolyModel(Surrogate):
                 kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
             b = np.copy(y[:, ii])
+            if w is not None:
+                b *= w
+                A *= w[:, np.newaxis]
+
             lsq = lstsq(A, b)[0]
             pp = 0
             if jj_l >= 0:

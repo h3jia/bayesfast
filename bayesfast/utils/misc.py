@@ -19,8 +19,22 @@ def make_positive(A, max_cond=1e5):
 
 
 class SystematicResampler:
-
-    def __init__(self, nodes=(1, 100), weights=None, require_unique=True):
+    """
+    Systematically resamples the input array.
+    
+    Parameters
+    ----------
+    nodes : 1-d array-like of float, optional
+        Percentiles dividing the different weights. Set to ``(1., 100.)`` by
+        default.
+    weights : 1-d array-like of float or None, optional
+        Relative weights of different intervals. If None, will use equal weights
+        for the various intervals. Set to ``None`` by default.
+    require_unique : bool, optional
+        Whether to require that the returned indices are all unique. Set to
+        ``True`` by default.
+    """
+    def __init__(self, nodes=(1., 100.), weights=None, require_unique=True):
         try:
             self._nodes = np.asarray(nodes, dtype=np.float)
             assert self._nodes.ndim == 1 and self._nodes.size > 1
@@ -45,6 +59,21 @@ class SystematicResampler:
         self._require_unique = bool(require_unique)
 
     def run(self, a, n):
+        """
+        Running systematic resampling.
+        
+        Parameters
+        ----------
+        a : 1-d array-like of float
+            The input array to resample.
+        n : positive int
+            The number of samples to draw.
+        
+        Returns
+        -------
+        i : 1-d numpy.ndarray of int
+            The indices of resampled elements.
+        """
         try:
             a = np.asarray(a, dtype=np.float)
             assert a.ndim == 1

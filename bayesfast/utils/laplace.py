@@ -7,7 +7,7 @@ from scipy.linalg import sqrtm
 from .sobol import multivariate_normal
 from .misc import make_positive
 
-__all__ = ['Laplace', 'untemper_laplace_samples']
+__all__ = ['Laplace']
 
 
 LaplaceResult = namedtuple("LaplaceResult",
@@ -21,38 +21,39 @@ class Laplace:
     Parameters
     ----------
     optimize_method : str or callable, optional
-        The `method` parameter for `scipy.optimize.minimize`. Set to
-        `'Newton-CG'` by default.
+        The ``method`` parameter for ``scipy.optimize.minimize``. Set to
+        ``'Newton-CG'`` by default.
     optimize_tol : float, optional
-        The `tol` parameter for `scipy.optimize.minimize`. Set to `1e-5` by
-        default.
+        The ``tol`` parameter for ``scipy.optimize.minimize``. Set to ``1e-5``
+        by default.
     optimize_options : dict, optional
-        The `options` parameter for `scipy.optimize.minimize`. Set to `{}` by
-        default.
+        The ``options`` parameter for ``scipy.optimize.minimize``. Set to ``{}``
+        by default.
     max_cond : positive float, optional
         The maximum conditional number allowed for the Hessian matrix. All the
-        eigenvalues that are smaller than `max_eigen_value / max_cond` will be
-        truncated at this value. Set to `1e5` by default.
+        eigenvalues that are smaller than ``max_eigen_value / max_cond`` will be
+        truncated at this value. Set to ``1e5`` by default.
     n_sample : positive int or None, optional
         The number of samples to draw from the approximated Gaussian
-        distribution. If `None`, will be determined by
-        `min(1000, x_0.shape[-1] * 10)` during runtime. Set to `None` by
+        distribution. If None, will be determined by
+        ``min(1000, x_0.shape[-1] * 10)`` during runtime. Set to ``None`` by
         default.
     beta : positive float, optional
-        Scaling the approximate distribution `logq`, i.e. the final samples will
-        come from `beta * logq`. Set to `1.` by default.
+        Scaling the approximate distribution ``logq``, i.e. the final samples
+        will come from ``beta * logq``. Set to ``1.`` by default.
     mvn_generator : None or callable, optional
         Random number generator for the multivairate normal distribution. Should
-        have signature `(mean, cov, size) -> samples`. If `None`, will use
-        `bayesfast.utils.sobol.multivariate_normal`. Set to `None` by default.
+        have signature ``(mean, cov, size) -> samples``. If None, will use
+        ``bayesfast.utils.sobol.multivariate_normal``. Set to ``None`` by
+        default.
     grad_options : dict, optional
-        Additional keyword arguments for `numdifftools` to compute the gradient.
-        Will be ignored if direct expression for the gradient is provided in
-        `run`. Set to `{}` by default.
+        Additional keyword arguments for ``numdifftools`` to compute the
+        gradient. Will be ignored if direct expression for the gradient is
+        provided in ``run``. Set to ``{}`` by default.
     hess_options : dict, optional
-        Additional keyword arguments for `numdifftools` to compute the Hessian.
-        Will be ignored if direct expression for the Hessian is provided in
-        `run`. Set to `{}` by default.
+        Additional keyword arguments for ``numdifftools`` to compute the
+        Hessian. Will be ignored if direct expression for the Hessian is
+        provided in ``run``. Set to ``{}`` by default.
     """
     def __init__(self, optimize_method='Newton-CG', optimize_tol=1e-5,
                  optimize_options=None, max_cond=1e5, n_sample=2000, beta=1.,
@@ -127,7 +128,24 @@ class Laplace:
         except Exception:
             raise ValueError('invalid value for hess_options.')
 
-    def run(self, logp, x_0=None, grad=None, hess=None):
+    def run(self, logp, x_0, grad=None, hess=None):
+        """
+        Running optimization and Laplace approximate sampling.
+        
+        Parameters
+        ----------
+        logp : callable
+            The logarithmic probability density to sample.
+        x_0 : 1-d array_like of float
+            The starting point for optimization.
+        grad : callable or None, optional
+            The gradient of the target density. If not callable, will use finite
+            difference methods in ``numdifftools``. Set to ``None`` by default.
+        hess : callable or None, optional
+            The Hessian of the target density. If not callable, will use finite
+            difference methods in ``numdifftools`` (by computing the Jacobian of
+            gradient). Set to ``None`` by default.
+        """
         if not callable(logp):
             raise ValueError('logp should be callable.')
         try:
@@ -164,11 +182,24 @@ class Laplace:
         samples = self._mvn_generator(x_max, cov / self._beta, n_sample)
         return LaplaceResult(x_max, f_max, samples, cov, self._beta, opt)
 
-
-def untemper_laplace_samples(laplace_result):
-    if isinstance(laplace_result, LaplaceResult):
-        delta = laplace_result.samples - laplace_result.x_max
-        delta *= laplace_result.beta**0.5
-        return laplace_result.x_max + delta
-    else:
-        raise ValueError('laplace_result should be a LaplaceResult.')
+    @staticmethod
+    def untemper_laplace_samples(laplace_result):
+        """
+        Retrieve untempered (beta=1) Laplace results.
+        
+        Parameters
+        ----------
+        laplace_result : LaplaceResult
+            The results returned by a previous run.
+        
+        Returns
+        -------
+        x : 2-d numpy.ndarray of float
+            The untempered Laplace samples.
+        """
+        if isinstance(laplace_result, LaplaceResult):
+            delta = laplace_result.samples - laplace_result.x_max
+            delta *= laplace_result.beta**0.5
+            return laplace_result.x_max + delta
+        else:
+            raise ValueError('laplace_result should be a LaplaceResult.')
