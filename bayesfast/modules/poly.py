@@ -1,98 +1,147 @@
-import copy
-from ..core.module import *
-from ..core.density import *
+from ..core.surrogate import Surrogate
+from ..core.density import ModuleCache
 from ._poly import *
 import numpy as np
+import jax.numpy as jnp
+from jax import jit
+from jax.lax import cond
 from scipy.linalg import lstsq
-from collections import namedtuple
-import warnings
 
-__all__ = ['PolyConfig', 'PolyModel']
-
-# TODO: check the fit mechanism
+__all__ = ['PolyConfig']
 
 
-BoundOptions = namedtuple('BoundOptions',
-                          ('use_bound', 'alpha', 'alpha_p', 'center_max'))
+_all_order = ['linear', 'quadratic', 'cubic-2', 'cubic-3']
 
 
 class PolyConfig:
     """
-    Configuring the PolyModel.
-    
+    Configuring a basic PolyModel block with a certain polynomial order.
+
     Parameters
     ----------
-    order : str
-        Specifying the order of the polynomial model. Should be one of
-        ``'linear'``, ``'quadratic'``, ``'cubic-2'`` and ``'cubic-3'``.
-    input_mask : None or 1-d array_like of int, optional
-        The indice of input variables that are activated. If None, will be
-        interpreted as np.arange(input_size), i.e. all the variables are
-        activated. Set to ``None`` by default.
-    output_mask : None or 1-d array_like of int, optional
-        The indice of output variables that are activated. If None, will be
-        interpreted as np.arange(output_size), i.e. all the variables are
-        activated. Set to ``None`` by default.
+    order : str or 1-d array_like of str
+        Specifying the order of the polynomial. Should be one of ``'linear'``, ``'quadratic'``,
+        ``'cubic-2'`` and ``'cubic-3'``, or a 1-d array_like of them, which will initialize a list
+        of PolyConfig(s) with the corresponding order(s). Can also have prefix of ``'<'`` or
+        ``'<='``, like ``'<=quadratic'``, which will be interpreted as ``['linear', 'quadratic']``.
+    input_indices : int or 1-d array_like of int
+        The indices activated for the input of the polymonial. If a builtin int is given, will be
+        interpreted as ``np.arange(input_indices)``. Please do not use wrap around indices.
+    output_indices : int or 1-d array_like of int
+        The indices to which the polynomial output is written. If a builtin int is given, will be
+        interpreted as ``np.arange(output_indices)``. Please do not use wrap around indices.
     """
-    def __init__(self, order, input_mask=None, output_mask=None):
-        if order in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
-            self._order = order
+    def __new__(cls, order, input_indices, output_indices):
+        if isinstance(order, str):
+            if order[0] == '<':
+                # return a list of PolyConfig(s), with the highest order determined below
+                if order[1] == '=':
+                    if order[2:] == 'linear':
+                        o_max = 1
+                    elif order[2:] == 'quadratic':
+                        o_max = 2
+                    elif order[2:] == 'cubic-2':
+                        o_max = 3
+                    elif order[2:] == 'cubic-3':
+                        o_max = 4
+                    else:
+                        raise ValueError('invalid value for order.')
+                elif order[1:] == 'quadratic':
+                    o_max = 1
+                elif order[1:] == 'cubic-2':
+                    o_max = 2
+                elif order[1:] == 'cubic-3':
+                    o_max = 3
+                else:
+                    raise ValueError('invalid value for order.')
+                order = _all_order[:o_max]
+            else:
+                # return a single PolyConfig
+                return super(PolyConfig, cls).__new__(cls)
+        if hasattr(order, '__iter__'):
+            return [cls(oi, input_indices, output_indices) for oi in order]
         else:
-            raise ValueError(
-                'order should be one of ("linear", "quadratic", "cubic-2", '
-                '"cubic-3"), instead of "{}".'.format(order))
-        self._set_input_mask(input_mask)
-        self._set_output_mask(output_mask)
-        self._coef = None
+            raise ValueError('invalid value for order.')
+
+    def __init__(self, order, input_indices, output_indices):
+        self._set_order(order)
+        self._set_input_indices(input_indices)
+        self._set_output_indices(output_indices)
+        self._clear_coef()
+
+    def __getnewargs__(self):
+        # https://stackoverflow.com/questions/59828469/python-multiprocessing-pool-map-causes-error-in-new
+        return self.order, self.input_indices, self.output_indices
+
+    def _clear_coef(self):
+        self._coef = np.zeros(self._A_shape)
 
     @property
     def order(self):
+        """
+        The order of this polynomial.
+        """
         return self._order
 
-    @property
-    def input_mask(self):
-        return self._input_mask
-
-    def _set_input_mask(self, im):
-        if im is None:
-            self._input_mask = None
+    def _set_order(self, od):
+        if od in ('linear', 'quadratic', 'cubic-2', 'cubic-3'):
+            self._order = od
         else:
-            self._input_mask = np.sort(np.unique(np.asarray(im, dtype=np.int)))
-            # we do not allow directly modify the elements of input_mask here
-            # as it cannot trigger the unique/sort check
-            self._input_mask.flags.writeable = False # TODO: PropertyArray?
+            raise ValueError('order should be one of ("linear", "quadratic", "cubic-2", "cubic-3"),'
+                             ' instead of "{}".'.format(od))
 
     @property
-    def output_mask(self):
-        return self._output_mask
+    def input_indices(self):
+        """
+        The indices activated for the input of the polymonial.
+        """
+        return self._input_indices
 
-    def _set_output_mask(self, om):
-        if om is None:
-            self._output_mask = None
+    def _set_input_indices(self, ii):
+        if isinstance(ii, int):
+            self._input_indices = np.arange(ii)
         else:
-            self._output_mask = np.sort(np.unique(np.asarray(om, dtype=np.int)))
-            # we do not allow directly modify the elements of output_mask here
-            # as it cannot trigger the unique/sort check
-            self._output_mask.flags.writeable = False # TODO: PropertyArray?
+            ii = np.asarray(ii, dtype=int).reshape(-1)
+            if ii.size != np.unique(ii).size:
+                raise ValueError('the elements in input_indices should be unique.')
+            self._input_indices = ii
+
+    @property
+    def output_indices(self):
+        """
+        The indices to which the polynomial output is written.
+        """
+        return self._output_indices
+
+    def _set_output_indices(self, oi):
+        if isinstance(oi, int):
+            self._output_indices = np.arange(oi)
+        else:
+            oi = np.asarray(oi, dtype=int).reshape(-1)
+            if oi.size != np.uniquei(oi).size:
+                raise ValueError('the elements in output_indices should be unique.')
+            self._output_indices = oi
 
     @property
     def input_size(self):
-        return self._input_mask.size if self._input_mask is not None else None
+        """
+        The size of input indices.
+        """
+        return self._input_indices.size
 
     @property
     def output_size(self):
-        return self._output_mask.size if self._output_mask is not None else None
+        """
+        The size of output indices.
+        """
+        return self._output_indices.size
 
     @property
     def _A_shape(self):
         """
-        The shape of all the coefficients.
-        Note that not all the elements are independent.
+        The shape of all the coefficients. Note that not all the elements are independent.
         It's organized for the convenience of polynomial evaluation.
         """
-        if self._input_mask is None or self._output_mask is None:
-            raise RuntimeError('you have not defined self.input_mask and/or '
-                               'self.output_mask yet.')
         if self._order == 'linear':
             return (self.output_size, self.input_size + 1)
         elif self._order == 'quadratic':
@@ -100,11 +149,9 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.output_size, self.input_size, self.input_size)
         elif self._order == 'cubic-3':
-            return (self.output_size, self.input_size, self.input_size,
-                    self.input_size)
+            return (self.output_size, self.input_size, self.input_size, self.input_size)
         else:
-            raise RuntimeError(
-                'unexpected value "{}" for self.order.'.format(self._order))
+            raise RuntimeError('unexpected value "{}" for self.order.'.format(self._order))
 
     @property
     def _a_shape(self):
@@ -112,9 +159,6 @@ class PolyConfig:
         The shape of all independent coefficients for one single output vairable.
         This would be the shape of lstsq regression.
         """
-        if self._input_mask is None or self._output_mask is None:
-            raise RuntimeError('you have not defined self.input_mask and/or '
-                               'self.output_mask yet.')
         if self._order == 'linear':
             return (self.input_size + 1,)
         elif self._order == 'quadratic':
@@ -122,28 +166,26 @@ class PolyConfig:
         elif self._order == 'cubic-2':
             return (self.input_size * self.input_size,)
         elif self._order == 'cubic-3':
-            return (self.input_size * (self.input_size - 1) *
-                    (self.input_size - 2) // 6,)
+            return (self.input_size * (self.input_size - 1) * (self.input_size - 2) // 6,)
         else:
-            raise RuntimeError(
-                'unexpected value "{}" for self.order.'.format(self._order))
+            raise RuntimeError('unexpected value "{}" for self.order.'.format(self._order))
 
     def _set(self, a, i):
-        if self._input_mask is None or self._output_mask is None:
-            raise RuntimeError('you have not defined self.input_mask and/or '
-                               'self.output_mask yet.')
+        """
+        Set the polynomial coefficients based on the lstsq regression result.
+        """
         a = np.ascontiguousarray(a)
         i = int(i)
         if a.shape != self._a_shape:
-            raise ValueError('shape of a {} does not match the expected shape '
-                             '{}.'.format(a.shape, self._a_shape))
+            raise ValueError('shape of a {} does not match the expected shape {}.'.format(a.shape,
+                             self._a_shape))
         if not 0 <= i < self.output_size:
-            raise ValueError('i = {} out of range for self.output_size = '
-                             '{}.'.format(i, self.output_size))
+            raise ValueError('i = {} out of range for self.output_size = {}.'.format(i,
+                             self.output_size))
         if self._order == 'linear':
             coefi = a
         else:
-            coefi = np.empty(self._A_shape[1:])
+            coefi = np.zeros(self._A_shape[1:])
             if self._order == 'quadratic':
                 _set_quadratic(a, coefi, self.input_size)
             elif self._order == 'cubic-2':
@@ -151,447 +193,369 @@ class PolyConfig:
             elif self._order == 'cubic-3':
                 _set_cubic_3(a, coefi, self.input_size)
             else:
-                raise RuntimeError(
-                    'unexpected value of self.order "{}".'.format(self._order))
-        if self._coef is None:
-            self._coef = np.zeros(self._A_shape)
+                raise RuntimeError('unexpected value "{}" for self.order.'.format(self._order))
         self._coef[i] = coefi
 
 
 class PolyModel(Surrogate):
     """
     Polynomial surrogate model, currently up to cubic order.
-    
+
     Parameters
     ----------
-    configs : str, PolyConfig, or 1-d array_like of them
-        Determining the configuration of the model. If str, should be one of
-        ``'linear'``, ``'quadratic'``, ``'cubic-2'`` and ``'cubic-3'``. Note
-        that ``'quadratic'`` will be interpreted as ``['linear', 'quadratic']``,
-        i.e. up to quadratic order; similar for ``'cubic-2'`` and ``'cubic-3'``.
-    bound_options : dict, optional
-        Keyword arguments to be passed to ``self.set_bound_options``. Set to
-        ``{}`` by default.
-    args : array_like, optional
-        Additional arguments to be passed to ``Surrogate.__init__``.
-    kwargs : dict, optional
-        Additional keyword arguments to be passed to ``Surrogate.__init__``.
+    configs : PolyConfig or 1-d array_like of PolyConfig
+        Configuring the PolyModel.
+    use_jit : bool, optional
+        Whether to apply jit with jax. If True, the model will be jitted once it's fitted with data.
+        Set to ``True`` by default.
+    use_trust : bool, optional
+        Whether to define a trust region and do linear extrapolation outside it. Set to ``True`` by
+        default.
+    chi2_a : float or None, optional
+        The absolute value of the max chi2 that defines the trust region. Will be superseded if
+        ``chi2_r`` is not None. Set to ``None`` by default.
+    chi2_r : float or None, optional
+        The relative value of the max chi2 that defines the trust region. Set to ``1.0`` by default.
+    center_max : bool, optional
+        Whether to use the model evaluated at the max logp as the central value for extrapolation.
+        Set to ``True`` by default.
     """
-    def __init__(self, configs, bound_options=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if isinstance(configs, str):
-            if configs == 'linear':
-                configs = ['linear']
-            elif configs == 'quadratic':
-                configs = ['linear', 'quadratic']
-            elif configs == 'cubic-2':
-                configs = ['linear', 'quadratic', 'cubic-2']
-            elif configs == 'cubic-3':
-                configs = ['linear', 'quadratic', 'cubic-2', 'cubic-3']
-            else:
-                raise ValueError('if configs is a str, it should be "linear", '
-                                 '"quadratic", "cubic-2" or "cubic-3".')
-        if isinstance(configs, PolyConfig):
-            configs = [configs]
-        if hasattr(configs, '__iter__'):
-            self._configs = []
-            for conf in configs:
-                if isinstance(conf, str):
-                    conf = PolyConfig(conf)
-                if isinstance(conf, PolyConfig):
-                    if conf._input_mask is None:
-                        conf._set_input_mask(np.arange(self._input_size))
-                    if conf._output_mask is None:
-                        conf._set_output_mask(np.arange(self._output_size))
-                    self._configs.append(conf)
-                else:
-                    raise ValueError('invalid value for the #{} element of '
-                                     'configs.'.format(i))
-        else:
-            raise ValueError('invalid value for configs.')
-        self._configs = tuple(self._configs)
+    def __init__(self, configs, use_jit=True, use_trust=True, chi2_a=None, chi2_r=1.0,
+                 center_max=True):
+        self._set_configs(configs)
+        self._use_jit = bool(use_jit)
+        self._set_trust(use_trust, chi2_a, chi2_r, center_max)
         self._build_recipe()
-        if bound_options is None:
-            bound_options = {}
-        if isinstance(bound_options, dict):
-            self.set_bound_options(**bound_options)
-        else:
-            raise ValueError('bound_options should be a dict.')
+        self._ready = False
 
     @property
     def configs(self):
+        """
+        A list of basic PolyModel blocks, each with a certain polynomial order.
+        """
         return self._configs
 
     @property
     def n_config(self):
+        """
+        The number of basic PolyModel blocks.
+        """
         return len(self._configs)
 
     @property
-    def bound_options(self):
-        return BoundOptions(self._use_bound, self._alpha, self._alpha_p,
-                            self._center_max)
-
-    def set_bound_options(self, use_bound=True, alpha=None, alpha_p=100.,
-                          center_max=True):
+    def use_jit(self):
         """
-        Set the linear extrapolation options when far away from current samples.
+        Whether to apply jit with jax.
         """
-        self._use_bound = bool(use_bound)
-        if alpha is None:
-            self._alpha = None
-        else:
-            try:
-                alpha = float(alpha)
-                assert alpha > 0
-                self._alpha = alpha
-            except Exception:
-                raise ValueError('invalid value for alpha.')
-        if alpha_p is None:
-            if alpha is None:
-                raise ValueError('alpha and alpha_p cannot both be None.')
-            self._alpha_p = None
-        else:
-            try:
-                alpha_p = float(alpha_p)
-                assert alpha_p > 0
-                self._alpha_p = alpha_p
-            except Exception:
-                raise ValueError('invalid value for alpha_p.')
-        self._center_max = bool(center_max)
-
-    def _set_bound(self, x, logp=None):
-        try:
-            x = np.ascontiguousarray(x)
-            assert x.shape[-1] == self._input_size and x.ndim == 2
-        except Exception:
-            raise ValueError('invalid value for x.')
-        self._mu = np.mean(x, axis=0)
-        self._hess = np.linalg.inv(np.cov(x, rowvar=False))
-        if self._alpha_p is not None:
-            _beta = np.einsum('ij,jk,ik->i', x - self._mu, self._hess,
-                              x - self._mu)**0.5
-            if self._alpha_p < 100.:
-                self._alpha = np.percentile(_beta, self._alpha_p)
-            else:
-                self._alpha = np.max(_beta) * self._alpha_p / 100.
-        if self._center_max:
-            try:
-                logp = np.asarray(logp)
-                assert x.shape[0] == logp.shape[0] and logp.ndim == 1
-                mu_f = x[np.argmax(logp)]
-            except Exception:
-                warnings.warn('invalid value for logp. Disabling center_max for'
-                              ' now.', RuntimeWarning)
-                mu_f = self._mu
-        else:
-            mu_f = self._mu
-        try:
-            self._use_bound = False # to avoid using bound during fun evaluation
-            self._f_mu = self._fun(mu_f)
-        finally:
-            self._use_bound = True
+        return self._use_jit
 
     @property
-    def recipe(self):
-        return self._recipe
+    def use_trust(self):
+        """
+        Whether to define a trust region and do linear extrapolation outside it.
+        """
+        return self._use_trust
+
+    @property
+    def chi2_a(self):
+        """
+        The absolute value of the max chi2 that defines the trust region.
+        """
+        return self._chi2_a
+
+    @property
+    def chi2_r(self):
+        """
+        The relative value of the max chi2 that defines the trust region.
+        """
+        return self._chi2_r
+
+    @property
+    def center_max(self):
+        """
+        Whether to use the model evaluated at the max logp as the central value for extrapolation.
+        """
+        return self._center_max
+
+    def _set_configs(self, configs):
+        if isinstance(configs, PolyConfig):
+            configs = [configs]
+        if (hasattr(configs, '__iter__') and len(configs) > 0 and
+           all(isinstance(cf, PolyConfig) for cf in configs)):
+            self._configs = list(configs)
+        else:
+            raise ValueError('invalid value for configs.')
+
+    def _set_trust(self, use_trust, chi2_a, chi2_r, center_max):
+        self._use_trust = bool(use_trust)
+        if chi2_a is None:
+            self._chi2_a = None
+        else:
+            try:
+                self._chi2_a = float(chi2_a)
+            except Exception:
+                raise ValueError('invalid value for chi2_a.')
+        if chi2_r is None:
+            if use_trust and chi2_a is None:
+                raise ValueError('if use_trust, chi2_a and chi2_r cannot both be None.')
+            self._chi2_r = None
+        else:
+            try:
+                self._chi2_r = float(chi2_r)
+            except Exception:
+                raise ValueError('invalid value for chi2_r.')
+        self._center_max = bool(center_max)
 
     def _build_recipe(self):
-        rr = np.full((self._output_size, 4), -1)
-        for ii, conf in enumerate(self._configs):
+        self._input_size = np.max([np.max(cf.input_size) for cf in self._configs])
+        self._output_size = np.max([np.max(cf.output_size) for cf in self._configs])
+        r = np.full((self._output_size, 4), -1)
+        # r has shape (# of output variables, 4), if r[i, j] = k for j = (0, 1, 2, 3)
+        # it means for the i-th output variables, the (linear, quadratic, cubic-2, cubic-3) term
+        # comes from the k-th PolyConfig
+        for i, conf in enumerate(self._configs):
             if conf.order == 'linear':
-                if np.any(rr[conf._output_mask, 0] >= 0):
-                    raise ValueError(
-                        'multiple linear PolyConfig(s) share at least one '
-                        'common output variable. Please check your PolyConfig '
-                        '#{}.'.format(ii))
-                rr[conf._output_mask, 0] = ii
+                if np.any(r[conf.output_indices, 0] >= 0):
+                    raise ValueError('multiple linear PolyConfig(s) share at least one common '
+                                     'output variable. Please check PolyConfig #{}.'.format(i))
+                r[conf.output_indices, 0] = i
             elif conf.order == 'quadratic':
-                if np.any(rr[conf._output_mask, 1] >= 0):
-                    raise ValueError(
-                        'multiple quadratic PolyConfig(s) share at least one '
-                        'common output variable. Please check your PolyConfig '
-                        '#{}.'.format(ii))
-                rr[conf._output_mask, 1] = ii
+                if np.any(r[conf.output_indices, 1] >= 0):
+                    raise ValueError('multiple quadratic PolyConfig(s) share at least one common '
+                                     'output variable. Please check PolyConfig #{}.'.format(i))
+                r[conf.output_indices, 1] = i
             elif conf.order == 'cubic-2':
-                if np.any(rr[conf._output_mask, 2] >= 0):
-                    raise ValueError(
-                        'multiple cubic_2 PolyConfig(s) share at least one '
-                        'common output variable. Please check your PolyConfig '
-                        '#{}.'.format(ii))
-                rr[conf._output_mask, 2] = ii
+                if np.any(r[conf.output_indices, 2] >= 0):
+                    raise ValueError('multiple cubic_2 PolyConfig(s) share at least one common '
+                                     'output variable. Please check PolyConfig #{}.'.format(i))
+                r[conf.output_indices, 2] = i
             elif conf.order == 'cubic-3':
-                if np.any(rr[conf._output_mask, 3] >= 0):
-                    raise ValueError(
-                        'multiple cubic_3 PolyConfig(s) share at least one '
-                        'common output variable. Please check your PolyConfig '
-                        '#{}.'.format(ii))
-                rr[conf._output_mask, 3] = ii
+                if np.any(r[conf.output_indices, 3] >= 0):
+                    raise ValueError('multiple cubic_3 PolyConfig(s) share at least one common '
+                                     'output variable. Please check PolyConfig #{}.'.format(i))
+                r[conf.output_indices, 3] = i
             else:
-                raise RuntimeError('unexpected value of conf.order for '
-                                   'PolyConfig #{}.'.format(ii))
-        if np.any(np.all(rr < 0, axis=1)):
-            raise ValueError(
-                'no PolyConfig has output for variable(s) {}.'.format(
-                np.argwhere(np.any(np.all(rr < 0, axis=1))).flatten()))
-        self._recipe = rr
-        self._recipe.flags.writeable = False # TODO: PropertyArray?
+                raise RuntimeError('unexpected value of conf.order for PolyConfig #{}.'.format(i))
+        if np.any(np.all(r < 0, axis=1)):
+            raise ValueError('no PolyConfig has output for variable(s) '
+                             '{}.'.format(np.argwhere(np.any(np.all(r < 0, axis=1))).flatten()))
+        self._recipe = r
 
-    @classmethod
-    def _linear(cls, config, x_in, target):
-        if target == 'fun':
-            return np.dot(config._coef[:, 1:], x_in) + config._coef[:, 0]
-        elif target == 'jac':
-            return config._coef[:, 1:]
-        elif target == 'fun_and_jac':
-            ff = np.dot(config._coef[:, 1:], x_in) + config._coef[:, 0]
-            jj = config._coef[:, 1:]
-            return ff, jj
-        else:
-            raise ValueError(
-                'target should be one of ("fun", "jac", "fun_and_jac"), '
-                'instead of "{}".'.format(target))
-
-    @classmethod
-    def _quadratic(cls, config, x_in, target):
-        if target == 'fun':
-            out_f = np.empty(config.output_size)
-            _quadratic_f(x_in, config._coef, out_f, config.output_size,
-                         config.input_size)
-            return out_f
-        elif target == 'jac':
-            out_j = np.empty((config.output_size, config.input_size))
-            _quadratic_j(x_in, config._coef, out_j, config.output_size,
-                         config.input_size)
-            return out_j
-        elif target == 'fun_and_jac':
-            out_f = np.empty(config.output_size)
-            _quadratic_f(x_in, config._coef, out_f, config.output_size,
-                         config.input_size)
-            out_j = np.empty((config.output_size, config.input_size))
-            _quadratic_j(x_in, config._coef, out_j, config.output_size,
-                         config.input_size)
-            return out_f, out_j
-        else:
-            raise ValueError(
-                'target should be one of ("fun", "jac", "fun_and_jac"), '
-                'instead of "{}".'.format(target))
-
-    @classmethod
-    def _cubic_2(cls, config, x_in, target):
-        if target == 'fun':
-            out_f = np.empty(config.output_size)
-            _cubic_2_f(x_in, config._coef, out_f, config.output_size,
-                       config.input_size)
-            return out_f
-        elif target == 'jac':
-            out_j = np.empty((config.output_size, config.input_size))
-            _cubic_2_j(x_in, config._coef, out_j, config.output_size,
-                       config.input_size)
-            return out_j
-        elif target == 'fun_and_jac':
-            out_f = np.empty(config.output_size)
-            _cubic_2_f(x_in, config._coef, out_f, config.output_size,
-                       config.input_size)
-            out_j = np.empty((config.output_size, config.input_size))
-            _cubic_2_j(x_in, config._coef, out_j, config.output_size,
-                       config.input_size)
-            return out_f, out_j
-        else:
-            raise ValueError(
-                'target should be one of ("fun", "jac", "fun_and_jac"), '
-                'instead of "{}".'.format(target))
-
-    @classmethod
-    def _cubic_3(cls, config, x_in, target):
-        if target == 'fun':
-            out_f = np.empty(config.output_size)
-            _cubic_3_f(x_in, config._coef, out_f, config.output_size,
-                       config.input_size)
-            return out_f
-        elif target == 'jac':
-            out_j = np.empty((config.output_size, config.input_size))
-            _cubic_3_j(x_in, config._coef, out_j, config.output_size,
-                       config.input_size)
-            return out_j
-        elif target == 'fun_and_jac':
-            out_f = np.empty(config.output_size)
-            _cubic_3_f(x_in, config._coef, out_f, config.output_size,
-                       config.input_size)
-            out_j = np.empty((config.output_size, config.input_size))
-            _cubic_3_j(x_in, config._coef, out_j, config.output_size,
-                       config.input_size)
-            return out_f, out_j
-        else:
-            raise ValueError(
-                'target should be one of ("fun", "jac", "fun_and_jac"), '
-                'instead of "{}".'.format(target))
-
-    @classmethod
-    def _eval_one(cls, config, x, target='fun'):
-        x_in = np.ascontiguousarray(x[config.input_mask])
-        if config.order == 'linear':
-            return cls._linear(config, x_in, target)
-        elif config.order == 'quadratic':
-            return cls._quadratic(config, x_in, target)
-        elif config.order == 'cubic-2':
-            return cls._cubic_2(config, x_in, target)
-        elif config.order == 'cubic-3':
-            return cls._cubic_3(config, x_in, target)
-        else:
-            raise RuntimeError('unexpected value of config.order.')
-
-    def _fun(self, x):
-        if (self._use_bound and not self._all_linear and
-            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
-            self._alpha):
-            return self._fj_bound(x, 'fun')
-        else:
-            ff = np.zeros(self._output_size)
-            for conf in self._configs:
-                ff[conf._output_mask] += self._eval_one(conf, x, 'fun')
-            return ff
-
-    def _jac(self, x):
-        if (self._use_bound and not self._all_linear and
-            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
-            self._alpha):
-            return self._fj_bound(x, 'jac')
-        else:
-            jj = np.zeros((self._output_size, self._input_size))
-            for conf in self._configs:
-                jj[conf._output_mask[:, np.newaxis],
-                   conf._input_mask] += self._eval_one(conf, x, 'jac')
-            return jj
-
-    def _fun_and_jac(self, x):
-        if (self._use_bound and not self._all_linear and
-            np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5 >
-            self._alpha):
-            return self._fj_bound(x, 'fun_and_jac')
-        else:
-            ff = np.zeros(self._output_size)
-            jj = np.zeros((self._output_size, self._input_size))
-            for conf in self._configs:
-                _f, _j = self._eval_one(conf, x, 'fun_and_jac')
-                ff[conf._output_mask] += _f
-                jj[conf._output_mask[:, np.newaxis], conf._input_mask] += _j
-            return ff, jj
-
-    def _fj_bound(self, x, target='fun'):
-        beta = np.dot(np.dot(x - self._mu, self._hess), x - self._mu)**0.5
-        x_0 = (self._alpha * x + (beta - self._alpha) * self._mu) / beta
-        ff_0 = np.zeros(self._output_size)
-        for conf in self._configs:
-            ff_0[conf._output_mask] += self._eval_one(conf, x_0, 'fun')
-        if target != 'jac':
-            ff = (beta * ff_0 - (beta - self._alpha) * self._f_mu) / self._alpha
-            if target == 'fun':
-                return ff
-        grad_beta = np.dot(self._hess, x - self._mu) / beta
-        jj_0 = np.zeros((self._output_size, self._input_size))
-        for conf in self._configs:
-            jj_0[conf._output_mask[:, np.newaxis],
-                 conf._input_mask] += self._eval_one(conf, x_0, 'jac')
-        jj = jj_0 + np.outer((ff_0 - self._f_mu) / self._alpha -
-                             np.dot(jj_0, x - self._mu) / beta, grad_beta)
-        if target == 'jac':
-            return jj
-        elif target == 'fun_and_jac':
-            return ff, jj
-        raise ValueError(
-                'target should be one of ("fun", "jac", "fun_and_jac"), '
-                'instead of "{}".'.format(target))
-
-    def fit(self, x, y, logp=None, w=None):
+    def forward(self, *args, **kwargs):
         """
-        Fit the polynomial model.
+        Evaluate the PolyModel.
         """
-        x = np.asarray(x)
-        y = np.asarray(y)
+        if not self._ready:
+            raise RuntimeError('this PolyModel has not been fitted yet.')
+        return self._eval(*args, **kwargs)
+
+    def _eval(self, *args, **kwargs):
+        x = self.f_pre(*args, **kwargs)
+        if self.use_trust:
+            y = cond(jnp.einsum('j,jk,k->', x - self._mu, self._hess, x - self._mu) <= self._chi2,
+                     self.f_poly, self.f_poly_ex, x)
+        else:
+            y = self.f_poly(x)
+        return self.f_post(y)
+
+    def f_pre(self, x):
+        """
+        Utility to concat the raw input as a single 1-d array.
+        """
+        return x
+
+    def f_poly(self, x):
+        """
+        Evaluate the polynomial(s).
+        """
+        f = jnp.zeros(self._output_size)
+        for conf in self._configs:
+            if conf.order == 'linear':
+                f = f.at[conf.output_indices].add(self._linear(conf, x[conf.input_indices]))
+            elif conf.order == 'quadratic':
+                f = f.at[conf.output_indices].add(self._quadratic(conf, x[conf.input_indices]))
+            elif conf.order == 'cubic-2':
+                f = f.at[conf.output_indices].add(self._cubic_2(conf, x[conf.input_indices]))
+            elif conf.order == 'cubic-3':
+                f = f.at[conf.output_indices].add(self._cubic_3(conf, x[conf.input_indices]))
+            else:
+                raise RuntimeError('unexpected value for conf.order.')
+        return f
+
+    def f_poly_ex(self, x):
+        """
+        Evaluate the polynomial(s) outside the trust region with linear extrapolation.
+        """
+        chi = jnp.einsum('j,jk,k->', x - self._mu, self._hess, x - self._mu)**0.5
+        x0 = (self._chi * x + (chi - self._chi) * self._mu) / chi
+        f_x0 = self.f_poly(x0)
+        return (chi * f_x0 - (chi - self._chi) * self._f_mu) / self._chi
+
+    def f_post(self, y):
+        """
+        Utility to split the output into several variables.
+        """
+        return y
+
+    def fi_post(self, z):
+        """
+        Inverse of f_post, used for fitting.
+        """
+        return z
+
+    @staticmethod
+    def _linear(config, x):
+        """
+        Evaluate a linear block.
+        """
+        return jnp.dot(config._coef[:, 1:], x) + config._coef[:, 0]
+
+    @staticmethod
+    def _quadratic(config, x):
+        """
+        Evaluate a quadratic block.
+        """
+        # TODO: rewrite this in a more efficient way to avoid the 0 elements
+        return jnp.einsum('ijk,j,k->i', config._coef, x, x)
+
+    @staticmethod
+    def _cubic_2(config, x):
+        """
+        Evaluate a cubic-2 block.
+        """
+        return jnp.einsum('ijk,j,k->i', config._coef, x * x, x)
+
+    @staticmethod
+    def _cubic_3(cls, config, x):
+        """
+        Evaluate a cubic-3 block.
+        """
+        # TODO: rewrite this in a more efficient way to avoid the 0 elements
+        return jnp.einsum('ijkl,j,k,l->i', config._coef, x, x, x)
+
+    def fit(self, module_caches, add_dicts=(), logp_key=None, f_w=None):
+        x = np.array([self.f_pre(*mc.args, **mc.kwargs) for mc in module_caches], dtype=np.float64)
+        y = np.array([self.fi_post(mc.returns) for mc in module_caches], dtype=np.float64)
         if not (x.ndim == 2 and x.shape[-1] == self._input_size):
-            raise ValueError(
-                'x should be a 2-d array, with shape (# of points, # of '
-                'input_size), instead of {}.'.format(x.shape))
+            raise ValueError('x should be a 2-d array, with shape (# of points, # of input_size), '
+                             'instead of {}.'.format(x.shape))
         if not (y.ndim == 2 and y.shape[-1] == self._output_size):
-            raise ValueError(
-                'y should be a 2-d array, with shape (# of points, # of '
-                'output_size), instead of {}.'.format(y.shape))
+            raise ValueError('y should be a 2-d array, with shape (# of points, # of output_size), '
+                             'instead of {}.'.format(y.shape))
         if not x.shape[0] == y.shape[0]:
             raise ValueError('x and y have different # of points.')
         if x.shape[0] < self.n_param:
             raise ValueError('I need at least {} points, but you only gave me '
                              '{}.'.format(self.n_param, x.shape[0]))
-        if w is not None:
-            w = np.atleast_1d(w)
+
+        if logp_key is not None:
+            logp = np.array([ad[logp_key] for ad in add_dicts]).reshape(-1)
+            if not x.shape[0] == logp.shape[0]:
+                raise ValueError('x and logp have inconsistent shapes.')
+        else:
+            if self.use_trust and self.center_max:
+                raise ValueError('logp_key must be given if self.use_trust and self.center_max are '
+                                 'both True.')
+            logp = None
+        if f_w is None:
+            w = None
+        else:
+            w = np.asarray(f_w(x=x, y=y, logp=logp, module_caches=module_caches,
+                           add_dicts=add_dicts), dtype=np.float64)
             if not (w.ndim == 1 and w.shape[0] == x.shape[0]):
                 raise ValueError('invalid shape for w.')
 
-        for ii in range(self._output_size):
+        for c in self.configs:
+            c._clear_coef()
+
+        for i in range(self._output_size):
             A = np.empty((x.shape[0], 0))
-            jj_l, jj_q, jj_c2, jj_c3 = self._recipe[ii]
-            kk = [0]
-            if jj_l >= 0:
-                _A = np.empty((x.shape[0], self._configs[jj_l]._a_shape[0]))
-                _x = np.ascontiguousarray(x[...,
-                                            self._configs[jj_l]._input_mask])
+            j_l, j_q, j_c2, j_c3 = self._recipe[i]
+            k = [0]
+            if j_l >= 0:
+                _A = np.empty((x.shape[0], self.configs[j_l]._a_shape[0]))
+                _x = np.ascontiguousarray(x[..., self.configs[j_l].input_indices])
                 _A[:, 0] = 1
                 _A[:, 1:] = _x
-                kk.append(kk[-1] + self._configs[jj_l]._a_shape[0])
+                k.append(k[-1] + self.configs[j_l]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
-            if jj_q >= 0:
-                _A = np.empty((x.shape[0], self._configs[jj_q]._a_shape[0]))
-                _x = np.ascontiguousarray(x[...,
-                                              self._configs[jj_q]._input_mask])
-                _lsq_quadratic(_x, _A, x.shape[0],
-                               self._configs[jj_q].input_size)
-                kk.append(kk[-1] + self._configs[jj_q]._a_shape[0])
+            if j_q >= 0:
+                _A = np.empty((x.shape[0], self.configs[j_q]._a_shape[0]))
+                _x = np.ascontiguousarray(x[..., self.configs[j_q].input_indices])
+                _lsq_quadratic(_x, _A, x.shape[0], self.configs[j_q].input_size)
+                k.append(k[-1] + self.configs[j_q]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
-            if jj_c2 >= 0:
-                _A = np.empty((x.shape[0], self._configs[jj_c2]._a_shape[0]))
-                _x = np.ascontiguousarray(x[...,
-                                            self._configs[jj_c2]._input_mask])
-                _lsq_cubic_2(_x, _A, x.shape[0],
-                             self._configs[jj_c2].input_size)
-                kk.append(kk[-1] + self._configs[jj_c2]._a_shape[0])
+            if j_c2 >= 0:
+                _A = np.empty((x.shape[0], self.configs[j_c2]._a_shape[0]))
+                _x = np.ascontiguousarray(x[..., self.configs[j_c2].input_indices])
+                _lsq_cubic_2(_x, _A, x.shape[0], self.configs[j_c2].input_size)
+                k.append(k[-1] + self.configs[j_c2]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
-            if jj_c3 >= 0:
-                _A = np.empty((x.shape[0], self._configs[jj_c3]._a_shape[0]))
-                _x = np.ascontiguousarray(x[...,
-                                            self._configs[jj_c3]._input_mask])
-                _lsq_cubic_3(_x, _A, x.shape[0],
-                             self._configs[jj_c3].input_size)
-                kk.append(kk[-1] + self._configs[jj_c3]._a_shape[0])
+            if j_c3 >= 0:
+                _A = np.empty((x.shape[0], self.configs[j_c3]._a_shape[0]))
+                _x = np.ascontiguousarray(x[..., self.configs[j_c3].input_indices])
+                _lsq_cubic_3(_x, _A, x.shape[0], self.configs[j_c3].input_size)
+                k.append(k[-1] + self.configs[j_c3]._a_shape[0])
                 A = np.concatenate((A, _A), axis=-1)
-            b = np.copy(y[:, ii])
+            b = np.copy(y[:, i])
             if w is not None:
                 b *= w
                 A *= w[:, np.newaxis]
 
+            # np.savez('/global/homes/h/hejia/debug-poly.npz', A=A, b=b)
             lsq = lstsq(A, b)[0]
-            pp = 0
-            if jj_l >= 0:
-                qq = int(np.argwhere(self._configs[jj_l]._output_mask == ii))
-                self._configs[jj_l]._set(lsq[kk[pp]:kk[pp + 1]], qq)
-                pp += 1
-            if jj_q >= 0:
-                qq = int(np.argwhere(self._configs[jj_q]._output_mask == ii))
-                self._configs[jj_q]._set(lsq[kk[pp]:kk[pp + 1]], qq)
-                pp += 1
-            if jj_c2 >= 0:
-                qq = int(np.argwhere(self._configs[jj_c2]._output_mask == ii))
-                self._configs[jj_c2]._set(lsq[kk[pp]:kk[pp + 1]], qq)
-                pp += 1
-            if jj_c3 >= 0:
-                qq = int(np.argwhere(self._configs[jj_c3]._output_mask == ii))
-                self._configs[jj_c3]._set(lsq[kk[pp]:kk[pp + 1]], qq)
-                pp += 1
-        if self._use_bound and not self._all_linear:
-            self._set_bound(x, logp)
+            p = 0
+            if j_l >= 0:
+                q = int(np.argwhere(self.configs[j_l].output_indices == i))
+                self.configs[j_l]._set(lsq[k[p]:k[p + 1]], q)
+                p += 1
+            if j_q >= 0:
+                q = int(np.argwhere(self.configs[j_q].output_indices == i))
+                self.configs[j_q]._set(lsq[k[p]:k[p + 1]], q)
+                p += 1
+            if j_c2 >= 0:
+                q = int(np.argwhere(self.configs[j_c2].output_indices == i))
+                self.configs[j_c2]._set(lsq[k[p]:k[p + 1]], q)
+                p += 1
+            if j_c3 >= 0:
+                q = int(np.argwhere(self.configs[j_c3].output_indices == i))
+                self.configs[j_c3]._set(lsq[k[p]:k[p + 1]], q)
+                p += 1
+
+        # for c in self.configs:
+        #     c._coef = jnp.asarray(c._coef)
+
+        if self.use_trust:
+            self._mu = jnp.mean(x, axis=0)
+            self._hess = jnp.linalg.inv(jnp.atleast_2d(jnp.cov(x, rowvar=False)))
+            # atleast_2d so it also works for 1-dim problems
+            if isinstance(self.chi2_r, float):
+                chi2_all = jnp.einsum('ij,jk,ik->i', x - self._mu, self._hess, x - self._mu)
+                if 0. <= self.chi2_r <= 1.:
+                    self._chi2 = jnp.quantile(chi2_all, self.chi2_r)
+                else:
+                    chi2_min = jnp.min(chi2_all)
+                    chi2_max = jnp.max(chi2_all)
+                    self._chi2 = (chi2_max - chi2_min) * self.chi2_r + chi2_min
+            else:
+                if not isinstance(self.chi2_a, float):
+                    raise RuntimeError('neither self.chi2_r nor chi2_a is a float.')
+                self._chi2 = self.chi2_a
+            assert self._chi2 >= 0.
+            self._chi = self._chi2**0.5
+            if self.center_max:
+                mu_f = x[jnp.argmax(logp)]
+            else:
+                mu_f = self._mu
+            self._f_mu = self.f_poly(mu_f)
+
+        if self.use_jit:
+            self.apply_jit()
+        self._ready = True
 
     @property
     def n_param(self):
-        return np.sum([conf._a_shape[0] for conf in self._configs])
-
-    @property
-    def _all_linear(self):
-        return all(conf.order == 'linear' for conf in self._configs)
+        """
+        The number of free parameters. Required to determine the number of fitting samples.
+        """
+        return np.sum([conf._a_shape[0] for conf in self.configs])

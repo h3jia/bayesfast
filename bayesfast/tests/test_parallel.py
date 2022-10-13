@@ -1,30 +1,26 @@
 import bayesfast as bf
-
-bf.utils.parallel.set_backend(4)
-be = bf.utils.parallel.get_backend()
-fun_0 = lambda i: i
-fun_1 = lambda a, b: a+ b
+import numpy as np
 
 
-def test_parallel_m_0():
-    with be as pool:
-        res = pool.map(fun_0, range(4))
-        assert res == list(range(4))
+def f(x):
+    for _ in range(500):
+        foo = np.einsum('ij,ij->', x, x)
+    return foo
 
 
-def test_parallel_m_1():
-    with be as pool:
-        res = pool.map(fun_1, range(4), range(4))
-        assert res == list(range(0, 8, 2))
+def test_parallel():
+    # pytest will not automatically check if it's actually using the desired number of threads
+    # for that, you may want to manually monitor the CPU usage
+    m = 4
+    n = 100
+    x = np.ones((m, n, n))
 
+    bf.parallel.set_pool(4, 1)
+    with bf.parallel.get_pool() as pool:
+        a = pool.map(f, x)
+    assert np.array_equal(a, np.full((m,), n**2))
 
-def test_parallel_gma_0():
-    with be as pool:
-        res = pool.gather(pool.map_async(fun_0, range(4)))
-        assert res == list(range(4))
-
-
-def test_parallel_gma_1():
-    with be as pool:
-        res = pool.gather(pool.map_async(fun_1, range(4), range(4)))
-        assert res == list(range(0, 8, 2))
+    bf.parallel.set_pool(1, 4)
+    with bf.parallel.get_pool() as pool:
+        b = pool.map(f, x)
+    assert np.array_equal(b, np.full((m,), n**2))

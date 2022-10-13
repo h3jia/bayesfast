@@ -11,7 +11,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2010-2019 Daniel Foreman-Mackey & contributors.
+Copyright (c) 2010-2021 Daniel Foreman-Mackey & contributors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -40,7 +40,9 @@ __all__ = ["integrated_time", "AutocorrError"]
 
 
 def next_pow_two(n):
-    """Returns the next power of two greater than or equal to `n`"""
+    """
+    Returns the next power of two greater than or equal to n.
+    """
     i = 1
     while i < n:
         i = i << 1
@@ -48,14 +50,18 @@ def next_pow_two(n):
 
 
 def function_1d(x):
-    """Estimate the normalized autocorrelation function of a 1-D series
+    """
+    Estimate the normalized autocorrelation function of a 1-d series.
 
-    Args:
-        x: The series as a 1-D numpy array.
+    Parameters
+    ----------
+    x : 1-d array_like
+        The series as a 1-d numpy array.
 
-    Returns:
-        array: The autocorrelation function of the time series.
-
+    Returns
+    -------
+    acf : 1-d ndarray
+        The autocorrelation function of the time series.
     """
     x = np.atleast_1d(x)
     if len(x.shape) != 1:
@@ -77,33 +83,36 @@ def auto_window(taus, c):
 
 
 def integrated_time(x, c=5, tol=50, quiet=False):
-    """Estimate the integrated autocorrelation time of a time series.
+    """
+    Estimate the integrated autocorrelation time of a time series.
 
-    This estimate uses the iterative procedure described on page 16 of
-    `Sokal's notes <http://www.stat.unc.edu/faculty/cji/Sokal.pdf>`_ to
-    determine a reasonable window size.
+    This estimate uses the iterative procedure described on page 16 of `Sokal's notes
+    <http://www.stat.unc.edu/faculty/cji/Sokal.pdf>`_ to determine a reasonable window size.
 
-    Args:
-        x: The time series. If multidimensional, set the time axis using the
-            ``axis`` keyword argument and the function will be computed for
-            every other axis.
-        c (Optional[float]): The step size for the window search. (default:
-            ``5``)
-        tol (Optional[float]): The minimum number of autocorrelation times
-            needed to trust the estimate. (default: ``50``)
-        quiet (Optional[bool]): This argument controls the behavior when the
-            chain is too short. If ``True``, give a warning instead of raising
-            an :class:`AutocorrError`. (default: ``False``)
+    Parameters
+    ----------
+    x : array_like
+        The time series. If 3-d, should have shape ``(n_walker, n_time, n_dim)``. If 2-d, will be
+        interpreted as ``n_walker=1``. If 1-d, will be interpreted as ``n_walker=n_dim=1``.
+    c : float, optional
+        The step size for the window search. Set to ``5`` by default.
+    tol : float, optional
+        The minimum number of autocorrelation times needed to trust the estimate. Set to ``50`` by
+        default.
+    quiet : bool, optional
+        This argument controls the behavior when the chain is too short. If True, give a warning
+        instead of raising an AutocorrError. Set to ``False`` by default.
 
-    Returns:
-        float or array: An estimate of the integrated autocorrelation time of
-            the time series ``x`` computed along the axis ``axis``.
+    Returns
+    -------
+    tau_est : float or ndarray
+        An estimate of the integrated autocorrelation time.
 
     Raises
-        AutocorrError: If the autocorrelation time can't be reliably estimated
-            from the chain and ``quiet`` is ``False``. This normally means
-            that the chain is too short.
-
+    ------
+    AutocorrError :
+        If the autocorrelation time can't be reliably estimated from the chain and ``quiet`` is
+        False. This normally means that the chain is too short.
     """
     x = np.atleast_1d(x)
     if len(x.shape) == 1:
@@ -132,11 +141,9 @@ def integrated_time(x, c=5, tol=50, quiet=False):
 
     # Warn or raise in the case of non-convergence
     if np.any(flag):
-        msg = (
-            "The chain is shorter than {0} times the integrated "
-            "autocorrelation time for {1} parameter(s). Use this estimate "
-            "with caution and run a longer chain!\n"
-        ).format(tol, np.sum(flag))
+        msg = ('The chain is shorter than {0} times the integrated autocorrelation time for {1} '
+               'parameter(s). Use this estimate with caution and run a longer chain!\n').format(
+               tol, np.sum(flag))
         msg += "N/{0} = {1:.0f};\ntau: {2}".format(tol, n_t / tol, tau_est)
         if not quiet:
             raise AutocorrError(tau_est, msg)
@@ -146,13 +153,12 @@ def integrated_time(x, c=5, tol=50, quiet=False):
 
 
 class AutocorrError(Exception):
-    """Raised if the chain is too short to estimate an autocorrelation time.
-
-    The current estimate of the autocorrelation time can be accessed via the
-    ``tau`` attribute of this exception.
-
     """
+    Raised if the chain is too short to estimate an autocorrelation time.
 
+    The current estimate of the autocorrelation time can be accessed via the ``tau`` attribute of
+    this exception.
+    """
     def __init__(self, tau, *args, **kwargs):
         self.tau = tau
         super(AutocorrError, self).__init__(*args, **kwargs)

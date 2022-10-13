@@ -1,204 +1,167 @@
-try:
-    from ray.util.multiprocessing import Pool as RayPool
-    HAS_RAY = True
-except Exception:
-    HAS_RAY = False
-try:
-    from distributed import Client
-    HAS_DASK = True
-except Exception:
-    HAS_DASK = False
-try:
-    from sharedmem import MapReduce
-    HAS_SHAREDMEM = True
-except Exception:
-    HAS_SHAREDMEM = False
-try:
-    from loky import get_reusable_executor, reusable_executor
-    HAS_LOKY = True
-except Exception:
-    HAS_LOKY = False
 from multiprocess.pool import Pool
+from threadpoolctl import threadpool_limits
 import warnings
-# from copy import deepcopy
-# we have to import Pool after Client to avoid some strange error
-
-__all__ = ['ParallelBackend', 'get_backend', 'set_backend']
-
-# TODO: maybe we should add a multiprocess-style chunksize for dask
-#       since currently it's not good at handling a very large number of tasks
-#       https://distributed.dask.org/en/latest/efficiency.html#use-larger-tasks
-# TODO: should the default value be None or "multiprocess"?
 
 
-class ParallelBackend:
+__all__ = ['ParallelPool', 'get_pool', 'set_pool']
+
+
+class ParallelPool:
     """
-    The unified backend for parallelization.
-    
-    Currently, we support `multiprocess`, `dask`, `sharedmem` and `loky`.
-    `multiprocess` usually has better performance on single-node machines, while
-    `dask` can be used for multi-node parallelization. Note the following known
-    issues: when used for sampling, (1) `dask` and `loky` do not respect the
-    global bayesfast random seed; (2) `sharedmem` may not display the progress
-    messages correctly (multiple messages in the same line); (3) `loky` does not
-    print any messages at all in Jupyter. So we recommend using the default
-    `multiprocess` backend when possible.
-    
+    The global pool for parallelization.
+
+    This is used outside jax, e.g. to evaluate the true forward models. Note that jax evaluations
+    won't observe the n_thread limit here, which is a
+    `known issue <https://github.com/joblib/threadpoolctl/issues/127>`_.
+
+    We use ``multiprocess`` for multi-processing, and ``threadpoolctl`` for multi-threading. Note
+    that while the previous version of BayesFast also supports other backends like ``ray``,
+    ``dask``, ``sharedmem`` and ``loky``, we now only keep ``multiprocess`` as it generally works
+    better with single node setup. Please let us know if you would to have the other option(s) added
+    back.
+
     Parameters
     ----------
-    backend : None, int, Pool, Client or MapReduce, optional
-        The backend for parallelization. If `None` or `int`, will be passed as
-        the `processes` argument to initialize a Pool in a with context. Set to
-        `None` by default.
+    n_process : int, optional
+        The number of processes to use. Set to ``4`` by default.
+    n_thread : int, optional
+        The number of threads per process. Set to ``1`` by default.
     """
-    def __new__(cls, backend=None):
-        if isinstance(backend, ParallelBackend):
-            return backend
-        else:
-            return super(ParallelBackend, cls).__new__(cls)
+    def __init__(self, n_process=4, n_thread=1):
+        self.n_process = n_process
+        self.n_thread = n_thread
+        self._pool = None
 
-    def __init__(self, backend=None):
-        if isinstance(backend, ParallelBackend):
-            return
-        self.backend = backend
+    @property
+    def n_process(self):
+        """
+        The number of processes to use.
+        """
+        return self._n_process
+
+    @n_process.setter
+    def n_process(self, n):
+        try:
+            n = int(n)
+            assert n > 0
+        except Exception:
+            raise ValueError('n_process should be a positive int.')
+        self._n_process = n
+
+    @property
+    def n_thread(self):
+        """
+        The number of threads per process.
+        """
+        return self._n_thread
+
+    @n_thread.setter
+    def n_thread(self, n):
+        try:
+            n = int(n)
+            assert n > 0
+        except Exception:
+            raise ValueError('n_thread should be a positive int.')
+        self._n_thread = n
+
+    @property
+    def pool(self):
+        """
+        The underlying multiprocess Pool object. Will be None unless activated in a with context.
+        """
+        return self._pool
 
     def __enter__(self):
-        if self.backend is None or isinstance(self.backend, int):
-            self._backend_activated = Pool(self.backend)
-        elif HAS_SHAREDMEM and isinstance(self.backend, MapReduce):
-            self.backend.__enter__()
+        if self.n_process > 1:
+            self._pool = Pool(self.n_process)
+        # self._threadpool_limits = threadpool_limits(self.n_thread)
+        # self._threadpool_limits._set_threadpool_limits()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.backend is None or isinstance(self.backend, int):
-            self._backend_activated.close()
-            self._backend_activated.join()
-            self._backend_activated = None
-        elif HAS_SHAREDMEM and isinstance(self.backend, MapReduce):
-            self.backend.__exit__(exc_type, exc_val, exc_tb)
+        if self.n_process > 1:
+            self._pool.close()
+            self._pool.join()
+        self._pool = None
+        # self._threadpool_limits.restore_original_limits()
 
-    @property
-    def backend(self):
-        return self._backend
+    # @staticmethod
+    # def _threadpool_wrapper(fun, n_thread):
+    #     def f_wrapped(*args, **kwargs):
+    #         with threadpool_limits(n_thread):
+    #             return fun(*args, **kwargs)
+    #     return f_wrapped
 
-    @backend.setter
-    def backend(self, be):
-        if be is None or (isinstance(be, int) and be > 0):
-            pass
-        elif isinstance(be, Pool):
-            pass
-        elif HAS_RAY and isinstance(be, RayPool):
-            pass
-        elif HAS_DASK and isinstance(be, Client):
-            pass
-        elif HAS_SHAREDMEM and isinstance(be, MapReduce):
-            pass
-        elif HAS_LOKY and isinstance(be,
-                                     reusable_executor._ReusablePoolExecutor):
-            pass
-        # elif be == 'serial':
-        #     pass
+    @staticmethod
+    def _set_thread(n_thread):
+        from threadpoolctl import threadpool_limits
+        threadpool_limits(n_thread)
+
+    def _map(self, fun, *iters):
+        if self.pool is None:
+            if self.n_process == 1:
+                return self.gather(self.map_async(fun, *iters))
+            else:
+                raise RuntimeError('the pool is not activated. Please use it in a with context.')
+        elif isinstance(self.pool, Pool):
+            # return self.pool.starmap(self._threadpool_wrapper(fun, self.n_thread), zip(*iters))
+            return self.pool.starmap(fun, zip(*iters))
         else:
-            raise ValueError('invalid value for backend.')
-        self._backend_activated = be
-        self._backend = be
-
-    @property
-    def backend_activated(self):
-        return self._backend_activated
-
-    @property
-    def kind(self):
-        if self.backend is None or isinstance(self.backend, int):
-            return 'multiprocess'
-        elif isinstance(self.backend, Pool):
-            return 'multiprocess'
-        elif HAS_RAY and isinstance(self.backend, RayPool):
-            return 'ray'
-        elif HAS_DASK and isinstance(self.backend, Client):
-            return 'dask'
-        elif HAS_SHAREDMEM and isinstance(self.backend, MapReduce):
-            return 'sharedmem'
-        elif HAS_LOKY and isinstance(self.backend,
-                                     reusable_executor._ReusablePoolExecutor):
-            return 'loky'
-        # elif self.backend == 'serial':
-        #     return 'serial'
-        else:
-            raise RuntimeError('unexpected value for self.backend.')
+            raise RuntimeError('unexpected value for self.pool.')
 
     def map(self, fun, *iters):
-        if self.backend_activated is None:
-            raise RuntimeError('the backend is not activated. Please use it in '
-                               'a with context.')
-        elif isinstance(self.backend_activated, Pool):
-            return self.backend_activated.starmap(fun, zip(*iters))
-        elif HAS_RAY and isinstance(self.backend_activated, RayPool):
-            return self.backend_activated.starmap(fun, list(zip(*iters)))
-            # https://github.com/ray-project/ray/issues/11451
-            # that's why I need to explicitly convert it to a list for now
-        elif HAS_DASK and isinstance(self.backend_activated, Client):
-            return self.gather(self.backend_activated.map(fun, *iters))
-        elif HAS_SHAREDMEM and isinstance(self.backend_activated, MapReduce):
-            return self.backend_activated.map(fun, list(zip(*iters)), star=True)
-        elif HAS_LOKY and isinstance(self.backend_activated,
-                                     reusable_executor._ReusablePoolExecutor):
-            return self.gather(self.backend_activated.map(fun, *iters))
-        # elif self.backend_activated == 'serial':
-        #     return [deepcopy(fun)(*[i[j] for i in iters]) for j in range(l)]
+        self._map(self._set_thread, [self.n_thread] * self.n_process)
+        return self._map(fun, *iters)
+
+    def _map_async(self, fun, *iters):
+        if self.pool is None:
+            if self.n_process == 1:
+                return map(self._threadpool_wrapper(fun, self.n_thread), *iters)
+            else:
+                raise RuntimeError('the pool is not activated. Please use it in a with context.')
+        elif isinstance(self.pool, Pool):
+            return self.pool.starmap_async(fun, zip(*iters))
+            # return self.pool.starmap_async(self._threadpool_wrapper(fun, self.n_thread),
+            #                                zip(*iters))
         else:
-            raise RuntimeError('unexpected value for self.backend_activated.')
+            raise RuntimeError('unexpected value for self.pool.')
 
     def map_async(self, fun, *iters):
-        if self.backend_activated is None:
-            raise RuntimeError('the backend is not activated. Please use it in '
-                               'a with context.')
-        elif isinstance(self.backend_activated, Pool):
-            return self.backend_activated.starmap_async(fun, zip(*iters))
-        elif HAS_RAY and isinstance(self.backend_activated, RayPool):
-            return self.backend_activated.starmap_async(fun, list(zip(*iters)))
-        elif HAS_DASK and isinstance(self.backend_activated, Client):
-            return self.backend_activated.map(fun, *iters)
-        elif HAS_SHAREDMEM and isinstance(self.backend_activated, MapReduce):
-            warnings.warn('sharedmem does not support map_async. Using map '
-                          'instead.', RuntimeWarning)
-            return self.backend_activated.map(fun, list(zip(*iters)), star=True)
-        elif HAS_LOKY and isinstance(self.backend_activated,
-                                     reusable_executor._ReusablePoolExecutor):
-            return self.backend_activated.map(fun, *iters)
-        # elif self.backend_activated == 'serial':
-        #     return self.map(fun, *iters)
-        else:
-            raise RuntimeError('unexpected value for self.backend_activated.')
+        self._map_async(self._set_thread, [self.n_thread] * self.n_process)
+        return self._map_async(fun, *iters)
 
     def gather(self, async_result):
-        if self.backend_activated is None:
-            raise RuntimeError('the backend is not activated. Please use it in '
-                               'a with context.')
-        elif isinstance(self.backend_activated, Pool):
+        if self.pool is None:
+            if self.n_process == 1:
+                return list(async_result)
+            else:
+                raise RuntimeError('the pool is not activated. Please use it in a with context.')
+        elif isinstance(self.pool, Pool):
             return async_result.get()
-        elif isinstance(self.backend_activated, RayPool):
-            return async_result.get()
-        elif HAS_DASK and isinstance(self.backend_activated, Client):
-            return self.backend_activated.gather(async_result)
-        elif HAS_SHAREDMEM and isinstance(self.backend_activated, MapReduce):
-            return async_result
-        elif HAS_LOKY and isinstance(self.backend_activated,
-                                     reusable_executor._ReusablePoolExecutor):
-            return list(async_result)
-        # elif self.backend_activated == 'serial':
-        #     return async_result
         else:
-            raise RuntimeError('unexpected value for self.backend_activated.')
+            raise RuntimeError('unexpected value for self.pool.')
 
 
-_global_backend = ParallelBackend()
+_global_pool = ParallelPool()
 
 
-def get_backend():
-    return _global_backend
+def get_pool():
+    """
+    Get the global parallel pool.
+    """
+    return _global_pool
 
 
-def set_backend(backend):
-    global _global_backend
-    _global_backend = ParallelBackend(backend)
+def set_pool(n_process=4, n_thread=1):
+    """
+    Set the global parallel pool.
+
+    Parameters
+    ----------
+    n_process : int, optional
+        The number of processes to use. Set to ``4`` by default.
+    n_thread : int, optional
+        The number of threads per process. Set to ``1`` by default.
+    """
+    global _global_pool
+    _global_pool = ParallelPool(n_process, n_thread)

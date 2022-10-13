@@ -10,7 +10,7 @@
 # School of Mathematics and Statistics
 # University of New South Wales
 # Sydney NSW 2052, Australia
-# 
+#
 # Last updated: 21 October 2008
 #
 #   You may incorporate this source code into your own program 
@@ -25,22 +25,22 @@
 # -----------------------------------------------------------------------------
 # Copyright (c) 2008, Frances Y. Kuo and Stephen Joe
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 #     * Redistributions of source code must retain the above copyright
 #       notice, this list of conditions and the following disclaimer.
-# 
+#
 #     * Redistributions in binary form must reproduce the above copyright
 #       notice, this list of conditions and the following disclaimer in the
 #       documentation and/or other materials provided with the distribution.
-# 
+#
 #     * Neither the names of the copyright holders nor the names of the
 #       University of New South Wales and the University of Waikato
 #       and its contributors may be used to endorse or promote products derived
 #       from this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -68,22 +68,22 @@ __all__ = ['_sobol']
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def _sobol(const unsigned N, const unsigned D, const unsigned char[:] dir_file, 
+def _sobol(const unsigned N, const unsigned D, const unsigned char[:] dir_file,
            double[:, ::1] points):
     cdef:
         unsigned i, j, k, value, d, s, a, L
         unsigned *C, *V, *X, *m
         FILE *infile
         char buffer[1000] # used to skip the first line
-    
+
     L = <unsigned>ceil(log(<double>N) / log(2.0)) # max number of bits needed
     infile = fopen(<char *>&dir_file[0], "r")
     fgets(buffer, 1000, infile)
-    
+
     C = <unsigned *>malloc(N * sizeof(unsigned))
     V = <unsigned *>malloc((L + 1) * sizeof(unsigned))
     X = <unsigned *>malloc(N * sizeof(unsigned))
-    
+
     try:
         # C[i] = index from the right of the first zero bit of i
         C[0] = 1
@@ -143,7 +143,7 @@ def _sobol(const unsigned N, const unsigned D, const unsigned char[:] dir_file,
             finally:
                 # Clean up
                 free(m)
-    finally:    
+    finally:
         # Clean up
         free(C)
         free(V)

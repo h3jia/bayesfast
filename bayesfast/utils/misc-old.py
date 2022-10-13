@@ -5,8 +5,7 @@ __all__ = ['all_isinstance', 'make_positive', 'SystematicResampler']
 
 
 def all_isinstance(iterable, class_or_tuple):
-    return (hasattr(iterable, '__iter__') and
-            all(isinstance(i, class_or_tuple) for i in iterable))
+    return (hasattr(iterable, '__iter__') and all(isinstance(i, class_or_tuple) for i in iterable))
 
 
 def make_positive(A, max_cond=1e5):
@@ -21,18 +20,16 @@ def make_positive(A, max_cond=1e5):
 class SystematicResampler:
     """
     Systematically resamples the input array.
-    
+
     Parameters
     ----------
     nodes : 1-d array-like of float, optional
-        Percentiles dividing the different weights. Set to ``(1., 100.)`` by
-        default.
+        Percentiles dividing the different weights. Set to ``(1., 100.)`` by default.
     weights : 1-d array-like of float or None, optional
-        Relative weights of different intervals. If None, will use equal weights
-        for the various intervals. Set to ``None`` by default.
+        Relative weights of different intervals. If None, will use equal weights for the various
+        intervals. Set to ``None`` by default.
     require_unique : bool, optional
-        Whether to require that the returned indices are all unique. Set to
-        ``True`` by default.
+        Whether to require that the returned indices are all unique. Set to ``True`` by default.
     """
     def __init__(self, nodes=(1., 100.), weights=None, require_unique=True):
         try:
@@ -61,17 +58,17 @@ class SystematicResampler:
     def run(self, a, n):
         """
         Running systematic resampling.
-        
+
         Parameters
         ----------
         a : 1-d array-like of float
             The input array to resample.
         n : positive int
             The number of samples to draw.
-        
+
         Returns
         -------
-        i : 1-d numpy.ndarray of int
+        i : 1-d ndarray of int
             The indices of resampled elements.
         """
         try:

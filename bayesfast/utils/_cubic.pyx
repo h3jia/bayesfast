@@ -7,8 +7,7 @@
 #-------------------------------------------------------------------------------
 
 """
-Routines for evaluating and manipulating piecewise polynomials in
-local power basis.
+Routines for evaluating and manipulating piecewise polynomials in local power basis.
 """
 
 import numpy as np
@@ -20,6 +19,7 @@ ctypedef np.uint8_t uint8  # we use this for boolean type
 cdef extern from "numpy/npy_math.h":
     double nan "NPY_NAN"
 
+
 #------------------------------------------------------------------------------
 # Piecewise power basis polynomials
 #------------------------------------------------------------------------------
@@ -27,22 +27,24 @@ cdef extern from "numpy/npy_math.h":
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-cdef int find_interval(const double* x, int m, double xval, 
-                       int prev_interval=-1) nogil:
+cdef int find_interval(const double* x, int m, double xval, int prev_interval=-1) nogil:
     """
-    Find an interval such that x[interval - 1] <= xval < x[interval]. Assuming
-    that x is sorted in the ascending order.
-    If xval < x[0], then interval = 0, if xval > x[-1] then interval = m.
+    Find an interval such that x[interval - 1] <= xval < x[interval].
+
+    Assumeing that x is sorted in the ascending order. If xval < x[0], then interval = 0, if xval >
+    x[-1] then interval = m.
+
     Parameters
     ----------
-    x : array of double, shape (m,)
+    x : ndarray of double, shape (m,)
         Piecewise polynomial breakpoints sorted in ascending order.
-    m: int
+    m : int
         Shape of x.
     xval : double
         Point to find.
     prev_interval : int, optional
         Interval where a previous point was found.
+
     Returns
     -------
     interval : int
@@ -50,7 +52,7 @@ cdef int find_interval(const double* x, int m, double xval,
     """
     cdef int high, low, mid, interval
     cdef double a, b
-    
+
     a = x[0]
     b = x[m - 1]
 
@@ -69,15 +71,14 @@ cdef int find_interval(const double* x, int m, double xval,
             # nan
             interval = -1
     else:
-        # Find the interval the coordinate is in
-        # (binary search with locality)
+        # Find the interval the coordinate is in (binary search with locality)
         if xval >= x[interval - 1]:
             low = interval
             high = m - 1
         else:
             low = 1
             high = interval - 1
-        
+
         if xval < x[low]:
             high = low
 
@@ -114,9 +115,8 @@ cdef inline double _derivative(const double* c, double x) nogil:
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-@cython.cdivision(True)            
-cdef double solve_newton(const double* c, double yp, double x0, double x1, 
-                         double tol=1e-10) nogil:
+@cython.cdivision(True)
+cdef double solve_newton(const double* c, double yp, double x0, double x1, double tol=1e-10) nogil:
     cdef int i ##### TODO #####
     cdef double x, y
     i = 0
@@ -136,15 +136,13 @@ cdef double solve_newton(const double* c, double yp, double x0, double x1,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-@cython.cdivision(True)            
-cdef double solve_bisect(const double* c, double yp, double x0, double x1, 
-                         double tol=1e-10) nogil:
+@cython.cdivision(True)
+cdef double solve_bisect(const double* c, double yp, double x0, double x1, double tol=1e-10) nogil:
     cdef int i ##### TODO #####
     cdef double a, b, x
     i = 0
     a = 0.
     b = x1 - x0
-    
     x = (a + b) / 2
     y = _evaluate(c, x) - yp
     while not (y < tol and y > -tol):
@@ -167,13 +165,11 @@ cdef double solve_bisect(const double* c, double yp, double x0, double x1,
 @cython.boundscheck(False)
 @cython.cdivision(True)
 cdef uint8 _is_monotone(const double* c, double x0, double x1) nogil:
-    
     A = _derivative(c, x0)
     B = _derivative(c, x1)
     C = 3 * c[0] * x0 + c[1]
     D = 3 * c[0] * x1 + c[1]
     delta = c[1] * c[1] - 3 * c[0] * c[2]
-    
     if A > 0 and B > 0 and (C * D) >= 0:
         return 1
     elif c[0] > 0 and delta < 0:
@@ -185,23 +181,21 @@ cdef uint8 _is_monotone(const double* c, double x0, double x1) nogil:
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def evaluate(const double[:,::1] c, const double[::1] x,
-             const double[::1] xp, double[::1] out):
+def evaluate(const double[:,::1] c, const double[::1] x, const double[::1] xp, double[::1] out):
     """
     Evaluate a piecewise polynomial.
+
     Parameters
     ----------
     c : ndarray, shape (4, m+1,)
-        Coefficients of the local polynomial of order 3 in `m+1` intervals,
-        including the two linear extrapolation intervals.
-        Coefficient of highest order-term comes first.
+        Coefficients of the local polynomial of order 3 in m+1 intervals, including the two linear
+        extrapolation intervals. Coefficient of highest order-term comes first.
     x : ndarray, shape (m,)
         Breakpoints of polynomials.
     xp : ndarray, shape (r,)
         Points to evaluate the piecewise polynomial at.
     out : ndarray, shape (r,)
-        Value of the polynomial at each of the input points.
-        This argument is modified in-place.
+        Value of the polynomial at each of the input points. This argument is modified in-place.
     """
     cdef int i, j, m
     cdef double xpi, dx
@@ -209,43 +203,34 @@ def evaluate(const double[:,::1] c, const double[::1] x,
 
     # Evaluate.
     for i in range(len(xp)):
-        
         xpi = xp[i]
-
-        # Find correct interval
-        j = find_interval(&x[0], m, xpi)
-        
+        j = find_interval(&x[0], m, xpi) # Find correct interval
         if 0 < j < m:
             dx = xpi - x[j - 1]
             out[i] = _evaluate(&c[j, 0], dx)
-            
         elif j == 0:
             dx = xpi - x[0]
             out[i] = c[0, 2] * dx + c[0, 3]
-            
         elif j == m:
             dx = xpi - x[m - 1]
-            out[i] = c[m, 2] * dx + c[m, 3] 
-            
+            out[i] = c[m, 2] * dx + c[m, 3]
         else:
-            # xpi is nan etc
-            out[i] = nan
+            out[i] = nan # xpi is nan etc
             continue
 
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def derivative(const double[:,::1] c, const double[::1] x,
-               const double[::1] xp, double[::1] out):
+def derivative(const double[:,::1] c, const double[::1] x, const double[::1] xp, double[::1] out):
     """
     Evaluate the first order derivative of a piecewise polynomial.
+
     Parameters
     ----------
     c : ndarray, shape (4, m+1,)
-        Coefficients of the local polynomial of order 3 in `m+1` intervals,
-        including the two linear extrapolation intervals.
-        Coefficient of highest order-term comes first.
+        Coefficients of the local polynomial of order 3 in m+1 intervals, including the two linear
+        extrapolation intervals. Coefficient of highest order-term comes first.
     x : ndarray, shape (m,)
         Breakpoints of polynomials.
     xp : ndarray, shape (r,)
@@ -257,43 +242,35 @@ def derivative(const double[:,::1] c, const double[::1] x,
     cdef double xpi, dx
     m = x.shape[0]
 
-    # Evaluate.
+    # Evaluate
     for i in range(len(xp)):
-        
         xpi = xp[i]
-
-        # Find correct interval
-        j = find_interval(&x[0], m, xpi)
-        
+        j = find_interval(&x[0], m, xpi) # Find correct interval
         if 0 < j < m:
             dx = xpi - x[j - 1]
             out[i] = _derivative(&c[j, 0], dx)
-            
         elif j == 0:
             out[i] = c[0, 2]
-            
         elif j == m:
             out[i] = c[m, 2]
-            
         else:
-            # xpi is nan etc
-            out[i] = nan
+            out[i] = nan # xpi is nan etc
             continue
-            
-            
+
+
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def solve(const double[:,::1] c, const double[::1] x, const double[::1] y,
-          const double[::1] yp, double[::1] out):
+def solve(const double[:,::1] c, const double[::1] x, const double[::1] y, const double[::1] yp,
+          double[::1] out):
     """
     Evaluate the inverse of a piecewise polynomial.
+
     Parameters
     ----------
     c : ndarray, shape (4, m+1,)
-        Coefficients of the local polynomial of order 3 in `m+1` intervals,
-        including the two linear extrapolation intervals.
-        Coefficient of highest order-term comes first.
+        Coefficients of the local polynomial of order 3 in m+1 intervals, including the two linear
+        extrapolation intervals. Coefficient of highest order-term comes first.
     x : ndarray, shape (m,)
         Breakpoints of polynomials.
     y : ndarray, shape (m,)
@@ -307,37 +284,26 @@ def solve(const double[:,::1] c, const double[::1] x, const double[::1] y,
     cdef double ypi
     m = x.shape[0]
 
-    # Evaluate.
+    # Evaluate
     for i in range(len(yp)):
-        
         ypi = yp[i]
-
-        # Find correct interval
-        j = find_interval(&y[0], m, ypi)
-        
+        j = find_interval(&y[0], m, ypi) # Find correct interval
         if 0 < j < m:
             out[i] = x[j - 1] + solve_bisect(&c[j, 0], ypi, x[j - 1], x[j])
-            
         elif j == 0:
             out[i] = x[0] + (ypi - c[0, 3]) / c[0, 2]
-            
         elif j == m:
             out[i] = x[m - 1] + (ypi - c[m, 3]) / c[m, 2]
-            
         else:
-            # xval is nan etc
-            out[i] = nan
+            out[i] = nan # xval is nan etc
             continue
-            
+
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.cdivision(True)
 def is_monotone(const double[:,::1] c, const double[::1] x, uint8[::1] out):
-    
     cdef int i, m
     m = x.shape[0]
-    
     for i in range(1, m):
         out[i - 1] = _is_monotone(&c[i, 0], 0., x[i] - x[i - 1])
-        

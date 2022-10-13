@@ -15,29 +15,24 @@ def uniform(low, high, size, skip=1, dir_file=df):
     if low.ndim == 1 and low.shape == high.shape:
         d = low.shape[0]
     else:
-        raise ValueError('low and high should be 1-d arraies with the same '
-                         'shape, but you give me low.shape = {}, high.shape = '
-                         '{}.'.format(low.shape, high.shape))
+        raise ValueError('low and high should be 1-d arraies with the same shape, but you give me '
+                         'low.shape = {}, high.shape = {}.'.format(low.shape, high.shape))
     if not os.path.isfile(dir_file):
-        raise ValueError('cannot find the direction data file at '
-                         'dir_file="{}"'.format(dir_file))
+        raise ValueError('cannot find the direction data file at dir_file="{}"'.format(dir_file))
     d_max = len(open(df, 'r').readlines())
     if d > d_max:
-        raise NotImplementedError(
-            'd = {} is not supported yet, as we have d_max = {}, so please '
-            'use pseudo random numbers for now.'.format(d, d_max))
+        raise NotImplementedError('d = {} is not supported yet, as we have d_max = {}, so please '
+                                  'use pseudo random numbers for now.'.format(d, d_max))
     try:
         size = int(size)
         assert size > 0
     except Exception:
-        raise ValueError(
-            'size should be a positive int, instead of {}.'.format(size))
+        raise ValueError('size should be a positive int, instead of {}.'.format(size))
     try:
         skip = int(skip)
         assert skip >= 0
     except Exception:
-        raise ValueError('skip should be a non-negative int, instead of '
-                         '{}.'.format(skip))
+        raise ValueError('skip should be a non-negative int, instead of {}.'.format(skip))
     n_all = size + skip
     points = np.empty((n_all, d))
     _sobol(n_all, d, bytes(dir_file, 'utf8'), points)

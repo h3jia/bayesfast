@@ -4,7 +4,7 @@ from scipy.stats import norm
 from sklearn.decomposition import FastICA
 from ..utils.parallel import ParallelBackend, get_backend
 from ..utils.kde import kde
-from ..utils.cubic import cubic_spline
+from ..utils.cubic import CubicSpline
 from ..utils.sobol import multivariate_normal
 from ..utils.random import get_generator
 from itertools import starmap
@@ -222,7 +222,7 @@ class SIT:
 
     def _gaussianize_1d(self, x):
         k = kde(x, bw_factor=self._bw_factor, weights=self._weights)
-        c = cubic_spline(x, lambda xx: norm.ppf(k.cdf(xx)),
+        c = CubicSpline(x, lambda xx: norm.ppf(k.cdf(xx)),
                          **self._cubic_options)
         return c
 
